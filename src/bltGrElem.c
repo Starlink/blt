@@ -1215,7 +1215,9 @@ RebuildDisplayList(graphPtr, newList)
 {
     int nNames;			/* Number of names found in Tcl name list */
     char **nameArr;		/* Broken out array of element names */
+    Blt_HashSearch cursor;
     register int i;
+    register Blt_HashEntry *hPtr;
     Element *elemPtr;		/* Element information record */
 
     if (Tcl_SplitList(graphPtr->interp, newList, &nNames, &nameArr) != TCL_OK) {
@@ -1225,11 +1227,17 @@ RebuildDisplayList(graphPtr, newList)
     }
     /* Clear the display list and mark all elements as hidden.  */
     Blt_ChainReset(graphPtr->elements.displayList);
+    for (hPtr = Blt_FirstHashEntry(&graphPtr->elements.table, &cursor);
+	hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
+	elemPtr = (Element *)Blt_GetHashValue(hPtr);
+	elemPtr->hidden = TRUE;
+    }
 
     /* Rebuild the display list, checking that each name it exists
      * (currently ignoring invalid element names).  */
     for (i = 0; i < nNames; i++) {
 	if (NameToElement(graphPtr, nameArr[i], &elemPtr) == TCL_OK) {
+	    elemPtr->hidden = FALSE;
 	    Blt_ChainAppend(graphPtr->elements.displayList, elemPtr);
 	}
     }
@@ -1391,7 +1399,8 @@ Blt_ElementsToPostScript(graphPtr, psToken)
 	    /* Comment the PostScript to indicate the start of the element */
 	    Blt_FormatToPostScript(psToken, "\n%% Element \"%s\"\n\n", 
 		elemPtr->name);
-	    (*elemPtr->procsPtr->printNormalProc) (graphPtr, psToken, elemPtr);
+	    (*elemPtr->procsPtr->printNormalProc) (graphPtr, psToken, 
+		elemPtr);
 	}
     }
 }
@@ -1417,7 +1426,8 @@ Blt_ActiveElementsToPostScript(graphPtr, psToken)
 	if ((!elemPtr->hidden) && (elemPtr->flags & ELEM_ACTIVE)) {
 	    Blt_FormatToPostScript(psToken, "\n%% Active Element \"%s\"\n\n",
 		elemPtr->name);
-	    (*elemPtr->procsPtr->printActiveProc) (graphPtr, psToken, elemPtr);
+	    (*elemPtr->procsPtr->printActiveProc) (graphPtr, psToken, 
+						   elemPtr);
 	}
     }
 }
@@ -1661,7 +1671,6 @@ ClosestOp(graphPtr, interp, argc, argv)
     ClosestSearch search;
     int i, x, y;
     int flags = TCL_LEAVE_ERR_MSG;
-    int found;
 
     if (graphPtr->flags & RESET_AXES) {
 	Blt_ResetAxes(graphPtr);
@@ -1706,23 +1715,13 @@ ClosestOp(graphPtr, interp, argc, argv)
     search.dist = (double)(search.halo + 1);
 
     if (i < argc) {
-	Blt_ChainLink *linkPtr;
-
 	for ( /* empty */ ; i < argc; i++) {
 	    if (NameToElement(graphPtr, argv[i], &elemPtr) != TCL_OK) {
 		return TCL_ERROR;	/* Can't find named element */
 	    }
-	    found = FALSE;
-	    for (linkPtr = Blt_ChainFirstLink(graphPtr->elements.displayList);
-		 linkPtr == NULL; linkPtr = Blt_ChainNextLink(linkPtr)) {
-		if (elemPtr == Blt_ChainGetValue(linkPtr)) {
-		    found = TRUE;
-		    break;
-		}
-	    }
-	    if ((!found) || (elemPtr->hidden)) {
+	    if (elemPtr->hidden) {
 		Tcl_AppendResult(interp, "element \"", argv[i], "\" is hidden",
-			(char *)NULL);
+		    (char *)NULL);
 		return TCL_ERROR;	/* Element isn't visible */
 	    }
 	    /* Check if the X or Y vectors have notifications pending */
@@ -1745,14 +1744,16 @@ ClosestOp(graphPtr, interp, argc, argv)
 	for (linkPtr = Blt_ChainLastLink(graphPtr->elements.displayList);
 	    linkPtr != NULL; linkPtr = Blt_ChainPrevLink(linkPtr)) {
 	    elemPtr = Blt_ChainGetValue(linkPtr);
+
 	    /* Check if the X or Y vectors have notifications pending */
-	    if ((elemPtr->hidden) || 
-		(elemPtr->flags & MAP_ITEM) ||
+	    if ((elemPtr->flags & MAP_ITEM) ||
 		(Blt_VectorNotifyPending(elemPtr->x.clientId)) ||
 		(Blt_VectorNotifyPending(elemPtr->y.clientId))) {
 		continue;
 	    }
-	    (*elemPtr->procsPtr->closestProc)(graphPtr, elemPtr, &search);
+	    if (!elemPtr->hidden) {
+		(*elemPtr->procsPtr->closestProc) (graphPtr, elemPtr, &search);
+	    }
 	}
 
     }
@@ -1858,6 +1859,30 @@ ConfigureOp(graphPtr, interp, argc, argv)
 	    return TCL_ERROR;	/* Failed to configure element */
 	}
 	if (Blt_ConfigModified(elemPtr->specsPtr, "-hide", (char *)NULL)) {
+	    Blt_ChainLink *linkPtr;
+
+	    for (linkPtr = Blt_ChainFirstLink(graphPtr->elements.displayList);
+		linkPtr != NULL; linkPtr = Blt_ChainNextLink(linkPtr)) {
+		if (elemPtr == Blt_ChainGetValue(linkPtr)) {
+		    break;
+		}
+	    }
+	    if ((elemPtr->hidden) != (linkPtr == NULL)) {
+
+		/* The element's "hidden" variable is out of sync with
+		 * the display list. [That's what you get for having
+		 * two ways to do the same thing.]  This affects what
+		 * elements are considered for axis ranges and
+		 * displayed in the legend. Update the display list by
+		 * either by adding or removing the element.  */
+
+		if (linkPtr == NULL) {
+		    Blt_ChainPrepend(graphPtr->elements.displayList, elemPtr);
+		} else {
+		    Blt_ChainDeleteLink(graphPtr->elements.displayList, 
+					linkPtr);
+		}
+	    }
 	    graphPtr->flags |= RESET_AXES;
 	    elemPtr->flags |= MAP_ITEM;
 	}

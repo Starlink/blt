@@ -89,9 +89,9 @@ typedef struct TkCaret {
 
 typedef struct TkDisplayStruct {
     Display *display;		/* Xlib's info about display. */
-    struct TkDisplayStruct *nextPtr; /* Next in list of all displays. */
-    char *name;			/* Name of display (with any screen
-				 * identifier removed).  Malloc-ed. */
+    struct TkDisplay *nextPtr;	/* Next in list of all displays. */
+    char *name;			/* Name of display (with any screen identifier
+				 * removed). Malloc-ed. */
     Time lastEventTime;		/* Time of last event received for this
 				 * display. */
 
@@ -107,8 +107,8 @@ typedef struct TkDisplayStruct {
      * Information used by tkAtom.c only:
      */
 
-    int atomInit;		/* 0 means stuff below hasn't been
-				 * initialized yet. */
+    int atomInit;		/* 0 means stuff below hasn't been initialized
+				 * yet. */
     Tcl_HashTable nameTable;	/* Maps from names to Atom's. */
     Tcl_HashTable atomTable;	/* Maps from Atom's back to names. */
 
@@ -116,27 +116,26 @@ typedef struct TkDisplayStruct {
      * Information used primarily by tkBind.c:
      */
 
-    int bindInfoStale;		/* Non-zero means the variables in this
-				 * part of the structure are potentially
-				 * incorrect and should be recomputed. */
+    int bindInfoStale;		/* Non-zero means the variables in this part
+				 * of the structure are potentially incorrect
+				 * and should be recomputed. */
     unsigned int modeModMask;	/* Has one bit set to indicate the modifier
-				 * corresponding to "mode shift".  If no
-				 * such modifier, than this is zero. */
+				 * corresponding to "mode shift". If no such
+				 * modifier, than this is zero. */
     unsigned int metaModMask;	/* Has one bit set to indicate the modifier
-				 * corresponding to the "Meta" key.  If no
-				 * such modifier, then this is zero. */
+				 * corresponding to the "Meta" key. If no such
+				 * modifier, then this is zero. */
     unsigned int altModMask;	/* Has one bit set to indicate the modifier
-				 * corresponding to the "Meta" key.  If no
-				 * such modifier, then this is zero. */
-    enum {
-	LU_IGNORE, LU_CAPS, LU_SHIFT
-    } lockUsage;		/* Indicates how to interpret lock modifier. */
+				 * corresponding to the "Meta" key. If no such
+				 * modifier, then this is zero. */
+    enum {LU_IGNORE, LU_CAPS, LU_SHIFT} lockUsage;
+				/* Indicates how to interpret lock
+				 * modifier. */
     int numModKeyCodes;		/* Number of entries in modKeyCodes array
 				 * below. */
-    KeyCode *modKeyCodes;	/* Pointer to an array giving keycodes for
-				 * all of the keys that have modifiers
-				 * associated with them.  Malloc'ed, but
-				 * may be NULL. */
+    KeyCode *modKeyCodes;	/* Pointer to an array giving keycodes for all
+				 * of the keys that have modifiers associated
+				 * with them. Malloc'ed, but may be NULL. */
 
     /*
      * Information used by tkBitmap.c only:
@@ -150,10 +149,10 @@ typedef struct TkDisplayStruct {
     Tcl_HashTable bitmapIdTable;/* Maps from bitmap id to the TkBitmap
 				 * structure for the bitmap. */
     Tcl_HashTable bitmapDataTable;
-				/* Used by Tk_GetBitmapFromData to map from
-				 * a collection of in-core data about a
-				 * bitmap to a reference giving an auto-
-				 * matically-generated name for the bitmap. */
+				/* Used by Tk_GetBitmapFromData to map from a
+				 * collection of in-core data about a bitmap
+				 * to a reference giving an automatically-
+				 * generated name for the bitmap. */
 
     /*
      * Information used by tkCanvas.c only:
@@ -167,9 +166,9 @@ typedef struct TkDisplayStruct {
      */
 
     int colorInit;		/* 0 means color module needs initializing. */
-    TkStressedCmap *stressPtr;	/* First in list of colormaps that have
-				 * filled up, so we have to pick an
-				 * approximate color. */
+    TkStressedCmap *stressPtr;	/* First in list of colormaps that have filled
+				 * up, so we have to pick an approximate
+				 * color. */
     Tcl_HashTable colorNameTable;
 				/* Maps from color name to TkColor structure
 				 * for that color. */
@@ -192,34 +191,33 @@ typedef struct TkDisplayStruct {
 				/* Maps from a cursor id to the TkCursor
 				 * structure for the cursor. */
     char cursorString[20];	/* Used to store a cursor id string. */
-    Font cursorFont;		/* Font to use for standard cursors.
-				 * None means font not loaded yet. */
+    Font cursorFont;		/* Font to use for standard cursors. None
+				 * means font not loaded yet. */
 
     /*
      * Information used by tkError.c only:
      */
 
     struct TkErrorHandler *errorPtr;
-				/* First in list of error handlers
-				 * for this display.  NULL means
-				 * no handlers exist at present. */
-    int deleteCount;		/* Counts # of handlers deleted since
-				 * last time inactive handlers were
-				 * garbage-collected.  When this number
-				 * gets big, handlers get cleaned up. */
+				/* First in list of error handlers for this
+				 * display. NULL means no handlers exist at
+				 * present. */
+    int deleteCount;		/* Counts # of handlers deleted since last
+				 * time inactive handlers were garbage-
+				 * collected. When this number gets big,
+				 * handlers get cleaned up. */
 
     /*
      * Used by tkEvent.c only:
      */
 
     struct TkWindowEvent *delayedMotionPtr;
-				/* Points to a malloc-ed motion event
-				 * whose processing has been delayed in
-				 * the hopes that another motion event
-				 * will come along right away and we can
-				 * merge the two of them together.  NULL
-				 * means that there is no delayed motion
-				 * event. */
+				/* Points to a malloc-ed motion event whose
+				 * processing has been delayed in the hopes
+				 * that another motion event will come along
+				 * right away and we can merge the two of them
+				 * together. NULL means that there is no
+				 * delayed motion event. */
 
     /*
      * Information used by tkFocus.c only:
@@ -229,26 +227,24 @@ typedef struct TkDisplayStruct {
 				 * statistics. */
     struct TkWindow *implicitWinPtr;
 				/* If the focus arrived at a toplevel window
-				 * implicitly via an Enter event (rather
-				 * than via a FocusIn event), this points
-				 * to the toplevel window.  Otherwise it is
-				 * NULL. */
+				 * implicitly via an Enter event (rather than
+				 * via a FocusIn event), this points to the
+				 * toplevel window. Otherwise it is NULL. */
     struct TkWindow *focusPtr;	/* Points to the window on this display that
-				 * should be receiving keyboard events.  When
+				 * should be receiving keyboard events. When
 				 * multiple applications on the display have
-				 * the focus, this will refer to the
-				 * innermost window in the innermost
-				 * application.  This information isn't used
-				 * under Unix or Windows, but it's needed on
-				 * the Macintosh. */
+				 * the focus, this will refer to the innermost
+				 * window in the innermost application. This
+				 * information isn't used under Unix or
+				 * Windows, but it's needed on the Mac. */
 
     /*
      * Information used by tkGC.c only:
      */
 
-    Tcl_HashTable gcValueTable;	/* Maps from a GC's values to a TkGC structure
+    Tcl_HashTable gcValueTable; /* Maps from a GC's values to a TkGC structure
 				 * describing a GC with those values. */
-    Tcl_HashTable gcIdTable;	/* Maps from a GC to a TkGC. */
+    Tcl_HashTable gcIdTable;    /* Maps from a GC to a TkGC. */
     int gcInit;			/* 0 means the tables below need
 				 * initializing. */
 
@@ -258,23 +254,22 @@ typedef struct TkDisplayStruct {
 
     Tcl_HashTable maintainHashTable;
 				/* Hash table that maps from a master's
-				 * Tk_Window token to a list of slaves
-				 * managed by that master. */
+				 * Tk_Window token to a list of slaves managed
+				 * by that master. */
     int geomInit;
 
     /*
      * Information used by tkGet.c only:
      */
 
-    Tcl_HashTable uidTable;	/* Stores all Tk_Uids used in a thread. */
+    Tcl_HashTable uidTable;	/* Stores all Tk_Uid used in a thread. */
     int uidInit;		/* 0 means uidTable needs initializing. */
 
     /*
      * Information used by tkGrab.c only:
      */
 
-    struct TkWindow *grabWinPtr;
-				/* Window in which the pointer is currently
+    struct TkWindow *grabWinPtr;/* Window in which the pointer is currently
 				 * grabbed, or NULL if none. */
     struct TkWindow *eventualGrabWinPtr;
 				/* Value that grabWinPtr will have once the
@@ -286,22 +281,22 @@ typedef struct TkDisplayStruct {
 				 * if no such press in effect. */
     struct TkWindow *serverWinPtr;
 				/* If no application contains the pointer then
-				 * this is NULL.  Otherwise it contains the
-				 * last window for which we've gotten an
-				 * Enter or Leave event from the server (i.e.
-				 * the last window known to have contained
-				 * the pointer).  Doesn't reflect events
-				 * that were synthesized in tkGrab.c. */
+				 * this is NULL. Otherwise it contains the
+				 * last window for which we've gotten an Enter
+				 * or Leave event from the server (i.e. the
+				 * last window known to have contained the
+				 * pointer). Doesn't reflect events that were
+				 * synthesized in tkGrab.c. */
     TkGrabEvent *firstGrabEventPtr;
 				/* First in list of enter/leave events
-				 * synthesized by grab code.  These events
-				 * must be processed in order before any other
-				 * events are processed.  NULL means no such
+				 * synthesized by grab code. These events must
+				 * be processed in order before any other
+				 * events are processed. NULL means no such
 				 * events. */
     TkGrabEvent *lastGrabEventPtr;
 				/* Last in list of synthesized events, or NULL
 				 * if list is empty. */
-    int grabFlags;		/* Miscellaneous flag values.  See definitions
+    int grabFlags;		/* Miscellaneous flag values. See definitions
 				 * in tkGrab.c. */
 
     /*
@@ -309,8 +304,8 @@ typedef struct TkDisplayStruct {
      */
 
     int gridInit;		/* 0 means table below needs initializing. */
-    Tcl_HashTable gridHashTable;/* Maps from Tk_Window tokens to
-				 * corresponding Grid structures. */
+    Tcl_HashTable gridHashTable;/* Maps from Tk_Window tokens to corresponding
+				 * Grid structures. */
 
     /*
      * Information used by tkImage.c only:
@@ -328,17 +323,14 @@ typedef struct TkDisplayStruct {
      * Information used by tkOption.c only.
      */
 
-
-
     /*
      * Information used by tkPack.c only.
      */
 
     int packInit;		/* 0 means table below needs initializing. */
     Tcl_HashTable packerHashTable;
-				/* Maps from Tk_Window tokens to
-				 * corresponding Packer structures. */
-
+				/* Maps from Tk_Window tokens to corresponding
+				 * Packer structures. */
 
     /*
      * Information used by tkPlace.c only.
@@ -354,14 +346,13 @@ typedef struct TkDisplayStruct {
      * Information used by tkSelect.c and tkClipboard.c only:
      */
 
-
     struct TkSelectionInfo *selectionInfoPtr;
-    /* First in list of selection information
-				 * records.  Each entry contains information
+				/* First in list of selection information
+				 * records. Each entry contains information
 				 * about the current owner of a particular
 				 * selection on this display. */
-    Atom multipleAtom;		/* Atom for MULTIPLE.  None means
-				 * selection stuff isn't initialized. */
+    Atom multipleAtom;		/* Atom for MULTIPLE. None means selection
+				 * stuff isn't initialized. */
     Atom incrAtom;		/* Atom for INCR. */
     Atom targetsAtom;		/* Atom for TARGETS. */
     Atom timestampAtom;		/* Atom for TIMESTAMP. */
@@ -370,9 +361,8 @@ typedef struct TkDisplayStruct {
     Atom applicationAtom;	/* Atom for TK_APPLICATION. */
     Atom windowAtom;		/* Atom for TK_WINDOW. */
     Atom clipboardAtom;		/* Atom for CLIPBOARD. */
-#if (TK_VERSION_NUMBER >= _VERSION(8,4,0))
-    Atom utf8Atom;
-#endif
+    Atom utf8Atom;		/* Atom for UTF8_STRING. */
+
     Tk_Window clipWindow;	/* Window used for clipboard ownership and to
 				 * retrieve selections between processes. NULL
 				 * means clipboard info hasn't been
@@ -383,7 +373,7 @@ typedef struct TkDisplayStruct {
 				/* Last application that owned clipboard. */
     struct TkClipboardTarget *clipTargetPtr;
 				/* First in list of clipboard type information
-				 * records.  Each entry contains information
+				 * records. Each entry contains information
 				 * about the buffers for a given selection
 				 * target. */
 
@@ -391,13 +381,13 @@ typedef struct TkDisplayStruct {
      * Information used by tkSend.c only:
      */
 
-    Tk_Window commTkwin;	/* Window used for communication
-				 * between interpreters during "send"
-				 * commands.  NULL means send info hasn't
-				 * been initialized yet. */
+    Tk_Window commTkwin;	/* Window used for communication between
+				 * interpreters during "send" commands. NULL
+				 * means send info hasn't been initialized
+				 * yet. */
     Atom commProperty;		/* X's name for comm property. */
-    Atom registryProperty;	/* X's name for property containing
-				 * registry of interpreter names. */
+    Atom registryProperty;	/* X's name for property containing registry
+				 * of interpreter names. */
     Atom appNameProperty;	/* X's name for property used to hold the
 				 * application name on each comm window. */
 
@@ -409,34 +399,21 @@ typedef struct TkDisplayStruct {
 				/* First in list of chunks of free resource
 				 * identifiers, or NULL if there are no free
 				 * resources. */
-    XID(*defaultAllocProc) _ANSI_ARGS_((Display *display));
+    XID (*defaultAllocProc) (Display *display);
 				/* Default resource allocator for display. */
     struct TkIdStack *windowStackPtr;
-				/* First in list of chunks of window
-				 * identifers that can't be reused right
-				 * now. */
-#if (TK_VERSION_NUMBER < _VERSION(8,4,0))
-    int idCleanupScheduled;	/* 1 means a call to WindowIdCleanup has
-				 * already been scheduled, 0 means it
-				 * hasn't. */
-#else
+				/* First in list of chunks of window ids that
+				 * can't be reused right now. */
     Tcl_TimerToken idCleanupScheduled;
 				/* If set, it means a call to WindowIdCleanup
 				 * has already been scheduled, 0 means it
 				 * hasn't. */
-#endif
+
     /*
      * Information used by tkUnixWm.c and tkWinWm.c only:
      */
 
-#if (TK_VERSION_NUMBER < _VERSION(8,4,0))
-    int wmTracing;		/* Used to enable or disable tracing in
-				 * this module.  If tracing is enabled,
-				 * then information is printed on
-				 * standard output about interesting
-				 * interactions with the window manager. */
-#endif
-    struct TkWmInfo *firstWmPtr; /* Points to first top-level window. */
+    struct TkWmInfo *firstWmPtr;/* Points to first top-level window. */
     struct TkWmInfo *foregroundWmPtr;
 				/* Points to the foreground window. */
 
@@ -444,9 +421,8 @@ typedef struct TkDisplayStruct {
      * Information maintained by tkWindow.c for use later on by tkXId.c:
      */
 
-
-    int destroyCount;		/* Number of Tk_DestroyWindow operations
-				 * in progress. */
+    int destroyCount;		/* Number of Tk_DestroyWindow operations in
+				 * progress. */
     unsigned long lastDestroyRequest;
 				/* Id of most recent XDestroyWindow request;
 				 * can re-use ids in windowStackPtr when
@@ -465,42 +441,41 @@ typedef struct TkDisplayStruct {
      */
 
 #ifdef TK_USE_INPUT_METHODS
-    XIM inputMethod;		/* Input method for this display */
-#if (TK_VERSION_NUMBER >= _VERSION(8,4,0))
-#if TK_XIM_SPOT
+    XIM inputMethod;		/* Input method for this display. */
+    XIMStyle inputStyle;	/* Input style selected for this display. */
     XFontSet inputXfs;		/* XFontSet cached for over-the-spot XIM. */
-#endif /* TK_XIM_SPOT */
-#endif /* TK_VERSION_NUMBER >= 8.4 */
 #endif /* TK_USE_INPUT_METHODS */
     Tcl_HashTable winTable;	/* Maps from X window ids to TkWindow ptrs. */
+
     int refCount;		/* Reference count of how many Tk applications
-                                 * are using this display. Used to clean up
-                                 * the display when we no longer have any
-                                 * Tk applications using it.
-                                 */
+				 * are using this display. Used to clean up
+				 * the display when we no longer have any Tk
+				 * applications using it. */
+
     /*
      * The following field were all added for Tk8.3
      */
-    int mouseButtonState;       /* current mouse button state for this
-                                 * display */
-#if (TK_VERSION_NUMBER < _VERSION(8,4,0))
-    int warpInProgress;
-#endif
+
+    int mouseButtonState;	/* Current mouse button state for this
+				 * display. */
+    Window mouseButtonWindow;	/* Window the button state was set in, added
+				 * in Tk 8.4. */
     Window warpWindow;
     int warpX;
     int warpY;
-#if (TK_VERSION_NUMBER < _VERSION(8,4,0))
-    int useInputMethods;        /* Whether to use input methods */
-#else
+
     /*
      * The following field(s) were all added for Tk8.4
      */
-    long deletionEpoch;		/* Incremented by window deletions */
-    unsigned int flags;		/* Various flag values:  these are all
-				 * defined in below. */
-    TkCaret caret;		/* information about the caret for this
-				 * display.  This is not a pointer. */
-#endif
+
+    unsigned int flags;		/* Various flag values: these are all defined
+				 * in below. */
+    TkCaret caret;		/* Information about the caret for this
+				 * display. This is not a pointer. */
+
+    int iconDataSize;		/* Size of default iconphoto image data. */
+    unsigned char *iconDataPtr;	/* Default iconphoto image data, if set. */
+
 } TkDisplay;
 
 #else

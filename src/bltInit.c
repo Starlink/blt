@@ -30,7 +30,7 @@
 #include <float.h>
 #include <math.h>
 
-#define EXACT 1
+#define EXACT 0
 
 #ifndef BLT_LIBRARY
 #ifdef WIN32
@@ -40,16 +40,17 @@
 #endif
 #endif
 
-#define BLT_THREAD_KEY		"BLT Initialized"
-#define BLT_TCL_CMDS		(1<<0)
-#define BLT_TK_CMDS		(1<<1)
-
 double bltNaN;
 #if (TCL_MAJOR_VERSION > 7)
 Tcl_Obj *bltEmptyStringObjPtr;
 #endif
 
 static Tcl_MathProc MinMathProc, MaxMathProc;
+static int tclLoaded = FALSE;
+#ifndef TCL_ONLY
+static int tkLoaded = FALSE;
+#endif
+
 static char libPath[1024] =
 {
     BLT_LIBRARY
@@ -428,10 +429,7 @@ EXPORT int
 Blt_Init(interp)
     Tcl_Interp *interp;		/* Interpreter to add extra commands */
 {
-    int flags;
-
-    flags = (int)Tcl_GetAssocData(interp, BLT_THREAD_KEY, NULL);
-    if ((flags & BLT_TCL_CMDS) == 0) {
+    if (!tclLoaded) {
 	register Tcl_AppInitProc **p;
 	Tcl_Namespace *nsPtr;
 	Tcl_ValueType args[2];
@@ -478,11 +476,10 @@ Blt_Init(interp)
 	if (Tcl_PkgProvide(interp, "BLT", BLT_VERSION) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	Tcl_SetAssocData(interp, BLT_THREAD_KEY, NULL, 
-		(ClientData)(flags | BLT_TCL_CMDS));
+	tclLoaded = TRUE;
     }
 #ifndef TCL_ONLY
-    if ((flags & BLT_TK_CMDS) == 0) {
+    if (!tkLoaded) {
 	register Tcl_AppInitProc **p;
 	Tcl_Namespace *nsPtr;
 
@@ -514,8 +511,7 @@ Blt_Init(interp)
 	    }
 	}
 	Blt_InitEpsCanvasItem(interp);
-	Tcl_SetAssocData(interp, BLT_THREAD_KEY, NULL, 
-		(ClientData)(flags | BLT_TK_CMDS));
+	tkLoaded = TRUE;
     }
 #endif
     return TCL_OK;
@@ -528,10 +524,7 @@ EXPORT int
 Blt_Init(interp)
     Tcl_Interp *interp;		/* Interpreter to add extra commands */
 {
-    int flags;
-
-    flags = (int)Tcl_GetAssocData(interp, BLT_THREAD_KEY, NULL);
-    if ((flags & BLT_TCL_CMDS) == 0) {
+    if (!tclLoaded) {
 	register Tcl_AppInitProc **p;
 	Tcl_ValueType args[2];
 
@@ -569,11 +562,10 @@ Blt_Init(interp)
 	if (Tcl_PkgProvide(interp, "BLT", BLT_VERSION) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	Tcl_SetAssocData(interp, BLT_THREAD_KEY, NULL, 
-		(ClientData)(flags | BLT_TCL_CMDS));
+	tclLoaded = TRUE;
     }
 #ifndef TCL_ONLY
-    if ((flags & BLT_TK_CMDS) == 0) {
+    if (!tkLoaded) {
 	register Tcl_AppInitProc **p;
 
 #if (TCL_VERSION_NUMBER >= _VERSION(8,1,0)) 
@@ -593,8 +585,7 @@ Blt_Init(interp)
 	    }
 	}
 	Blt_InitEpsCanvasItem(interp);
-	Tcl_SetAssocData(interp, BLT_THREAD_KEY, NULL, 
-		(ClientData)(flags | BLT_TK_CMDS));
+	tkLoaded = TRUE;
     }
 #endif
     return TCL_OK;

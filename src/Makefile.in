@@ -233,7 +233,8 @@ clean:
 
 distclean: clean
 	$(RM) $(srcdir)/*.bak $(srcdir)/*\~ $(srcdir)/"#"*  Makefile
-	$(RM) bltConfig.h Makefile TAGS
+	$(RM) bltConfig.h bltHash.h Makefile TAGS
+	(cd shared; $(MAKE) distclean)
 
 .c.o:
 	$(CC) -c $(CC_SWITCHES) $<

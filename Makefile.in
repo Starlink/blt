@@ -72,4 +72,8 @@ GENERATED_FILES = \
 	config.status config.cache config.log Makefile 
 
 distclean: clean
+	(cd src; $(MAKE) distclean)
+	(cd library; $(MAKE) distclean)
+	(cd man; $(MAKE) distclean)
+	(cd demos; $(MAKE) distclean)
 	$(RM) $(GENERATED_FILES)
