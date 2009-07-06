@@ -671,6 +671,9 @@ Blt_DrawTextLayout(tkwin, drawable, textPtr, tsPtr, x, y)
     Pixmap bitmap;
     int active;
 
+    if (!textPtr)
+	return;
+    
     display = Tk_Display(tkwin);
     theta = FMOD(tsPtr->theta, (double)360.0);
     if (theta < 0.0) {

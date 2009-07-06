@@ -175,10 +175,10 @@ mkdirs:
         done
 clean:
 	$(RM) $(OBJS) $(lib_so) $(tcl_only_lib_so) $(bltwish) $(bltsh) \
-		*pure* .pure* 
+		*pure* .pure* bltInit.o
 
 distclean: clean
-	$(RM) $(srcdir)/*.bak $(srcdir)/*\~ $(srcdir)/"#"* 
+	$(RM) Makefile $(srcdir)/*.bak $(srcdir)/*\~ $(srcdir)/"#"* 
 
 # ------------------------------------------------------------------------
 # 	in lieu of viewpath-ing...

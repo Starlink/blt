@@ -6,7 +6,6 @@
 include ../win/makedefs
 
 version =	$(BLT_MAJOR_VERSION).$(BLT_MINOR_VERSION)
-pkgdir =	$(libdir)/tcl$(v1)/blt$(version)
 srcdir =	.
 
 cursors = 	treeview.cur
@@ -30,8 +29,7 @@ ddFiles =	dd-color.tcl \
 		tclIndex
 
 instdirs =	$(prefix) $(exec_prefix) $(libdir) \
-		$(scriptdir) $(scriptdir)/dd_protocols $(libdir)/tcl$(v1) \
-		$(pkgdir)
+		$(scriptdir) $(scriptdir)/dd_protocols $(libdir)/tcl$(v1)
 
 all: build-pkgindex
 
@@ -62,7 +60,6 @@ build-pkgindex:
 
 install-pkgindex: pkgIndex.tcl
 	$(INSTALL_DATA) pkgIndex.tcl $(scriptdir)
-	$(INSTALL_DATA) pkgIndex.tcl $(pkgdir)
 
 clean:
 	$(RM) pkgIndex.tcl

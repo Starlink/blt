@@ -58,7 +58,7 @@ typedef struct {
 typedef int Process;
 #endif
 
-#if (TCL_VERSION_NUMBER <  _VERSION(8,1,0)) 
+#if (TCL_VERSION_NUMBER <  _VERSION(8,1,0))
 typedef void *Tcl_Encoding;	/* Make up dummy type for encoding.  */
 #endif
 
@@ -276,7 +276,7 @@ typedef struct {
     int objc;			/*  */
 #endif
 
-    int flags;			
+    int flags;
 
     Tcl_File file;		/* Used for backward compatability
 				 * with Tcl 7.5 */
@@ -370,35 +370,35 @@ static Blt_SwitchCustom killSignalSwitch =
     StringToSignal, (Blt_SwitchFreeProc *)NULL, (ClientData)0,
 };
 
-static Blt_SwitchSpec switchSpecs[] = 
+static Blt_SwitchSpec switchSpecs[] =
 {
-    {BLT_SWITCH_STRING, "-decodeoutput", 
+    {BLT_SWITCH_STRING, "-decodeoutput",
          Blt_Offset(BackgroundInfo, outputEncodingName), 0},
-    {BLT_SWITCH_STRING, "-decodeerror", 
+    {BLT_SWITCH_STRING, "-decodeerror",
          Blt_Offset(BackgroundInfo, errorEncodingName), 0},
-    {BLT_SWITCH_BOOLEAN, "-echo", 
+    {BLT_SWITCH_BOOLEAN, "-echo",
          Blt_Offset(BackgroundInfo, sink2.echo), 0},
-    {BLT_SWITCH_STRING, "-error", 
+    {BLT_SWITCH_STRING, "-error",
          Blt_Offset(BackgroundInfo, sink2.doneVar), 0},
-    {BLT_SWITCH_STRING, "-update", 
+    {BLT_SWITCH_STRING, "-update",
 	Blt_Offset(BackgroundInfo, sink1.updateVar), 0},
-    {BLT_SWITCH_STRING, "-output", 
+    {BLT_SWITCH_STRING, "-output",
         Blt_Offset(BackgroundInfo, sink1.doneVar), 0},
-    {BLT_SWITCH_STRING, "-lasterror", 
+    {BLT_SWITCH_STRING, "-lasterror",
 	Blt_Offset(BackgroundInfo, sink2.updateVar), 0},
-    {BLT_SWITCH_STRING, "-lastoutput", 
+    {BLT_SWITCH_STRING, "-lastoutput",
 	Blt_Offset(BackgroundInfo, sink1.updateVar), 0},
-    {BLT_SWITCH_LIST, "-onerror", 
+    {BLT_SWITCH_LIST, "-onerror",
 	Blt_Offset(BackgroundInfo, sink2.updateCmd), 0},
-    {BLT_SWITCH_LIST, "-onoutput", 
+    {BLT_SWITCH_LIST, "-onoutput",
 	Blt_Offset(BackgroundInfo, sink1.updateCmd), 0},
-    {BLT_SWITCH_BOOLEAN, "-keepnewline", 
+    {BLT_SWITCH_BOOLEAN, "-keepnewline",
 	Blt_Offset(BackgroundInfo, keepNewline), 0},
-    {BLT_SWITCH_BOOLEAN, "-check", 
+    {BLT_SWITCH_INT, "-check",
 	Blt_Offset(BackgroundInfo, interval), 0},
-    {BLT_SWITCH_CUSTOM, "-killsignal", 
+    {BLT_SWITCH_CUSTOM, "-killsignal",
 	Blt_Offset(BackgroundInfo, signalNum), 0, &killSignalSwitch},
-    {BLT_SWITCH_BOOLEAN, "-linebuffered", 
+    {BLT_SWITCH_BOOLEAN, "-linebuffered",
 	Blt_Offset(BackgroundInfo, lineBuffered), 0},
     {BLT_SWITCH_END, NULL, 0, 0}
 };
@@ -517,7 +517,7 @@ GetSinkData(sinkPtr, dataPtr, lengthPtr)
  *	Returns the next block of data since the last time this
  *	routine was called.
  *
- *---------------------------------------------------------------------- 
+ *----------------------------------------------------------------------
  */
 static unsigned char *
 NextBlock(sinkPtr, lengthPtr)
@@ -531,7 +531,7 @@ NextBlock(sinkPtr, lengthPtr)
     length = sinkPtr->mark - sinkPtr->lastMark;
     sinkPtr->lastMark = sinkPtr->mark;
     if (length > 0) {
-	if ((!(sinkPtr->flags & SINK_KEEP_NL)) && 
+	if ((!(sinkPtr->flags & SINK_KEEP_NL)) &&
 	    (string[length - 1] == '\n')) {
 	    length--;
 	}
@@ -565,7 +565,7 @@ NextLine(sinkPtr, lengthPtr)
 	for (i = 0; i < newBytes; i++) {
 	    if (string[i] == '\n') {
 		int length;
-		
+
 		length = i + 1;
 		sinkPtr->lastMark += length;
 		if (!(sinkPtr->flags & SINK_KEEP_NL)) {
@@ -594,13 +594,13 @@ NextLine(sinkPtr, lengthPtr)
  *	keeping all the data collected from the channel (no -output
  *	flag and the process is detached).
  *
- *---------------------------------------------------------------------- 
+ *----------------------------------------------------------------------
  */
 static void
 ResetSink(sinkPtr)
     Sink *sinkPtr;
-{ 
-    if ((sinkPtr->flags & SINK_BUFFERED) && 
+{
+    if ((sinkPtr->flags & SINK_BUFFERED) &&
 	(sinkPtr->fill > sinkPtr->lastMark)) {
 	register size_t i, j;
 
@@ -654,8 +654,8 @@ InitSink(bgPtr, sinkPtr, name, encoding)
     }
     if (bgPtr->lineBuffered) {
 	sinkPtr->flags |= SINK_BUFFERED;
-    }	
-    if ((sinkPtr->updateCmd != NULL) || 
+    }
+    if ((sinkPtr->updateCmd != NULL) ||
 	(sinkPtr->updateVar != NULL) ||
 	(sinkPtr->echo)) {
 	sinkPtr->flags |= SINK_NOTIFY;
@@ -843,7 +843,7 @@ ReadBytes(sinkPtr)
 #define IsOpenSink(sinkPtr)  ((sinkPtr)->fd != -1)
 
 static void
-CloseSink(interp, sinkPtr) 
+CloseSink(interp, sinkPtr)
     Tcl_Interp *interp;
     Sink *sinkPtr;
 {
@@ -864,19 +864,19 @@ CloseSink(interp, sinkPtr)
 	if (sinkPtr->doneVar != NULL) {
 	    unsigned char *data;
 	    size_t length;
-	    /* 
+	    /*
 	     * If data is to be collected, set the "done" variable
-	     * with the contents of the buffer.  
+	     * with the contents of the buffer.
 	     */
 	    GetSinkData(sinkPtr, &data, &length);
-#if (TCL_VERSION_NUMBER <  _VERSION(8,1,0)) 
+#if (TCL_VERSION_NUMBER <  _VERSION(8,1,0))
 	    data[length] = '\0';
-	    if (Tcl_SetVar(interp, sinkPtr->doneVar, data, 
+	    if (Tcl_SetVar(interp, sinkPtr->doneVar, data,
 			   TCL_GLOBAL_ONLY) == NULL) {
 		Tcl_BackgroundError(interp);
 	    }
 #else
-	    if (Tcl_SetVar2Ex(interp, sinkPtr->doneVar, NULL, 
+	    if (Tcl_SetVar2Ex(interp, sinkPtr->doneVar, NULL,
 			      Tcl_NewByteArrayObj(data, length),
 			      (TCL_GLOBAL_ONLY | TCL_LEAVE_ERR_MSG)) == NULL) {
 		Tcl_BackgroundError(interp);
@@ -917,9 +917,9 @@ CookSink(interp, sinkPtr)
 #endif
     if (sinkPtr->encoding == ENCODING_BINARY) { /* binary */
 	/* No translation needed. */
-	sinkPtr->mark = sinkPtr->fill; 
+	sinkPtr->mark = sinkPtr->fill;
     } else if (sinkPtr->encoding == ENCODING_ASCII) { /* ascii */
-#if (TCL_VERSION_NUMBER <  _VERSION(8,1,0)) 
+#if (TCL_VERSION_NUMBER <  _VERSION(8,1,0))
 	/* Convert NUL bytes to question marks. */
 	srcPtr = sinkPtr->byteArr + sinkPtr->mark;
 	endPtr = sinkPtr->byteArr + sinkPtr->fill;
@@ -932,7 +932,7 @@ CookSink(interp, sinkPtr)
 #endif /* < 8.1.0 */
 	/* One-to-one translation. mark == fill. */
 	sinkPtr->mark = sinkPtr->fill;
-#if (TCL_VERSION_NUMBER >= _VERSION(8,1,0)) 
+#if (TCL_VERSION_NUMBER >= _VERSION(8,1,0))
     } else { /* unicode. */
 	int nSrcCooked, nCooked;
 	int result;
@@ -941,41 +941,41 @@ CookSink(interp, sinkPtr)
 	unsigned char *destPtr;
 	unsigned char *raw, *cooked;
 	unsigned char leftover[100];
-	
+
 	raw = sinkPtr->byteArr + sinkPtr->mark;
 	nRaw = sinkPtr->fill - sinkPtr->mark;
 	/* Ideally, the cooked buffer size should be smaller */
 	cookedSize = nRaw * TCL_UTF_MAX + 1;
 	cooked = Blt_Malloc(cookedSize);
-	result = Tcl_ExternalToUtf(interp, sinkPtr->encoding, 
-			(char *)raw, nRaw, 0, NULL, (char *)cooked, 
+	result = Tcl_ExternalToUtf(interp, sinkPtr->encoding,
+			(char *)raw, nRaw, 0, NULL, (char *)cooked,
 			cookedSize, &nSrcCooked, &nCooked, NULL);
 	nLeftOver = 0;
 	if (result == TCL_CONVERT_MULTIBYTE) {
-	    /* 
+	    /*
 	     * Last multibyte sequence wasn't completed.  Save the
-	     * extra characters in a temporary buffer.  
+	     * extra characters in a temporary buffer.
 	     */
 	    nLeftOver = (nRaw - nSrcCooked);
-	    srcPtr = sinkPtr->byteArr + (sinkPtr->mark + nSrcCooked); 
+	    srcPtr = sinkPtr->byteArr + (sinkPtr->mark + nSrcCooked);
 	    endPtr = srcPtr + nLeftOver;
 	    destPtr = leftover;
 	    while (srcPtr < endPtr) {
 		*destPtr++ = *srcPtr++;
 	    }
-	} 
+	}
 	/*
-	 * Create a bigger 
+	 * Create a bigger
 	 */
-						 
+
 	needed = nLeftOver + nCooked;
 	spaceLeft = sinkPtr->size - sinkPtr->mark;
 	if (spaceLeft >= needed) {
 	    spaceLeft = ExtendSinkBuffer(sinkPtr);
 	}
 	assert(spaceLeft > needed);
-	/* 
-	 * Replace the characters from the mark with the translated 
+	/*
+	 * Replace the characters from the mark with the translated
 	 * characters.
 	 */
 	srcPtr = cooked;
@@ -986,7 +986,7 @@ CookSink(interp, sinkPtr)
 	}
 	/* Add the number of newly translated characters to the mark */
 	sinkPtr->mark += nCooked;
-	
+
 	srcPtr = leftover;
 	endPtr = leftover + nLeftOver;
 	while (srcPtr < endPtr) {
@@ -996,7 +996,7 @@ CookSink(interp, sinkPtr)
 #endif /* >= 8.1.0  */
     }
 #ifdef WIN32
-    /* 
+    /*
      * Translate CRLF character sequences to LF characters.  We have to
      * do this after converting the string to UTF from UNICODE.
      */
@@ -1072,7 +1072,7 @@ WaitProcess(
 #endif
     timeout = (flags & WNOHANG) ? 0 : INFINITE;
     status = WaitForSingleObject(child.hProcess, timeout);
-				 
+
 #if WINDEBUG
     PurifyPrintf("WAITPID: wait status is %d\n", status);
 #endif
@@ -1147,9 +1147,9 @@ KillProcess(Process proc, int signal)
 
     EnumWindows(EnumWindowsProc, (LPARAM)&proc);
 
-    /* 
+    /*
      * Wait on the handle. If it signals, great. If it times out,
-     * then call TerminateProcess on it.  
+     * then call TerminateProcess on it.
      *
      * On Windows 95/98 this also has the added benefit of stopping
      * KERNEL32.dll from dumping.  The 2 second number is arbitrary.
@@ -1171,7 +1171,7 @@ KillProcess(Process proc, int signal)
 
 #endif /* WIN32 */
 
-#if (TCL_VERSION_NUMBER < _VERSION(8,1,0)) 
+#if (TCL_VERSION_NUMBER < _VERSION(8,1,0))
 
 static void
 NotifyOnUpdate(interp, sinkPtr, data, nBytes)
@@ -1192,7 +1192,7 @@ NotifyOnUpdate(interp, sinkPtr, data, nBytes)
     data[nBytes] = '\0';
     if (sinkPtr->echo) {
 	Tcl_Channel channel;
-	
+
 	channel = Tcl_GetStdChannel(TCL_STDERR);
 	if (channel == NULL) {
 	    Tcl_AppendResult(interp, "can't get stderr channel", (char *)NULL);
@@ -1235,7 +1235,7 @@ NotifyOnUpdate(interp, sinkPtr, data, nBytes)
     data[nBytes] = save;
 }
 
-#else 
+#else
 
 static void
 NotifyOnUpdate(interp, sinkPtr, data, nBytes)
@@ -1254,7 +1254,7 @@ NotifyOnUpdate(interp, sinkPtr, data, nBytes)
     }
     if (sinkPtr->echo) {
 	Tcl_Channel channel;
-	
+
 	channel = Tcl_GetStdChannel(TCL_STDERR);
 	if (channel == NULL) {
 	    Tcl_AppendResult(interp, "can't get stderr channel", (char *)NULL);
@@ -1285,7 +1285,7 @@ NotifyOnUpdate(interp, sinkPtr, data, nBytes)
     if (sinkPtr->updateVar != NULL) {
 	Tcl_Obj *result;
 
-	result = Tcl_SetVar2Ex(interp, sinkPtr->updateVar, NULL, objPtr, 
+	result = Tcl_SetVar2Ex(interp, sinkPtr->updateVar, NULL, objPtr,
 	       (TCL_GLOBAL_ONLY | TCL_LEAVE_ERR_MSG));
 	if (result == NULL) {
 	    Tcl_BackgroundError(interp);
@@ -1306,7 +1306,7 @@ CollectData(bgPtr, sinkPtr)
     }
     ReadBytes(sinkPtr);
     CookSink(bgPtr->interp, sinkPtr);
-    if ((sinkPtr->mark > sinkPtr->lastMark) && 
+    if ((sinkPtr->mark > sinkPtr->lastMark) &&
 	(sinkPtr->flags & SINK_NOTIFY)) {
 	unsigned char *data;
 	int length;
@@ -1390,7 +1390,7 @@ DisableTriggers(bgPtr)
 {
 
     if (bgPtr->traced) {
-	Tcl_UntraceVar(bgPtr->interp, bgPtr->statVar, TRACE_FLAGS, 
+	Tcl_UntraceVar(bgPtr->interp, bgPtr->statVar, TRACE_FLAGS,
 		VariableProc, bgPtr);
 	bgPtr->traced = FALSE;
     }
@@ -1558,7 +1558,7 @@ TimerProc(clientData)
     register int i;
     unsigned int lastPid;
     int pid;
-    enum PROCESS_STATUS { 
+    enum PROCESS_STATUS {
 	PROCESS_EXITED, PROCESS_STOPPED, PROCESS_KILLED, PROCESS_UNKNOWN
     } pcode;
     WAIT_STATUS_TYPE waitStatus, lastStatus;
@@ -1595,7 +1595,7 @@ TimerProc(clientData)
     }
     bgPtr->nProcs = nLeft;
 
-    if ((nLeft > 0) || (IsOpenSink(&bgPtr->sink1)) || 
+    if ((nLeft > 0) || (IsOpenSink(&bgPtr->sink1)) ||
 	(IsOpenSink(&bgPtr->sink2))) {
 	/* Keep polling for the status of the children that are left */
 	bgPtr->timerToken = Tcl_CreateTimerHandler(bgPtr->interval, TimerProc,
@@ -1641,11 +1641,11 @@ TimerProc(clientData)
 	Tcl_DStringAppendElement(&dString, "child completed normally");
 	break;
     case PROCESS_KILLED:
-	Tcl_DStringAppendElement(&dString, 
+	Tcl_DStringAppendElement(&dString,
 				Tcl_SignalMsg((int)(WTERMSIG(lastStatus))));
 	break;
     case PROCESS_STOPPED:
-	Tcl_DStringAppendElement(&dString, 
+	Tcl_DStringAppendElement(&dString,
 		 Tcl_SignalMsg((int)(WSTOPSIG(lastStatus))));
 	break;
     case PROCESS_UNKNOWN:
@@ -1658,8 +1658,8 @@ TimerProc(clientData)
 	*bgPtr->exitCodePtr = code;
     }
     DisableTriggers(bgPtr);
-    result = Tcl_SetVar(bgPtr->interp, bgPtr->statVar, 
-	Tcl_DStringValue(&dString), TCL_GLOBAL_ONLY);
+    result = Tcl_SetVar(bgPtr->interp, bgPtr->statVar,
+	Tcl_DStringValue(&dString), TCL_GLOBAL_ONLY | TCL_LEAVE_ERR_MSG);
     Tcl_DStringFree(&dString);
     if (result == NULL) {
 	Tcl_BackgroundError(bgPtr->interp);
@@ -1712,7 +1712,7 @@ StdoutProc(clientData, mask)
      * timer handler to periodically poll for the exit status of each
      * process.  Initially check at the next idle interval.
      */
-    if (!IsOpenSink(&bgPtr->sink2)) {
+    if (!IsOpenSink(&bgPtr->sink2) && bgPtr->timerToken == 0) {
 	bgPtr->timerToken = Tcl_CreateTimerHandler(0, TimerProc, clientData);
     }
 }
@@ -1760,7 +1760,7 @@ StderrProc(clientData, mask)
      * timer handler to periodically poll for the exit status of each
      * process.  Initially check at the next idle interval.
      */
-    if (!IsOpenSink(&bgPtr->sink1)) {
+    if (!IsOpenSink(&bgPtr->sink1) && bgPtr->timerToken == 0) {
 	bgPtr->timerToken = Tcl_CreateTimerHandler(0, TimerProc, clientData);
     }
 }
@@ -1827,7 +1827,7 @@ BgexecCmd(clientData, interp, argc, argv)
     /* Try to clean up any detached processes */
     Tcl_ReapDetachedProcs();
 
-    i = Blt_ProcessSwitches(interp, switchSpecs, argc - 2, argv + 2, 
+    i = Blt_ProcessSwitches(interp, switchSpecs, argc - 2, argv + 2,
 	(char *)bgPtr, BLT_SWITCH_ARGV_PARTIAL);
     if (i < 0) {
 	FreeBackgroundInfo(bgPtr);
@@ -1853,7 +1853,7 @@ BgexecCmd(clientData, interp, argc, argv)
 	if (strcmp(bgPtr->outputEncodingName, "binary") == 0) {
 	    encoding = ENCODING_BINARY;
 	} else {
-#if (TCL_VERSION_NUMBER >= _VERSION(8,1,0)) 
+#if (TCL_VERSION_NUMBER >= _VERSION(8,1,0))
 	    encoding = Tcl_GetEncoding(interp, bgPtr->outputEncodingName);
 	    if (encoding == NULL) {
 		goto error;
@@ -1866,7 +1866,7 @@ BgexecCmd(clientData, interp, argc, argv)
 	if (strcmp(bgPtr->errorEncodingName, "binary") == 0) {
 	    encoding = ENCODING_BINARY;
 	} else {
-#if (TCL_VERSION_NUMBER >= _VERSION(8,1,0)) 
+#if (TCL_VERSION_NUMBER >= _VERSION(8,1,0))
 	    encoding = Tcl_GetEncoding(interp, bgPtr->errorEncodingName);
 	    if (encoding == NULL) {
 		goto error;
@@ -1878,18 +1878,18 @@ BgexecCmd(clientData, interp, argc, argv)
 
     outFdPtr = errFdPtr = (int *)NULL;
 #ifdef WIN32
-    if ((!bgPtr->detached) || 
-	(bgPtr->sink1.doneVar != NULL) || 
-	(bgPtr->sink1.updateVar != NULL) || 
+    if ((!bgPtr->detached) ||
+	(bgPtr->sink1.doneVar != NULL) ||
+	(bgPtr->sink1.updateVar != NULL) ||
 	(bgPtr->sink1.updateCmd != NULL)) {
 	outFdPtr = &bgPtr->sink1.fd;
     }
 #else
     outFdPtr = &bgPtr->sink1.fd;
 #endif
-    if ((bgPtr->sink2.doneVar != NULL) || 
+    if ((bgPtr->sink2.doneVar != NULL) ||
 	(bgPtr->sink2.updateVar != NULL) ||
-	(bgPtr->sink2.updateCmd != NULL) || 
+	(bgPtr->sink2.updateCmd != NULL) ||
 	(bgPtr->sink2.echo)) {
 	errFdPtr = &bgPtr->sink2.fd;
     }
@@ -1900,6 +1900,7 @@ BgexecCmd(clientData, interp, argc, argv)
     }
     bgPtr->procArr = pidPtr;
     bgPtr->nProcs = nProcs;
+    bgPtr->timerToken = 0;
 
     if (bgPtr->sink1.fd == -1) {
 
@@ -1919,7 +1920,7 @@ BgexecCmd(clientData, interp, argc, argv)
 	(CreateSinkHandler(bgPtr, &bgPtr->sink2, StderrProc) != TCL_OK)) {
  	goto error;
     }
-    if (bgPtr->detached) {	
+    if (bgPtr->detached) {
 	char string[200];
 
 	/* If detached, return a list of the child process ids instead
@@ -1927,7 +1928,7 @@ BgexecCmd(clientData, interp, argc, argv)
 	for (i = 0; i < nProcs; i++) {
 #ifdef WIN32
 	    sprintf(string, "%u", (unsigned int)bgPtr->procArr[i].pid);
-#else 
+#else
 	    sprintf(string, "%d", bgPtr->procArr[i]);
 #endif
 	    Tcl_AppendElement(interp, string);
@@ -1950,7 +1951,7 @@ BgexecCmd(clientData, interp, argc, argv)
 
 	    /* Return the output of the pipeline. */
 	    GetSinkData(&bgPtr->sink1, &data, &length);
-#if (TCL_VERSION_NUMBER <  _VERSION(8,1,0)) 
+#if (TCL_VERSION_NUMBER <  _VERSION(8,1,0))
 	    data[length] = '\0';
 	    Tcl_SetResult(interp, data, TCL_VOLATILE);
 #else
