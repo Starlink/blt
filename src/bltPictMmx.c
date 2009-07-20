@@ -2238,7 +2238,7 @@ Blt_CpuFeatures(Tcl_Interp *interp, int *featuresPtr)
     }
     if (interp != NULL) {
 	PrintFeatures(interp, features);
-	fprintf(stderr, "%s\n", Tcl_GetStringResult(interp));
+	/*fprintf(stderr, "%s\n", Tcl_GetStringResult(interp));*/
     }
     return TCL_OK;
 }

@@ -468,7 +468,6 @@ CreateProcess(
 	 * Close the input side of the error pipe.
 	 */
 	RestoreSignals();
-	fprintf(stderr, "pid=%d, getpgrp=%d\n", getpid(), getpgrp());
 	execvp(argv[0], &argv[0]);
 	sprintf_s(errSpace, 200, "%dcan't execute \"%.150s\": ", errno, argv[0]);
  	nWritten = write(fd, errSpace, (size_t) strlen(errSpace));
