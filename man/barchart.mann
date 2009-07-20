@@ -407,7 +407,7 @@ Like \f(CWaligned\fR but segments slightly overlap each other.
 \fB\-barwidth \fIvalue\fR 
 Specifies the width of the bars.  This value can be overrided by the
 individual elements using their \fB\-barwidth\fR configuration option.
-\fIValue\fR is the width in terms of graph coordinates.  The
+\fIValue\fR is the width in terms of graph-coordinates.  The
 default width is \f(CW1.0\fR.
 .TP
 \fB\-borderwidth \fIpixels\fR
@@ -557,11 +557,11 @@ section.
 .TP
 \fIpathName \fBinvtransform \fIwinX winY\fR 
 Performs an inverse coordinate transformation, mapping window
-coordinates back to graph coordinates, using the standard X\-axis and Y\-axis.
-Returns a list of containing the X-Y graph coordinates.
+coordinates back to graph-coordinates, using the standard X\-axis and Y\-axis.
+Returns a list of containing the X-Y graph-coordinates.
 .TP
 \fIpathName \fBinside \fIx y\fR
-Returns \f(CW1\fR is the designated screen coordinate (\fIx\fR and \fIy\fR)
+Returns \f(CW1\fR is the designated screen-coordinate (\fIx\fR and \fIy\fR)
 is inside the plotting area and \f(CW0\fR otherwise.
 .TP
 \fIpathName \fBlegend \fIoperation \fR?\fIarg\fR?...
@@ -594,9 +594,9 @@ image \fIphotoName\fR.  \fIPhotoName\fR is the name of a Tk photo
 image that must already exist.
 .TP
 \fIpathName \fBtransform \fIx y\fR 
-Performs a coordinate transformation, mapping graph coordinates to
+Performs a coordinate transformation, mapping graph-coordinates to
 window coordinates, using the standard X\-axis and Y\-axis.
-Returns a list containing the X\-Y screen coordinates.
+Returns a list containing the X\-Y screen-coordinates.
 .TP
 \fIpathName \fBxaxis \fIoperation\fR ?\fIarg\fR?...
 .TP
@@ -851,9 +851,9 @@ deleted until it is not longer in use, so it's safe to delete
 axes mapped to elements.
 .TP
 \fIpathName \fBaxis invtransform \fIaxisName value\fR
-Performs the inverse transformation, changing the screen coordinate
-\fIvalue\fR to a graph coordinate, mapping the value mapped to
-\fIaxisName\fR.  Returns the graph coordinate.
+Performs the inverse transformation, changing the screen-coordinate
+\fIvalue\fR to a graph-coordinate, mapping the value mapped to
+\fIaxisName\fR.  Returns the graph-coordinate.
 .TP
 \fIpathName \fBaxis limits \fIaxisName\fR
 Returns a list of the minimum and maximum limits for \fIaxisName\fR.  The order
@@ -864,8 +864,8 @@ Returns a list of axes matching zero or more patterns.  If no
 \fIpattern\fR argument is give, the names of all axes are returned.
 .TP
 \fIpathName \fBaxis transform \fIaxisName value\fR
-Transforms the coordinate \fIvalue\fR to a screen coordinate by mapping
-the it to \fIaxisName\fR.  Returns the transformed screen coordinate.
+Transforms the coordinate \fIvalue\fR to a screen-coordinate by mapping
+the it to \fIaxisName\fR.  Returns the transformed screen-coordinate.
 .PP
 Only four axes can be displayed simultaneously.  By default, they are
 \f(CWx\fR, \f(CWy\fR, \f(CWx2\fR, and \f(CWy2\fR.  You can swap in a different
@@ -1025,10 +1025,10 @@ for the element \fBconfigure\fR operation.
 \fIpathName \fBelement closest \fIx y\fR ?\fIoption value\fR?... ?\fIelemName\fR?...
 Finds the data point representing the bar closest to the window
 coordinates \fIx\fR and \fIy\fR in the element \fIelemName\fR.
-\fIElemName\fR is the name of an element, which must be displayed.  If no
-elements are specified, then all displayed elements are searched.  It
-returns a list containing the name of the closest element, the index
-of its closest point, and the graph coordinates of the
+\fIElemName\fR is the name of an element, which must be currently displayed.  
+If no elements are specified, then all displayed elements are searched.  It
+returns a key-value list containing the name of the closest element, 
+the index of its closest point, and the graph-coordinates of the
 point. If no data point within the threshold distance can be found,
 \f(CW""\fR is returned.  The following \fIoption\fR-\fIvalue\fR pairs
 are available.
@@ -1771,7 +1771,7 @@ The default value is \f(CWall\fR.
 .TP
 \fB\-coords \fIcoordList\fR
 Specifies the coordinates of the marker.  \fICoordList\fR is 
-a list of graph coordinates.  The number of coordinates required
+a list of graph-coordinates.  The number of coordinates required
 is dependent on the type of marker.  Text, image, and window markers
 need only two coordinates (an X\-Y coordinate).   Bitmap markers
 can take either two or four coordinates (if four, they represent the

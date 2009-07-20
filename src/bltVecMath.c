@@ -2,31 +2,37 @@
 /*
  * bltVecMath.c --
  *
- *	This module implements mathematical expressions with vector
- *	data objects.
+ * This module implements mathematical expressions with vector data
+ * objects.
  *
- * Copyright 1995-1998 Lucent Technologies, Inc.
+ *	Copyright 1995-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltVecInt.h"
+#include "bltNsUtil.h"
+#include "bltParse.h"
 
 /*
  * Three types of math functions:
@@ -39,9 +45,9 @@
  *				is returned.
  */
 
-typedef double (ComponentProc) _ANSI_ARGS_((double value));
-typedef int (VectorProc) _ANSI_ARGS_((VectorObject *vPtr));
-typedef double (ScalarProc) _ANSI_ARGS_((VectorObject *vPtr));
+typedef double (ComponentProc)(double value);
+typedef int (VectorProc)(Vector *vPtr);
+typedef double (ScalarProc)(Vector *vPtr);
 
 /*
  * Built-in math functions:
@@ -57,13 +63,13 @@ typedef int (GenericMathProc) _ANSI_ARGS_(ANYARGS);
  *	functions.
  */
 typedef struct {
-    char *name;			/* Name of built-in math function.  If
+    const char *name;		/* Name of built-in math function.  If
 				 * NULL, indicates that the function
 				 * was user-defined and dynamically
 				 * allocated.  Function names are
 				 * global across all interpreters. */
 
-    GenericMathProc *proc;	/* Procedure that implements this math
+    void *proc;			/* Procedure that implements this math
 				 * function. */
 
     ClientData clientData;	/* Argument to pass when invoking the
@@ -110,36 +116,8 @@ enum Tokens {
     AND, OR, UNARY_MINUS, OLD_UNARY_PLUS, NOT, OLD_BIT_NOT
 };
 
-/*
- * ParseValue --
- *
- *	The following data structure is used by various parsing
- *	procedures to hold information about where to store the
- *	results of parsing (e.g. the substituted contents of a quoted
- *	argument, or the result of a nested command).  At any given
- *	time, the space available for output is fixed, but a procedure
- *	may be called to expand the space available if the current
- *	space runs out.
- */
-
-typedef struct ParseValueStruct ParseValue;
-
-struct ParseValueStruct {
-    char *buffer;		/* Address of first character in
-				 * output buffer. */
-    char *next;			/* Place to store next character in
-				 * output buffer. */
-    char *end;			/* Address of the last usable character
-				 * in the buffer. */
-    void (*expandProc) _ANSI_ARGS_((ParseValue * pvPtr, int needed));
-				/* Procedure to call when space runs out;
-				 * it will make more space. */
-    ClientData clientData;	/* Arbitrary information for use of
-				 * expandProc. */
-};
-
 typedef struct {
-    VectorObject *vPtr;
+    Vector *vPtr;
     char staticSpace[STATIC_STRING_SPACE];
     ParseValue pv;		/* Used to hold a string value, if any. */
 } Value;
@@ -151,11 +129,11 @@ typedef struct {
  *	expression.  It's passed among the routines in this module.
  */
 typedef struct {
-    char *expr;			/* The entire right-hand side of the
+    const char *expr;		/* The entire right-hand side of the
 				 * expression, as originally passed to
 				 * Blt_ExprVector. */
 
-    char *nextPtr;		/* Position of the next character to
+    const char *nextPtr;	/* Position of the next character to
 				 * be scanned from the expression
 				 * string. */
 
@@ -193,96 +171,13 @@ static int precTable[] =
  * Forward declarations.
  */
 
-static int NextValue _ANSI_ARGS_((Tcl_Interp *interp, ParseInfo *parsePtr,
-	int prec, Value * valuePtr));
-
-#if (TCL_VERSION_NUMBER >= _VERSION(8,1,0))
-#define TclParseBraces Blt_ParseBraces
-#define TclParseNestedCmd Blt_ParseNestedCmd
-#define TclParseQuotes Blt_ParseQuotes
-#define TclExpandParseValue Blt_ExpandParseValue
-#endif /* TCL_VERSION_NUMBER >= _VERSION(8,1,0) */
-
-extern int TclParseBraces _ANSI_ARGS_((Tcl_Interp *interp, char *string,
-	char **termPtr, ParseValue * pvPtr));
-
-extern int TclParseNestedCmd _ANSI_ARGS_((Tcl_Interp *interp, char *string,
-	int flags, char **termPtr, ParseValue * pvPtr));
-
-extern int TclParseQuotes _ANSI_ARGS_((Tcl_Interp *interp, char *string,
-	int termChar, int flags, char **termPtr, ParseValue * pvPtr));
-
-extern void TclExpandParseValue _ANSI_ARGS_((ParseValue * pvPtr, int needed));
-
-#if defined(HAVE_DRAND48) && defined(NO_DECL_DRAND48)
-extern double drand48 _ANSI_ARGS_((void));
-#endif
+static int NextValue(Tcl_Interp *interp, ParseInfo *piPtr, int prec, 
+	Value *valuePtr);
 
 #include <bltMath.h>
 
 /*
- *--------------------------------------------------------------
- *
- * First --
- *
- *	Gets the first index of the designated interval.  The interval
- *	is between vPtr->first and vPtr->last.  But the range may 
- *	NaN or Inf values that should be ignored.
- *
- * Results:
- *	Returns the index of the first finite value in the designated
- *	interval.  If no finite values exists in the range, then -1 is
- *	returned.
- *
- *-------------------------------------------------------------- 
- */
-static int 
-First(vPtr)
-    VectorObject *vPtr;
-{
-    register int i;
-
-    for(i = vPtr->first; i <= vPtr->last; i++) {
-	if (FINITE(vPtr->valueArr[i])) {
-	    return i;
-	}
-    }
-    return -1;
-}
-
-/*
- *--------------------------------------------------------------
- *
- * Next --
- *
- *	Gets the next index of the designated interval.  The interval
- *	is between vPtr->first and vPtr->last.  Ignore NaN or Inf 
- *	values.
- *
- * Results:
- *	Returns the index of the next finite value in the designated
- *	interval.  If no more finite values exists in the range, 
- *	then -1 is returned.
- *
- *-------------------------------------------------------------- 
- */
-static int 
-Next(vPtr, current)
-    VectorObject *vPtr;
-    int current;
-{
-    register int i;
-
-    for(i = current + 1; i <= vPtr->last; i++) {
-	if (FINITE(vPtr->valueArr[i])) {
-	    return i;
-	}
-    }
-    return -1;
-}
-
-/*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Sort --
  *
@@ -295,139 +190,126 @@ Next(vPtr, current)
  * Side Effects:
  *	The vector is sorted.
  *
- *-------------------------------------------------------------- 
+ *---------------------------------------------------------------------------
  */
 static int
-Sort(vPtr)
-    VectorObject *vPtr;
+Sort(Vector *vPtr)
 {
-    int *indexArr;
-    double *tempArr;
-    register int i;
+    size_t *map;
+    double *values;
+    int i;
 
-    indexArr = Blt_VectorSortIndex(&vPtr, 1);
-    tempArr = Blt_Malloc(sizeof(double) * vPtr->length);
-    assert(tempArr);
+    map = Blt_Vec_SortMap(&vPtr, 1);
+    values = Blt_AssertMalloc(sizeof(double) * vPtr->length);
     for(i = vPtr->first; i <= vPtr->last; i++) {
-	tempArr[i] = vPtr->valueArr[indexArr[i]];
+	values[i] = vPtr->valueArr[map[i]];
     }
-    Blt_Free(indexArr);
-    for(i = vPtr->first; i <= vPtr->last; i++) {
-	vPtr->valueArr[i] = tempArr[i];
+    Blt_Free(map);
+    for (i = vPtr->first; i <= vPtr->last; i++) {
+	vPtr->valueArr[i] = values[i];
     }
-    Blt_Free(tempArr);
+    Blt_Free(values);
     return TCL_OK;
 }
 
 static double
-Length(vecPtr)
-    Blt_Vector *vecPtr;
+Length(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    int count;
-    register int i;
+    Vector *vPtr = (Vector *)vectorPtr;
 
-    count = 0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	count++;
-    }
-    return (double) count;
-}
-
-/* ARGSUSED */
-double
-Blt_VecMin(vecPtr)
-    Blt_Vector *vecPtr;
-{
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-
-    if (!FINITE(vPtr->min)) {
-	double min;
-	register int i;
-
-	min = bltNaN;
-	for (i = 0; i < vPtr->length; i++) {
-	    if (FINITE(vPtr->valueArr[i])) {
-		min = vPtr->valueArr[i];
-		break;
-	    }
-	}
-	for (/* empty */; i < vPtr->length; i++) {
-	    if (FINITE(vPtr->valueArr[i])) {
-		if (min > vPtr->valueArr[i]) {
-		    min = vPtr->valueArr[i]; 
-		} 
-	    } 
-	} 
-	vPtr->min = min;
-    }
-    return vPtr->min;
+    return (double)(vPtr->last - vPtr->first + 1);
 }
 
 double
-Blt_VecMax(vecPtr)
-    Blt_Vector *vecPtr;
+Blt_VecMax(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
+    Vector *vPtr = (Vector *)vectorPtr;
 
-    if (!FINITE(vPtr->max)) {
-	double max;
-	register int i;
+    return Blt_Vec_Max(vPtr);
+}
 
-	max = bltNaN;
-	for (i = 0; i < vPtr->length; i++) {
-	    if (FINITE(vPtr->valueArr[i])) {
-		max = vPtr->valueArr[i];
-		break;
-	    }
-	}
-	for (/* empty */; i < vPtr->length; i++) {
-	    if (FINITE(vPtr->valueArr[i])) {
-		if (max < vPtr->valueArr[i]) {
-		    max = vPtr->valueArr[i]; 
-		} 
-	    } 
-	} 
-	vPtr->max = max;
+double
+Blt_VecMin(Blt_Vector *vectorPtr)
+{
+    Vector *vPtr = (Vector *)vectorPtr;
+
+    return Blt_Vec_Min(vPtr);
+}
+
+
+static double
+Product(Blt_Vector *vectorPtr)
+{
+    Vector *vPtr = (Vector *)vectorPtr;
+    double prod;
+    double *vp, *vend;
+
+    prod = 1.0;
+    for(vp = vPtr->valueArr + vPtr->first,
+	    vend = vPtr->valueArr + vPtr->last; vp <= vend; vp++) {
+	prod *= *vp;
     }
-    return vPtr->max;
+    return prod;
 }
 
 static double
-Mean(vecPtr)
-    Blt_Vector *vecPtr;
+Sum(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    register int i;
-    int count;
-    double sum;
+    Vector *vPtr = (Vector *)vectorPtr;
+    double sum, c;
+    double *vp, *vend;
 
-    sum = 0.0;
-    count = 0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	sum += vPtr->valueArr[i];
-	count++;
+    /* Kahan summation algorithm */
+
+    vp = vPtr->valueArr + vPtr->first;
+    sum = *vp++;
+    c = 0.0;			/* A running compensation for lost
+				 * low-order bits.*/
+    for (vend = vPtr->valueArr + vPtr->last; vp <= vend; vp++) {
+	double y, t;
+	
+        y = *vp - c;		/* So far, so good: c is zero.*/
+        t = sum + y;		/* Alas, sum is big, y small, so
+				 * low-order digits of y are lost.*/
+        c = (t - sum) - y;	/* (t - sum) recovers the high-order
+				 * part of y; subtracting y recovers
+				 * -(low part of y) */
+	sum = t;
     }
-    return sum / (double)count;
+    return sum;
+}
+
+static double
+Mean(Blt_Vector *vectorPtr)
+{
+    Vector *vPtr = (Vector *)vectorPtr;
+    double sum;
+    int n;
+
+    sum = Sum(vectorPtr);
+    n = vPtr->last - vPtr->first + 1;
+    return sum / (double)n;
 }
 
 /*
  *  var = 1/N Sum( (x[i] - mean)^2 )
  */
 static double
-Variance(vecPtr)
-    Blt_Vector *vecPtr;
+Variance(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    register double dx, var, mean;
-    register int i;
+    Vector *vPtr = (Vector *)vectorPtr;
+    double var, mean;
+    double *vp, *vend;
     int count;
 
-    mean = Mean(vecPtr);
+    mean = Mean(vectorPtr);
     var = 0.0;
     count = 0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	dx = vPtr->valueArr[i] - mean;
+    for(vp = vPtr->valueArr + vPtr->first,
+	vend = vPtr->valueArr + vPtr->last; vp <= vend; vp++) {
+	double dx;
+
+	dx = *vp - mean;
 	var += dx * dx;
 	count++;
     }
@@ -442,19 +324,19 @@ Variance(vecPtr)
  *  skew = Sum( (x[i] - mean)^3 ) / (var^3/2)
  */
 static double
-Skew(vecPtr)
-    Blt_Vector *vecPtr;
+Skew(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    register double diff, var, skew, mean, diffsq;
-    register int i;
+    Vector *vPtr = (Vector *)vectorPtr;
+    double diff, var, skew, mean, diffsq;
+    double *vp, *vend;
     int count;
 
-    mean = Mean(vecPtr);
+    mean = Mean(vectorPtr);
     var = skew = 0.0;
     count = 0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	diff = vPtr->valueArr[i] - mean;
+    for(vp = vPtr->valueArr + vPtr->first,
+	    vend = vPtr->valueArr + vPtr->last; vp <= vend; vp++) {
+	diff = *vp - mean;
 	diff = FABS(diff);
 	diffsq = diff * diff;
 	var += diffsq;
@@ -470,12 +352,11 @@ Skew(vecPtr)
 }
 
 static double
-StdDeviation(vecPtr)
-    Blt_Vector *vecPtr;
+StdDeviation(Blt_Vector *vectorPtr)
 {
     double var;
 
-    var = Variance(vecPtr);
+    var = Variance(vectorPtr);
     if (var > 0.0) {
 	return sqrt(var);
     }
@@ -484,19 +365,19 @@ StdDeviation(vecPtr)
 
 
 static double
-AvgDeviation(vecPtr)
-    Blt_Vector *vecPtr;
+AvgDeviation(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    register double diff, avg, mean;
-    register int i;
+    Vector *vPtr = (Vector *)vectorPtr;
+    double diff, avg, mean;
+    double *vp, *vend;
     int count;
 
-    mean = Mean(vecPtr);
+    mean = Mean(vectorPtr);
     avg = 0.0;
     count = 0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	diff = vPtr->valueArr[i] - mean;
+    for(vp = vPtr->valueArr + vPtr->first,
+	    vend = vPtr->valueArr + vPtr->last; vp <= vend; vp++) {
+	diff = *vp - mean;
 	avg += FABS(diff);
 	count++;
     }
@@ -509,19 +390,19 @@ AvgDeviation(vecPtr)
 
 
 static double
-Kurtosis(vecPtr)
-    Blt_Vector *vecPtr;
+Kurtosis(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    register double diff, diffsq, kurt, var, mean;
-    register int i;
+    Vector *vPtr = (Vector *)vectorPtr;
+    double diff, diffsq, kurt, var, mean;
+    double *vp, *vend;
     int count;
 
-    mean = Mean(vecPtr);
+    mean = Mean(vectorPtr);
     var = kurt = 0.0;
     count = 0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	diff = vPtr->valueArr[i] - mean;
+    for(vp = vPtr->valueArr + vPtr->first,
+	    vend = vPtr->valueArr + vPtr->last; vp <= vend; vp++) {
+	diff = *vp - mean;
 	diffsq = diff * diff;
 	var += diffsq;
 	kurt += diffsq * diffsq;
@@ -540,18 +421,17 @@ Kurtosis(vecPtr)
 
 
 static double
-Median(vecPtr)
-    Blt_Vector *vecPtr;
+Median(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    int *iArr;
+    Vector *vPtr = (Vector *)vectorPtr;
+    size_t *map;
     double q2;
     int mid;
 
     if (vPtr->length == 0) {
 	return -DBL_MAX;
     }
-    iArr = Blt_VectorSortIndex(&vPtr, 1);
+    map = Blt_Vec_SortMap(&vPtr, 1);
     mid = (vPtr->length - 1) / 2;
 
     /*  
@@ -559,30 +439,30 @@ Median(vecPtr)
      * odd or even.  If even, we must take the average of the two
      * middle values.  
      */
-    if (vPtr->length & 1) {	/* Odd */
-	q2 = vPtr->valueArr[iArr[mid]];
+    if (vPtr->length & 1) { /* Odd */
+	q2 = vPtr->valueArr[map[mid]];
     } else {			/* Even */
-	q2 = (vPtr->valueArr[iArr[mid]] + vPtr->valueArr[iArr[mid + 1]]) * 0.5;
+	q2 = (vPtr->valueArr[map[mid]] + 
+	      vPtr->valueArr[map[mid + 1]]) * 0.5;
     }
-    Blt_Free(iArr);
+    Blt_Free(map);
     return q2;
 }
 
 static double
-Q1(vecPtr)
-    Blt_Vector *vecPtr;
+Q1(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
+    Vector *vPtr = (Vector *)vectorPtr;
     double q1;
-    int *iArr;
+    size_t *map;
 
     if (vPtr->length == 0) {
 	return -DBL_MAX;
     } 
-    iArr = Blt_VectorSortIndex(&vPtr, 1);
+    map = Blt_Vec_SortMap(&vPtr, 1);
 
     if (vPtr->length < 4) {
-	q1 = vPtr->valueArr[iArr[0]];
+	q1 = vPtr->valueArr[map[0]];
     } else {
 	int mid, q;
 
@@ -595,31 +475,31 @@ Q1(vecPtr)
 	 * take the average of the two middle values.
 	 */
 	if (mid & 1) {		/* Odd */
-	    q1 = vPtr->valueArr[iArr[q]]; 
+	    q1 = vPtr->valueArr[map[q]]; 
 	} else {		/* Even */
-	    q1 = (vPtr->valueArr[iArr[q]] + vPtr->valueArr[iArr[q + 1]]) * 0.5; 
+	    q1 = (vPtr->valueArr[map[q]] + 
+		  vPtr->valueArr[map[q + 1]]) * 0.5; 
 	}
     }
-    Blt_Free(iArr);
+    Blt_Free(map);
     return q1;
 }
 
 static double
-Q3(vecPtr)
-    Blt_Vector *vecPtr;
+Q3(Blt_Vector *vectorPtr)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
+    Vector *vPtr = (Vector *)vectorPtr;
     double q3;
-    int *iArr;
+    size_t *map;
 
     if (vPtr->length == 0) {
 	return -DBL_MAX;
     } 
 
-    iArr = Blt_VectorSortIndex(&vPtr, 1);
+    map = Blt_Vec_SortMap(&vPtr, 1);
 
     if (vPtr->length < 4) {
-	q3 = vPtr->valueArr[iArr[vPtr->length - 1]];
+	q3 = vPtr->valueArr[map[vPtr->length - 1]];
     } else {
 	int mid, q;
 
@@ -632,75 +512,46 @@ Q3(vecPtr)
 	 * take the average of the two middle values.
 	 */
 	if (mid & 1) {		/* Odd */
-	    q3 = vPtr->valueArr[iArr[q]];
+	    q3 = vPtr->valueArr[map[q]];
 	} else {		/* Even */
-	    q3 = (vPtr->valueArr[iArr[q]] + vPtr->valueArr[iArr[q + 1]]) * 0.5; 
+	    q3 = (vPtr->valueArr[map[q]] + 
+		  vPtr->valueArr[map[q + 1]]) * 0.5; 
 	}
     }
-    Blt_Free(iArr);
+    Blt_Free(map);
     return q3;
 }
 
 
 static int
-Norm(vecPtr)
-    Blt_Vector *vecPtr;
+Norm(Blt_Vector *vector)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
+    Vector *vPtr = (Vector *)vector;
     double norm, range, min, max;
-    register int i;
+    int i;
 
-    min = Blt_VecMin(vecPtr);
-    max = Blt_VecMax(vecPtr);
+    min = Blt_Vec_Min(vPtr);
+    max = Blt_Vec_Max(vPtr);
     range = max - min;
-    for(i = 0; i < vPtr->length; i++) {
+    for (i = 0; i < vPtr->length; i++) {
 	norm = (vPtr->valueArr[i] - min) / range;
 	vPtr->valueArr[i] = norm;
     }
     return TCL_OK;
 }
 
-static double
-Product(vecPtr)
-    Blt_Vector *vecPtr;
-{
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    register int i;
-    register double prod;
-
-    prod = 1.0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	prod *= vPtr->valueArr[i];
-    }
-    return prod;
-}
 
 static double
-Sum(vecPtr)
-    Blt_Vector *vecPtr;
+Nonzeros(Blt_Vector *vector)
 {
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    register int i;
-    double sum;
-
-    sum = 0.0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	sum += vPtr->valueArr[i];
-    }
-    return sum;
-}
-
-static double
-Nonzeros(vecPtr)
-    Blt_Vector *vecPtr;
-{
-    VectorObject *vPtr = (VectorObject *)vecPtr;
-    register int i;
+    Vector *vPtr = (Vector *)vector;
     int count;
+    double *vp, *vend;
 
     count = 0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	if (vPtr->valueArr[i] == 0.0) {
+    for(vp = vPtr->valueArr + vPtr->first,
+	    vend = vPtr->valueArr + vPtr->last; vp <= vend; vp++) {
+	if (*vp == 0.0) {
 	    count++;
 	}
     }
@@ -708,8 +559,7 @@ Nonzeros(vecPtr)
 }
 
 static double
-Fabs(value)
-    double value;
+Fabs(double value)
 {
     if (value < 0.0) {
 	return -value;
@@ -718,8 +568,7 @@ Fabs(value)
 }
 
 static double
-Round(value)
-    double value;
+Round(double value)
 {
     if (value < 0.0) {
 	return ceil(value - 0.5);
@@ -729,17 +578,16 @@ Round(value)
 }
 
 static double
-Fmod(x, y)
-    double x, y;
+Fmod(double x, double y)
 {
     if (y == 0.0) {
 	return 0.0;
     }
     return x - (floor(x / y) * y);
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * MathError --
  *
@@ -753,13 +601,14 @@ Fmod(x, y)
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MathError(interp, value)
-    Tcl_Interp *interp;		/* Where to store error message. */
-    double value;		/* Value returned after error;  used to
-				 * distinguish underflows from overflows. */
+MathError(
+    Tcl_Interp *interp,		/* Where to store error message. */
+    double value)		/* Value returned after error; used to
+				 * distinguish underflows from
+				 * overflows. */
 {
     if ((errno == EDOM) || (value != value)) {
 	Tcl_AppendResult(interp, "domain error: argument not in valid range",
@@ -781,18 +630,15 @@ MathError(interp, value)
 		(char *)NULL);
 	}
     } else {
-	char buf[20];
-
-	sprintf(buf, "%d", errno);
 	Tcl_AppendResult(interp, "unknown floating-point error, ",
-	    "errno = ", buf, (char *)NULL);
+		"errno = ", Blt_Itoa(errno), (char *)NULL);
 	Tcl_SetErrorCode(interp, "ARITH", "UNKNOWN", interp->result,
 	    (char *)NULL);
     }
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ParseString --
  *
@@ -810,17 +656,17 @@ MathError(interp, value)
  * Side effects:
  *	None.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static int
-ParseString(interp, string, valuePtr)
-    Tcl_Interp *interp;		/* Where to store error message. */
-    CONST char *string;		/* String to turn into value. */
-    Value *valuePtr;		/* Where to store value information.
+ParseString(
+    Tcl_Interp *interp,		/* Where to store error message. */
+    const char *string,		/* String to turn into value. */
+    Value *valuePtr)		/* Where to store value information.
 				 * Caller must have initialized pv field. */
 {
-    char *endPtr;
+    const char *endPtr;
     double value;
 
     errno = 0;
@@ -831,7 +677,7 @@ ParseString(interp, string, valuePtr)
      * we can find a vector by that name.
      */
 
-    value = strtod(string, &endPtr);
+    value = strtod(string, (char **)&endPtr);
     if ((endPtr != string) && (*endPtr == '\0')) {
 	if (errno != 0) {
 	    Tcl_ResetResult(interp);
@@ -839,19 +685,19 @@ ParseString(interp, string, valuePtr)
 	    return TCL_ERROR;
 	}
 	/* Numbers are stored as single element vectors. */
-	if (Blt_VectorChangeLength(valuePtr->vPtr, 1) != TCL_OK) {
+	if (Blt_Vec_ChangeLength(interp, valuePtr->vPtr, 1) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	valuePtr->vPtr->valueArr[0] = value;
 	return TCL_OK;
     } else {
-	VectorObject *vPtr;
+	Vector *vPtr;
 
 	while (isspace(UCHAR(*string))) {
 	    string++;		/* Skip spaces leading the vector name. */    
 	}
-	vPtr = Blt_VectorParseElement(interp, valuePtr->vPtr->dataPtr, string, 
-		      &endPtr, NS_SEARCH_BOTH);
+	vPtr = Blt_Vec_ParseElement(interp, valuePtr->vPtr->dataPtr, 
+		string, &endPtr, NS_SEARCH_BOTH);
 	if (vPtr == NULL) {
 	    return TCL_ERROR;
 	}
@@ -861,13 +707,13 @@ ParseString(interp, string, valuePtr)
 	    return TCL_ERROR;
 	}
 	/* Copy the designated vector to our temporary. */
-	Blt_VectorDuplicate(valuePtr->vPtr, vPtr);
+	Blt_Vec_Duplicate(valuePtr->vPtr, vPtr);
     }
     return TCL_OK;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ParseMathFunction --
  *
@@ -882,42 +728,43 @@ ParseString(interp, string, valuePtr)
  *	was found, TCL_ERROR is returned and an error message is left
  *	in interp->result.
  *
- *	After a successful return parsePtr will be updated to point to
+ *	After a successful return piPtr will be updated to point to
  *	the character just after the function call, the token is set
  *	to VALUE, and the value is stored in valuePtr.
  *
  * Side effects:
  *	Embedded commands could have arbitrary side-effects.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ParseMathFunction(interp, start, parsePtr, valuePtr)
-    Tcl_Interp *interp;		/* Interpreter to use for error reporting. */
-    char *start;		/* Start of string to parse */
-    ParseInfo *parsePtr;	/* Describes the state of the parse.
-				 * parsePtr->nextPtr must point to the
+ParseMathFunction(
+    Tcl_Interp *interp,		/* Interpreter to use for error reporting. */
+    const char *start,		/* Start of string to parse */
+    ParseInfo *piPtr,		/* Describes the state of the parse.
+				 * piPtr->nextPtr must point to the
 				 * first character of the function's
 				 * name. */
-    Value *valuePtr;		/* Where to store value, if that is
+    Value *valuePtr)		/* Where to store value, if that is
 				 * what's parsed from string.  Caller
 				 * must have initialized pv field
 				 * correctly. */
 {
     Blt_HashEntry *hPtr;
     MathFunction *mathPtr;	/* Info about math function. */
-    register char *p;
+    char *p;
     VectorInterpData *dataPtr;	/* Interpreter-specific data. */
+    GenericMathProc *proc;
 
     /*
      * Find the end of the math function's name and lookup the
      * record for the function.
      */
-    p = start;
+    p = (char *)start;
     while (isspace(UCHAR(*p))) {
 	p++;
     }
-    parsePtr->nextPtr = p;
+    piPtr->nextPtr = p;
     while (isalnum(UCHAR(*p)) || (*p == '_')) {
 	p++;
     }
@@ -926,34 +773,34 @@ ParseMathFunction(interp, start, parsePtr, valuePtr)
     }
     dataPtr = valuePtr->vPtr->dataPtr;
     *p = '\0';
-    hPtr = Blt_FindHashEntry(&(dataPtr->mathProcTable), parsePtr->nextPtr);
+    hPtr = Blt_FindHashEntry(&dataPtr->mathProcTable, piPtr->nextPtr);
     *p = '(';
     if (hPtr == NULL) {
 	return TCL_RETURN;	/* Name doesn't match any known function */
     }
     /* Pick up the single value as the argument to the function */
-    parsePtr->token = OPEN_PAREN;
-    parsePtr->nextPtr = p + 1;
+    piPtr->token = OPEN_PAREN;
+    piPtr->nextPtr = p + 1;
     valuePtr->pv.next = valuePtr->pv.buffer;
-    if (NextValue(interp, parsePtr, -1, valuePtr) != TCL_OK) {
+    if (NextValue(interp, piPtr, -1, valuePtr) != TCL_OK) {
 	return TCL_ERROR;	/* Parse error */
     }
-    if (parsePtr->token != CLOSE_PAREN) {
+    if (piPtr->token != CLOSE_PAREN) {
 	Tcl_AppendResult(interp, "unmatched parentheses in expression \"",
-	    parsePtr->expr, "\"", (char *)NULL);
+	    piPtr->expr, "\"", (char *)NULL);
 	return TCL_ERROR;	/* Missing right parenthesis */
     }
-    mathPtr = (MathFunction *) Blt_GetHashValue(hPtr);
-    if ((*mathPtr->proc) (mathPtr->clientData, interp, valuePtr->vPtr)
-	!= TCL_OK) {
+    mathPtr = Blt_GetHashValue(hPtr);
+    proc = mathPtr->proc;
+    if ((*proc) (mathPtr->clientData, interp, valuePtr->vPtr) != TCL_OK) {
 	return TCL_ERROR;	/* Function invocation error */
     }
-    parsePtr->token = VALUE;
+    piPtr->token = VALUE;
     return TCL_OK;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * NextToken --
  *
@@ -963,9 +810,9 @@ ParseMathFunction(interp, start, parsePtr, valuePtr)
  * Results:
  *	TCL_OK is returned unless an error occurred while doing lexical
  *	analysis or executing an embedded command.  In that case a
- *	standard Tcl error is returned, using interp->result to hold
+ *	standard TCL error is returned, using interp->result to hold
  *	an error message.  In the event of a successful return, the token
- *	and field in parsePtr is updated to refer to the next symbol in
+ *	and field in piPtr is updated to refer to the next symbol in
  *	the expression string, and the expr field is advanced past that
  *	token;  if the token is a value, then the value is stored at
  *	valuePtr.
@@ -973,29 +820,29 @@ ParseMathFunction(interp, start, parsePtr, valuePtr)
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-NextToken(interp, parsePtr, valuePtr)
-    Tcl_Interp *interp;		/* Interpreter to use for error reporting. */
-    ParseInfo *parsePtr;	/* Describes the state of the parse. */
-    Value *valuePtr;		/* Where to store value, if that is
+NextToken(
+    Tcl_Interp *interp,		/* Interpreter to use for error reporting. */
+    ParseInfo *piPtr,		/* Describes the state of the parse. */
+    Value *valuePtr)		/* Where to store value, if that is
 				 * what's parsed from string.  Caller
 				 * must have initialized pv field
 				 * correctly. */
 {
-    register char *p;
-    char *endPtr;
-    CONST char *var;
+    const char *p;
+    const char *endPtr;
+    const char *var;
     int result;
 
-    p = parsePtr->nextPtr;
+    p = piPtr->nextPtr;
     while (isspace(UCHAR(*p))) {
 	p++;
     }
     if (*p == '\0') {
-	parsePtr->token = END;
-	parsePtr->nextPtr = p;
+	piPtr->token = END;
+	piPtr->nextPtr = p;
 	return TCL_OK;
     }
     /*
@@ -1009,120 +856,119 @@ NextToken(interp, parsePtr, valuePtr)
 	double value;
 
 	errno = 0;
-	value = strtod(p, &endPtr);
+	value = strtod(p, (char **)&endPtr);
 	if (endPtr != p) {
 	    if (errno != 0) {
 		MathError(interp, value);
 		return TCL_ERROR;
 	    }
-	    parsePtr->token = VALUE;
-	    parsePtr->nextPtr = endPtr;
+	    piPtr->token = VALUE;
+	    piPtr->nextPtr = endPtr;
 
 	    /*
 	     * Save the single floating-point value as an 1-component vector.
 	     */
-	    if (Blt_VectorChangeLength(valuePtr->vPtr, 1) != TCL_OK) {
+	    if (Blt_Vec_ChangeLength(interp, valuePtr->vPtr, 1) != TCL_OK) {
 		return TCL_ERROR;
 	    }
 	    valuePtr->vPtr->valueArr[0] = value;
 	    return TCL_OK;
 	}
     }
-    parsePtr->nextPtr = p + 1;
+    piPtr->nextPtr = p + 1;
     switch (*p) {
     case '$':
-	parsePtr->token = VALUE;
+	piPtr->token = VALUE;
 	var = Tcl_ParseVar(interp, p, &endPtr);
 	if (var == NULL) {
 	    return TCL_ERROR;
 	}
-	parsePtr->nextPtr = endPtr;
+	piPtr->nextPtr = endPtr;
 	Tcl_ResetResult(interp);
 	result = ParseString(interp, var, valuePtr);
 	return result;
 
     case '[':
-	parsePtr->token = VALUE;
-	result = TclParseNestedCmd(interp, p + 1, 0, &endPtr, &(valuePtr->pv));
+	piPtr->token = VALUE;
+	result = Blt_ParseNestedCmd(interp, p + 1, 0, &endPtr, &valuePtr->pv);
 	if (result != TCL_OK) {
 	    return result;
 	}
-	parsePtr->nextPtr = endPtr;
+	piPtr->nextPtr = endPtr;
 	Tcl_ResetResult(interp);
 	result = ParseString(interp, valuePtr->pv.buffer, valuePtr);
 	return result;
 
     case '"':
-	parsePtr->token = VALUE;
-	result = TclParseQuotes(interp, p + 1, '"', 0, &endPtr, 
-		&(valuePtr->pv));
+	piPtr->token = VALUE;
+	result = Blt_ParseQuotes(interp, p + 1, '"', 0, &endPtr, &valuePtr->pv);
 	if (result != TCL_OK) {
 	    return result;
 	}
-	parsePtr->nextPtr = endPtr;
+	piPtr->nextPtr = endPtr;
 	Tcl_ResetResult(interp);
 	result = ParseString(interp, valuePtr->pv.buffer, valuePtr);
 	return result;
 
     case '{':
-	parsePtr->token = VALUE;
-	result = TclParseBraces(interp, p + 1, &endPtr, &valuePtr->pv);
+	piPtr->token = VALUE;
+	result = Blt_ParseBraces(interp, p + 1, &endPtr, &valuePtr->pv);
 	if (result != TCL_OK) {
 	    return result;
 	}
-	parsePtr->nextPtr = endPtr;
+	piPtr->nextPtr = endPtr;
 	Tcl_ResetResult(interp);
 	result = ParseString(interp, valuePtr->pv.buffer, valuePtr);
 	return result;
 
     case '(':
-	parsePtr->token = OPEN_PAREN;
+	piPtr->token = OPEN_PAREN;
 	break;
 
     case ')':
-	parsePtr->token = CLOSE_PAREN;
+	piPtr->token = CLOSE_PAREN;
 	break;
 
     case ',':
-	parsePtr->token = COMMA;
+	piPtr->token = COMMA;
 	break;
 
     case '*':
-	parsePtr->token = MULT;
+	piPtr->token = MULT;
 	break;
 
     case '/':
-	parsePtr->token = DIVIDE;
+	piPtr->token = DIVIDE;
 	break;
 
     case '%':
-	parsePtr->token = MOD;
+	piPtr->token = MOD;
 	break;
 
     case '+':
-	parsePtr->token = PLUS;
+	piPtr->token = PLUS;
 	break;
 
     case '-':
-	parsePtr->token = MINUS;
+	piPtr->token = MINUS;
 	break;
 
     case '^':
-	parsePtr->token = EXPONENT;
+	piPtr->token = EXPONENT;
 	break;
 
     case '<':
 	switch (*(p + 1)) {
 	case '<':
-	    parsePtr->nextPtr = p + 2;
-	    parsePtr->token = LEFT_SHIFT;
+	    piPtr->nextPtr = p + 2;
+	    piPtr->token = LEFT_SHIFT;
 	    break;
 	case '=':
-	    parsePtr->nextPtr = p + 2;
-	    parsePtr->token = LEQ;
+	    piPtr->nextPtr = p + 2;
+	    piPtr->token = LEQ;
 	    break;
 	default:
-	    parsePtr->token = LESS;
+	    piPtr->token = LESS;
 	    break;
 	}
 	break;
@@ -1130,108 +976,108 @@ NextToken(interp, parsePtr, valuePtr)
     case '>':
 	switch (*(p + 1)) {
 	case '>':
-	    parsePtr->nextPtr = p + 2;
-	    parsePtr->token = RIGHT_SHIFT;
+	    piPtr->nextPtr = p + 2;
+	    piPtr->token = RIGHT_SHIFT;
 	    break;
 	case '=':
-	    parsePtr->nextPtr = p + 2;
-	    parsePtr->token = GEQ;
+	    piPtr->nextPtr = p + 2;
+	    piPtr->token = GEQ;
 	    break;
 	default:
-	    parsePtr->token = GREATER;
+	    piPtr->token = GREATER;
 	    break;
 	}
 	break;
 
     case '=':
 	if (*(p + 1) == '=') {
-	    parsePtr->nextPtr = p + 2;
-	    parsePtr->token = EQUAL;
+	    piPtr->nextPtr = p + 2;
+	    piPtr->token = EQUAL;
 	} else {
-	    parsePtr->token = UNKNOWN;
+	    piPtr->token = UNKNOWN;
 	}
 	break;
 
     case '&':
 	if (*(p + 1) == '&') {
-	    parsePtr->nextPtr = p + 2;
-	    parsePtr->token = AND;
+	    piPtr->nextPtr = p + 2;
+	    piPtr->token = AND;
 	} else {
-	    parsePtr->token = UNKNOWN;
+	    piPtr->token = UNKNOWN;
 	}
 	break;
 
     case '|':
 	if (*(p + 1) == '|') {
-	    parsePtr->nextPtr = p + 2;
-	    parsePtr->token = OR;
+	    piPtr->nextPtr = p + 2;
+	    piPtr->token = OR;
 	} else {
-	    parsePtr->token = UNKNOWN;
+	    piPtr->token = UNKNOWN;
 	}
 	break;
 
     case '!':
 	if (*(p + 1) == '=') {
-	    parsePtr->nextPtr = p + 2;
-	    parsePtr->token = NEQ;
+	    piPtr->nextPtr = p + 2;
+	    piPtr->token = NEQ;
 	} else {
-	    parsePtr->token = NOT;
+	    piPtr->token = NOT;
 	}
 	break;
 
     default:
-	parsePtr->token = VALUE;
-	result = ParseMathFunction(interp, p, parsePtr, valuePtr);
+	piPtr->token = VALUE;
+	result = ParseMathFunction(interp, p, piPtr, valuePtr);
 	if ((result == TCL_OK) || (result == TCL_ERROR)) {
 	    return result;
 	} else {
-	    VectorObject *vPtr;
+	    Vector *vPtr;
 
 	    while (isspace(UCHAR(*p))) {
 		p++;		/* Skip spaces leading the vector name. */    
 	    }
-	    vPtr = Blt_VectorParseElement(interp, valuePtr->vPtr->dataPtr, p, 
-		  &endPtr, NS_SEARCH_BOTH);
+	    vPtr = Blt_Vec_ParseElement(interp, valuePtr->vPtr->dataPtr, 
+			p, &endPtr, NS_SEARCH_BOTH);
 	    if (vPtr == NULL) {
 		return TCL_ERROR;
 	    }
-	    Blt_VectorDuplicate(valuePtr->vPtr, vPtr);
-	    parsePtr->nextPtr = endPtr;
+	    Blt_Vec_Duplicate(valuePtr->vPtr, vPtr);
+	    piPtr->nextPtr = endPtr;
 	}
     }
     return TCL_OK;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * NextValue --
  *
- *	Parse a "value" from the remainder of the expression in parsePtr.
+ *	Parse a "value" from the remainder of the expression in piPtr.
  *
  * Results:
  *	Normally TCL_OK is returned.  The value of the expression is
  *	returned in *valuePtr.  If an error occurred, then interp->result
  *	contains an error message and TCL_ERROR is returned.
  *	InfoPtr->token will be left pointing to the token AFTER the
- *	expression, and parsePtr->nextPtr will point to the character just
+ *	expression, and piPtr->nextPtr will point to the character just
  *	after the terminating token.
  *
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-NextValue(interp, parsePtr, prec, valuePtr)
-    Tcl_Interp *interp;		/* Interpreter to use for error reporting. */
-    ParseInfo *parsePtr;	/* Describes the state of the parse
+NextValue(
+    Tcl_Interp *interp,		/* Interpreter to use for error reporting. */
+    ParseInfo *piPtr,	/* Describes the state of the parse
 				 * just before the value (i.e. NextToken will
 				 * be called to get first token of value). */
-    int prec;			/* Treat any un-parenthesized operator
+    int prec,			/* Treat any un-parenthesized operator
 				 * with precedence <= this as the end
 				 * of the expression. */
-    Value *valuePtr;		/* Where to store the value of the expression.
+    Value *valuePtr)		/* Where to store the value of the expression.
 				 * Caller must have initialized pv field. */
 {
     Value value2;		/* Second operand for current operator.  */
@@ -1240,8 +1086,8 @@ NextValue(interp, parsePtr, prec, valuePtr)
 				 * (while picking up value for unary operator).
 				 * Don't lex again. */
     int result;
-    VectorObject *vPtr, *v2Ptr;
-    register int i;
+    Vector *vPtr, *v2Ptr;
+    int i;
 
     /*
      * There are two phases to this procedure.  First, pick off an initial
@@ -1249,39 +1095,39 @@ NextValue(interp, parsePtr, prec, valuePtr)
      */
 
     vPtr = valuePtr->vPtr;
-    v2Ptr = Blt_VectorNew(vPtr->dataPtr);
+    v2Ptr = Blt_Vec_New(vPtr->dataPtr);
     gotOp = FALSE;
     value2.vPtr = v2Ptr;
     value2.pv.buffer = value2.pv.next = value2.staticSpace;
     value2.pv.end = value2.pv.buffer + STATIC_STRING_SPACE - 1;
-    value2.pv.expandProc = TclExpandParseValue;
+    value2.pv.expandProc = Blt_ExpandParseValue;
     value2.pv.clientData = NULL;
 
-    result = NextToken(interp, parsePtr, valuePtr);
+    result = NextToken(interp, piPtr, valuePtr);
     if (result != TCL_OK) {
 	goto done;
     }
-    if (parsePtr->token == OPEN_PAREN) {
+    if (piPtr->token == OPEN_PAREN) {
 
 	/* Parenthesized sub-expression. */
 
-	result = NextValue(interp, parsePtr, -1, valuePtr);
+	result = NextValue(interp, piPtr, -1, valuePtr);
 	if (result != TCL_OK) {
 	    goto done;
 	}
-	if (parsePtr->token != CLOSE_PAREN) {
+	if (piPtr->token != CLOSE_PAREN) {
 	    Tcl_AppendResult(interp, "unmatched parentheses in expression \"",
-		parsePtr->expr, "\"", (char *)NULL);
+		piPtr->expr, "\"", (char *)NULL);
 	    result = TCL_ERROR;
 	    goto done;
 	}
     } else {
-	if (parsePtr->token == MINUS) {
-	    parsePtr->token = UNARY_MINUS;
+	if (piPtr->token == MINUS) {
+	    piPtr->token = UNARY_MINUS;
 	}
-	if (parsePtr->token >= UNARY_MINUS) {
-	    operator = parsePtr->token;
-	    result = NextValue(interp, parsePtr, precTable[operator], valuePtr);
+	if (piPtr->token >= UNARY_MINUS) {
+	    operator = piPtr->token;
+	    result = NextValue(interp, piPtr, precTable[operator], valuePtr);
 	    if (result != TCL_OK) {
 		goto done;
 	    }
@@ -1303,13 +1149,13 @@ NextValue(interp, parsePtr, prec, valuePtr)
 		Tcl_AppendResult(interp, "unknown operator", (char *)NULL);
 		goto error;
 	    }
-	} else if (parsePtr->token != VALUE) {
+	} else if (piPtr->token != VALUE) {
 	    Tcl_AppendResult(interp, "missing operand", (char *)NULL);
 	    goto error;
 	}
     }
     if (!gotOp) {
-	result = NextToken(interp, parsePtr, &value2);
+	result = NextToken(interp, piPtr, &value2);
 	if (result != TCL_OK) {
 	    goto done;
 	}
@@ -1318,7 +1164,7 @@ NextValue(interp, parsePtr, prec, valuePtr)
      * Got the first operand.  Now fetch (operator, operand) pairs.
      */
     for (;;) {
-	operator = parsePtr->token;
+	operator = piPtr->token;
 
 	value2.pv.next = value2.pv.buffer;
 	if ((operator < MULT) || (operator >= UNARY_MINUS)) {
@@ -1335,13 +1181,13 @@ NextValue(interp, parsePtr, prec, valuePtr)
 	    result = TCL_OK;
 	    goto done;
 	}
-	result = NextValue(interp, parsePtr, precTable[operator], &value2);
+	result = NextValue(interp, piPtr, precTable[operator], &value2);
 	if (result != TCL_OK) {
 	    goto done;
 	}
-	if ((parsePtr->token < MULT) && (parsePtr->token != VALUE) &&
-	    (parsePtr->token != END) && (parsePtr->token != CLOSE_PAREN) &&
-	    (parsePtr->token != COMMA)) {
+	if ((piPtr->token < MULT) && (piPtr->token != VALUE) &&
+	    (piPtr->token != END) && (piPtr->token != CLOSE_PAREN) &&
+	    (piPtr->token != COMMA)) {
 	    Tcl_AppendResult(interp, "unexpected token in expression",
 		(char *)NULL);
 	    goto error;
@@ -1351,8 +1197,8 @@ NextValue(interp, parsePtr, prec, valuePtr)
 	 */
 
 	if (v2Ptr->length == 1) {
-	    register double *opnd;
-	    register double scalar;
+	    double *opnd;
+	    double scalar;
 
 	    /*
 	     * 2nd operand is a scalar.
@@ -1455,9 +1301,9 @@ NextValue(interp, parsePtr, prec, valuePtr)
 		    offset = (int)scalar % vPtr->length;
 		    if (offset > 0) {
 			double *hold;
-			register int j;
+			int j;
 
-			hold = Blt_Malloc(sizeof(double) * offset);
+			hold = Blt_AssertMalloc(sizeof(double) * offset);
 			for (i = 0; i < offset; i++) {
 			    hold[i] = opnd[i];
 			}
@@ -1480,9 +1326,9 @@ NextValue(interp, parsePtr, prec, valuePtr)
 		    offset = (int)scalar % vPtr->length;
 		    if (offset > 0) {
 			double *hold;
-			register int j;
+			int j;
 			
-			hold = Blt_Malloc(sizeof(double) * offset);
+			hold = Blt_AssertMalloc(sizeof(double) * offset);
 			for (i = vPtr->length - offset, j = 0; 
 			     i < vPtr->length; i++, j++) {
 			    hold[j] = opnd[i];
@@ -1506,14 +1352,14 @@ NextValue(interp, parsePtr, prec, valuePtr)
 	    }
 
 	} else if (vPtr->length == 1) {
-	    register double *opnd;
-	    register double scalar;
+	    double *opnd;
+	    double scalar;
 
 	    /*
 	     * 1st operand is a scalar.
 	     */
 	    scalar = vPtr->valueArr[0];
-	    Blt_VectorDuplicate(vPtr, v2Ptr);
+	    Blt_Vec_Duplicate(vPtr, v2Ptr);
 	    opnd = vPtr->valueArr;
 	    switch (operator) {
 	    case MULT:
@@ -1617,7 +1463,7 @@ NextValue(interp, parsePtr, prec, valuePtr)
 		goto error;
 	    }
 	} else {
-	    register double *opnd1, *opnd2;
+	    double *opnd1, *opnd2;
 	    /*
 	     * Carry out the function of the specified operator.
 	     */
@@ -1735,19 +1581,19 @@ NextValue(interp, parsePtr, prec, valuePtr)
     if (value2.pv.buffer != value2.staticSpace) {
 	Blt_Free(value2.pv.buffer);
     }
-    Blt_VectorFree(v2Ptr);
+    Blt_Vec_Free(v2Ptr);
     return result;
 
   error:
     if (value2.pv.buffer != value2.staticSpace) {
 	Blt_Free(value2.pv.buffer);
     }
-    Blt_VectorFree(v2Ptr);
+    Blt_Vec_Free(v2Ptr);
     return TCL_ERROR;
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * EvaluateExpression --
  *
@@ -1755,7 +1601,7 @@ NextValue(interp, parsePtr, prec, valuePtr)
  *	procedures like Tcl_ExprInt, Tcl_ExprDouble, etc.
  *
  * Results:
- *	The result is a standard Tcl return value.  If an error
+ *	The result is a standard TCL return value.  If an error
  *	occurs then an error message is left in interp->result.
  *	The value of the expression is returned in *valuePtr, in
  *	whatever form it ends up in (could be string or integer
@@ -1766,25 +1612,25 @@ NextValue(interp, parsePtr, prec, valuePtr)
  * Side effects:
  *	None.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-EvaluateExpression(interp, string, valuePtr)
-    Tcl_Interp *interp;		/* Context in which to evaluate the
-					 * expression. */
-    char *string;		/* Expression to evaluate. */
-    Value *valuePtr;		/* Where to store result.  Should
-					 * not be initialized by caller. */
+EvaluateExpression(
+    Tcl_Interp *interp,		/* Context in which to evaluate the
+				 * expression. */
+    char *string,		/* Expression to evaluate. */
+    Value *valuePtr)		/* Where to store result.  Should
+				 * not be initialized by caller. */
 {
     ParseInfo info;
     int result;
-    VectorObject *vPtr;
-    register int i;
+    Vector *vPtr;
+    double *vp, *vend;
 
     info.expr = info.nextPtr = string;
     valuePtr->pv.buffer = valuePtr->pv.next = valuePtr->staticSpace;
     valuePtr->pv.end = valuePtr->pv.buffer + STATIC_STRING_SPACE - 1;
-    valuePtr->pv.expandProc = TclExpandParseValue;
+    valuePtr->pv.expandProc = Blt_ExpandParseValue;
     valuePtr->pv.clientData = NULL;
 
     result = NextValue(interp, &info, -1, valuePtr);
@@ -1799,20 +1645,20 @@ EvaluateExpression(interp, string, valuePtr)
     vPtr = valuePtr->vPtr;
 
     /* Check for NaN's and overflows. */
-    for (i = 0; i < vPtr->length; i++) {
-	if (!FINITE(vPtr->valueArr[i])) {
+    for (vp = vPtr->valueArr, vend = vp + vPtr->length; vp < vend; vp++) {
+	if (!FINITE(*vp)) {
 	    /*
 	     * IEEE floating-point error.
 	     */
-	    MathError(interp, vPtr->valueArr[i]);
+	    MathError(interp, *vp);
 	    return TCL_ERROR;
 	}
     }
     return TCL_OK;
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Math Functions --
  *
@@ -1827,31 +1673,32 @@ EvaluateExpression(interp, string, valuePtr)
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ComponentFunc(clientData, interp, vPtr)
-    ClientData clientData;	/* Contains address of procedure that
+ComponentFunc(
+    ClientData clientData,	/* Contains address of procedure that
 				 * takes one double argument and
 				 * returns a double result. */
-    Tcl_Interp *interp;
-    VectorObject *vPtr;
+    Tcl_Interp *interp,
+    Vector *vPtr)
 {
     ComponentProc *procPtr = (ComponentProc *) clientData;
-    register int i;
+    double *vp, *vend;
 
     errno = 0;
-    for(i = First(vPtr); i >= 0; i = Next(vPtr, i)) {
-	vPtr->valueArr[i] = (*procPtr) (vPtr->valueArr[i]);
+    for(vp = vPtr->valueArr + vPtr->first, 
+	    vend = vPtr->valueArr + vPtr->last; vp <= vend; vp++) {
+	*vp = (*procPtr) (*vp);
 	if (errno != 0) {
-	    MathError(interp, vPtr->valueArr[i]);
+	    MathError(interp, *vp);
 	    return TCL_ERROR;
 	}
-	if (!FINITE(vPtr->valueArr[i])) {
+	if (!FINITE(*vp)) {
 	    /*
 	     * IEEE floating-point error.
 	     */
-	    MathError(interp, vPtr->valueArr[i]);
+	    MathError(interp, *vp);
 	    return TCL_ERROR;
 	}
     }
@@ -1859,10 +1706,7 @@ ComponentFunc(clientData, interp, vPtr)
 }
 
 static int
-ScalarFunc(clientData, interp, vPtr)
-    ClientData clientData;
-    Tcl_Interp *interp;
-    VectorObject *vPtr;
+ScalarFunc(ClientData clientData, Tcl_Interp *interp, Vector *vPtr)
 {
     double value;
     ScalarProc *procPtr = (ScalarProc *) clientData;
@@ -1873,7 +1717,7 @@ ScalarFunc(clientData, interp, vPtr)
 	MathError(interp, value);
 	return TCL_ERROR;
     }
-    if (Blt_VectorChangeLength(vPtr, 1) != TCL_OK) {
+    if (Blt_Vec_ChangeLength(interp, vPtr, 1) != TCL_OK) {
 	return TCL_ERROR;
     }
     vPtr->valueArr[0] = value;
@@ -1882,10 +1726,7 @@ ScalarFunc(clientData, interp, vPtr)
 
 /*ARGSUSED*/
 static int
-VectorFunc(clientData, interp, vPtr)
-    ClientData clientData;
-    Tcl_Interp *interp;		/* Not used. */
-    VectorObject *vPtr;
+VectorFunc(ClientData clientData, Tcl_Interp *interp, Vector *vPtr)
 {
     VectorProc *procPtr = (VectorProc *) clientData;
 
@@ -1895,71 +1736,69 @@ VectorFunc(clientData, interp, vPtr)
 
 static MathFunction mathFunctions[] =
 {
-    {"abs", (GenericMathProc *) ComponentFunc, (ClientData)Fabs},
-    {"acos", (GenericMathProc *) ComponentFunc, (ClientData)acos},
-    {"asin", (GenericMathProc *) ComponentFunc, (ClientData)asin},
-    {"atan", (GenericMathProc *) ComponentFunc, (ClientData)atan},
-    {"adev", (GenericMathProc *) ScalarFunc, (ClientData)AvgDeviation},
-    {"ceil", (GenericMathProc *) ComponentFunc, (ClientData)ceil},
-    {"cos", (GenericMathProc *) ComponentFunc, (ClientData)cos},
-    {"cosh", (GenericMathProc *) ComponentFunc, (ClientData)cosh},
-    {"exp", (GenericMathProc *) ComponentFunc, (ClientData)exp},
-    {"floor", (GenericMathProc *) ComponentFunc, (ClientData)floor},
-    {"kurtosis", (GenericMathProc *) ScalarFunc, (ClientData)Kurtosis},
-    {"length", (GenericMathProc *) ScalarFunc, (ClientData)Length},
-    {"log", (GenericMathProc *) ComponentFunc, (ClientData)log},
-    {"log10", (GenericMathProc *) ComponentFunc, (ClientData)log10},
-    {"max", (GenericMathProc *) ScalarFunc, (ClientData)Blt_VecMax},
-    {"mean", (GenericMathProc *) ScalarFunc, (ClientData)Mean},
-    {"median", (GenericMathProc *) ScalarFunc, (ClientData)Median},
-    {"min", (GenericMathProc *) ScalarFunc, (ClientData)Blt_VecMin},
-    {"norm", (GenericMathProc *) VectorFunc, (ClientData)Norm},
-    {"nz", (GenericMathProc *) ScalarFunc, (ClientData)Nonzeros},
-    {"q1", (GenericMathProc *) ScalarFunc, (ClientData)Q1},
-    {"q3", (GenericMathProc *) ScalarFunc, (ClientData)Q3},
-    {"prod", (GenericMathProc *) ScalarFunc, (ClientData)Product},
-#ifdef HAVE_DRAND48
-    {"random", (GenericMathProc *) ComponentFunc, (ClientData)drand48},
-#endif
-    {"round", (GenericMathProc *) ComponentFunc, (ClientData)Round},
-    {"sdev", (GenericMathProc *) ScalarFunc, (ClientData)StdDeviation},
-    {"sin", (GenericMathProc *) ComponentFunc, (ClientData)sin},
-    {"sinh", (GenericMathProc *) ComponentFunc, (ClientData)sinh},
-    {"skew", (GenericMathProc *) ScalarFunc, (ClientData)Skew},
-    {"sort", (GenericMathProc *) VectorFunc, (ClientData)Sort},
-    {"sqrt", (GenericMathProc *) ComponentFunc, (ClientData)sqrt},
-    {"sum", (GenericMathProc *) ScalarFunc, (ClientData)Sum},
-    {"tan", (GenericMathProc *) ComponentFunc, (ClientData)tan},
-    {"tanh", (GenericMathProc *) ComponentFunc, (ClientData)tanh},
-    {"var", (GenericMathProc *) ScalarFunc, (ClientData)Variance},
+    {"abs",     ComponentFunc, Fabs},
+    {"acos",	ComponentFunc, acos},
+    {"asin",	ComponentFunc, asin},
+    {"atan",	ComponentFunc, atan},
+    {"adev",	ScalarFunc,    AvgDeviation},
+    {"ceil",	ComponentFunc, ceil},
+    {"cos",	ComponentFunc, cos},
+    {"cosh",	ComponentFunc, cosh},
+    {"exp",	ComponentFunc, exp},
+    {"floor",	ComponentFunc, floor},
+    {"kurtosis",ScalarFunc,    Kurtosis},
+    {"length",	ScalarFunc,    Length},
+    {"log",	ComponentFunc, log},
+    {"log10",	ComponentFunc, log10},
+    {"max",	ScalarFunc,    Blt_VecMax},
+    {"mean",	ScalarFunc,    Mean},
+    {"median",	ScalarFunc,    Median},
+    {"min",	ScalarFunc,    Blt_VecMin},
+    {"norm",	VectorFunc,    Norm},
+    {"nz",	ScalarFunc,    Nonzeros},
+    {"q1",	ScalarFunc,    Q1},
+    {"q3",	ScalarFunc,    Q3},
+    {"prod",	ScalarFunc,    Product},
+    {"random",	ComponentFunc, drand48},
+    {"round",	ComponentFunc, Round},
+    {"sdev",	ScalarFunc,    StdDeviation},
+    {"sin",	ComponentFunc, sin},
+    {"sinh",	ComponentFunc, sinh},
+    {"skew",	ScalarFunc,    Skew},
+    {"sort",	VectorFunc,    Sort},
+    {"sqrt",	ComponentFunc, sqrt},
+    {"sum",	ScalarFunc,    Sum},
+    {"tan",	ComponentFunc, tan},
+    {"tanh",	ComponentFunc, tanh},
+    {"var",	ScalarFunc,    Variance},
     {(char *)NULL,},
 };
 
 void
-Blt_VectorInstallMathFunctions(tablePtr)
-    Blt_HashTable *tablePtr;
+Blt_Vec_InstallMathFunctions(Blt_HashTable *tablePtr)
 {
-    Blt_HashEntry *hPtr;
-    register MathFunction *mathPtr;
-    int isNew;
+    MathFunction *mathPtr;
 
     for (mathPtr = mathFunctions; mathPtr->name != NULL; mathPtr++) {
+	Blt_HashEntry *hPtr;
+	int isNew;
+
 	hPtr = Blt_CreateHashEntry(tablePtr, mathPtr->name, &isNew);
 	Blt_SetHashValue(hPtr, (ClientData)mathPtr);
     }
 }
 
 void
-Blt_VectorUninstallMathFunctions(tablePtr)
-    Blt_HashTable *tablePtr;
+Blt_Vec_UninstallMathFunctions(Blt_HashTable *tablePtr)
 {
-    MathFunction *mathPtr;
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
 
     for (hPtr = Blt_FirstHashEntry(tablePtr, &cursor); hPtr != NULL; 
 	hPtr = Blt_NextHashEntry(&cursor)) {
-	mathPtr = (MathFunction *) Blt_GetHashValue(hPtr);
+	MathFunction *mathPtr;
+
+	mathPtr = Blt_GetHashValue(hPtr);
 	if (mathPtr->name == NULL) {
 	    Blt_Free(mathPtr);
 	}
@@ -1968,10 +1807,10 @@ Blt_VectorUninstallMathFunctions(tablePtr)
 
 
 static void
-InstallIndexProc(tablePtr, string, procPtr)
-    Blt_HashTable *tablePtr;
-    char *string;
-    Blt_VectorIndexProc *procPtr; /* Pointer to function to be called
+InstallIndexProc(
+    Blt_HashTable *tablePtr,
+    const char *string,
+    Blt_VectorIndexProc *procPtr) /* Pointer to function to be called
 				   * when the vector finds the named index.
 				   * If NULL, this indicates to remove
 				   * the index from the table.
@@ -1989,26 +1828,25 @@ InstallIndexProc(tablePtr, string, procPtr)
 }
 
 void
-Blt_VectorInstallSpecialIndices(tablePtr)
-    Blt_HashTable *tablePtr;
+Blt_Vec_InstallSpecialIndices(Blt_HashTable *tablePtr)
 {
-    InstallIndexProc(tablePtr, "min", Blt_VecMin);
-    InstallIndexProc(tablePtr, "max", Blt_VecMax);
+    InstallIndexProc(tablePtr, "min",  Blt_VecMin);
+    InstallIndexProc(tablePtr, "max",  Blt_VecMax);
     InstallIndexProc(tablePtr, "mean", Mean);
-    InstallIndexProc(tablePtr, "sum", Sum);
+    InstallIndexProc(tablePtr, "sum",  Sum);
     InstallIndexProc(tablePtr, "prod", Product);
 }
 
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_ExprVector --
  *
  *	Evaluates an vector expression and returns its value(s).
  *
  * Results:
- *	Each of the procedures below returns a standard Tcl result.
+ *	Each of the procedures below returns a standard TCL result.
  *	If an error occurs then an error message is left in
  *	interp->result.  Otherwise the value of the expression,
  *	in the appropriate form, is stored at *resultPtr.  If
@@ -2018,36 +1856,40 @@ Blt_VectorInstallSpecialIndices(tablePtr)
  * Side effects:
  *	None.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_ExprVector(interp, string, vecPtr)
-    Tcl_Interp *interp;		/* Context in which to evaluate the
+Blt_ExprVector(
+    Tcl_Interp *interp,		/* Context in which to evaluate the
 				 * expression. */
-    char *string;		/* Expression to evaluate. */
-    Blt_Vector *vecPtr;		/* Where to store result. */
+    char *string,		/* Expression to evaluate. */
+    Blt_Vector *vector)		/* Where to store result. */
 {
     VectorInterpData *dataPtr;	/* Interpreter-specific data. */
-    VectorObject *vPtr = (VectorObject *)vecPtr;
+    Vector *vPtr = (Vector *)vector;
     Value value;
 
-    dataPtr = (vecPtr != NULL) 
-	? vPtr->dataPtr : Blt_VectorGetInterpData(interp);
-    value.vPtr = Blt_VectorNew(dataPtr);
+    dataPtr = (vector != NULL) 
+	? vPtr->dataPtr : Blt_Vec_GetInterpData(interp);
+    value.vPtr = Blt_Vec_New(dataPtr);
     if (EvaluateExpression(interp, string, &value) != TCL_OK) {
-	Blt_VectorFree(value.vPtr);
+	Blt_Vec_Free(value.vPtr);
 	return TCL_ERROR;
     }
     if (vPtr != NULL) {
-	Blt_VectorDuplicate(vPtr, value.vPtr);
+	Blt_Vec_Duplicate(vPtr, value.vPtr);
     } else {
-	register int i;
+	Tcl_Obj *listObjPtr;
+	double *vp, *vend;
+
 	/* No result vector.  Put values in interp->result.  */
-	for (i = 0; i < value.vPtr->length; i++) {
-	    string = Blt_Dtoa(interp, value.vPtr->valueArr[i]);
-	    Tcl_AppendElement(interp, string);
+	listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
+	for (vp = value.vPtr->valueArr, vend = vp + value.vPtr->length; 
+	     vp < vend; vp++) {
+	    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(*vp));
 	}
+	Tcl_SetObjResult(interp, listObjPtr);
     }
-    Blt_VectorFree(value.vPtr);
+    Blt_Vec_Free(value.vPtr);
     return TCL_OK;
 }

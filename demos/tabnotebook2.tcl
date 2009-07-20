@@ -1,45 +1,22 @@
 #!../src/bltwish
 
 package require BLT
-
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 
-image create photo bgTile -file ./images/smblue_rock.gif
-image create photo label1 -file ./images/mini-book1.gif
-image create photo label2 -file ./images/mini-book2.gif
-image create photo testImage -file ./images/txtrflag.gif
+image create picture bgTile -file ./images/smblue_rock.gif
+image create picture label1 -file ./images/mini-book1.gif
+image create picture label2 -file ./images/mini-book2.gif
+image create picture testImage -file ./images/txtrflag.gif
 
 scrollbar .s -command { .t view } -orient horizontal
-tabnotebook .t \
-    -relief sunken -bd 2 \
-    -textside right \
-    -samewidth yes -tiers 2 -slant right \
+blt::tabset .t \
+    -outerborderwidth 2 \
+    -outerrelief sunken \
+    -tabwidth same \
     -scrollcommand { .s set } \
-    -tile bgTile 
+    -slant right \
+    -textside right \
+    -tiers 2 
 
 label .t.l -image testImage
 
@@ -59,19 +36,19 @@ foreach label { there bunky another test of a widget } {
     set id [.t insert end -text $label]
 }
 
-set img [image create photo -file ./images/blt98.gif]
-.t tab configure $id -image label2 -tile $img
+set img [image create picture -file ./images/blt98.gif]
+.t tab configure $id -image label2 
 
-table . \
+blt::table . \
     .t 0,0 -fill both \
     .s 1,0 -fill x 
 
-table configure . r1 -resize none
+blt::table configure . r1 -resize none
 
 set index 0
 foreach file { graph1 graph2 graph3 graph5 } {
     namespace eval $file {
-	set graph [graph .t.$file]
+	set graph [blt::graph .t.$file]
 	source scripts/$file.tcl
 	.t tab configure $index -window $graph
 	incr index

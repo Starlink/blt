@@ -3,10 +3,11 @@
 # 	Makefile for library files and directories of BLT library
 # ------------------------------------------------------------------------
 
-include ../win/makedefs
+include ../vc.config
+srcdir = ../$(TOP)/library
 
 version =	$(BLT_MAJOR_VERSION).$(BLT_MINOR_VERSION)
-srcdir =	.
+pkgdir =	$(libdir)/tcl$(v1)/blt$(version)
 
 cursors = 	treeview.cur
 
@@ -29,9 +30,10 @@ ddFiles =	dd-color.tcl \
 		tclIndex
 
 instdirs =	$(prefix) $(exec_prefix) $(libdir) \
-		$(scriptdir) $(scriptdir)/dd_protocols $(libdir)/tcl$(v1)
+		$(scriptdir) $(scriptdir)/dd_protocols $(libdir)/tcl$(v1) \
+		$(pkgdir)
 
-all: build-pkgindex
+all: pkgIndex.tcl
 
 install: install-dirs install-ddfiles install-files install-pkgindex
 
@@ -50,9 +52,8 @@ install-files: install-dirs
 	    $(INSTALL_DATA) $(srcdir)/$$i $(scriptdir) ; \
 	done 
 
-pkgIndex.tcl: build-pkgindex
 
-build-pkgindex:
+pkgIndex.tcl: $(srcdir)/pkgIndex.tcl.in
 	rm -f pkgIndex.tcl
 	sed -e 's/%VERSION%/$(version)/' $(srcdir)/pkgIndex.tcl.in | \
 	sed -e 's/%LIB_PREFIX%//' | \
@@ -60,6 +61,7 @@ build-pkgindex:
 
 install-pkgindex: pkgIndex.tcl
 	$(INSTALL_DATA) pkgIndex.tcl $(scriptdir)
+	$(INSTALL_DATA) pkgIndex.tcl $(pkgdir)
 
 clean:
 	$(RM) pkgIndex.tcl

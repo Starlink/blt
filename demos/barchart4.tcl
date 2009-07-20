@@ -1,31 +1,6 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
-
 source scripts/demo.tcl
 
 proc random {{max 1.0} {min 0.0}} {
@@ -54,7 +29,6 @@ option add *Element.Background		white
 option add *Element.Relief		raised
 
 option add *x.Title			"X Axis"
-option add *x.Font			*Times-Medium-R*10*
 option add *y.Title			"Y Axis"
 option add *LineMarker.Foreground	yellow
 
@@ -65,7 +39,7 @@ if { $visual != "staticgray" && $visual != "grayscale" } {
     option add *graph.background palegreen
 }
 
-htext .header -text \
+blt::htext .header -text \
 {   This is an example of the barchart widget.  The barchart has 
     many components; x and y axis, legend, crosshairs, elements, etc.  
     To create a postscript file "bar.ps", press the %%
@@ -77,11 +51,11 @@ htext .header -text \
 
 %% button.  
 }
-barchart $graph 
+blt::barchart $graph 
 $graph xaxis configure -rotate 90 -stepsize 0
 
-htext .footer -text {    Hit the %%
-    set im [image create photo -file ./images/stopsign.gif]
+blt::htext .footer -text {    Hit the %%
+    set im [image create picture -file ./images/stopsign.gif]
     button $htext(widget).quit -image $im -command { exit }
     $htext(widget) append $htext(widget).quit -pady 2
 %% button when you've seen enough. %%
@@ -104,14 +78,14 @@ set attributes {
 
 set count 0
 foreach { color stipple } $attributes {
-    $graph pen create pen$count -fg ${color}1 -bg ${color}4 -stipple $stipple
+    $graph pen create pen$count -fill ${color}1 -outline ${color}4 -relief solid
     lappend styles [list pen$count $count $count]
     incr count
 }
 
-vector x y w
+blt::vector x y w
 
-x seq 0 1000
+x seq 0 1000 400
 y expr random(x)*90.0
 w expr round(y/10.0)%$count
 y expr y+10.0
@@ -119,12 +93,12 @@ y expr y+10.0
 $graph element create data -label {} \
     -x x -y y -weight w -styles $styles
 
-table . \
+blt::table . \
     0,0 .header -fill x  \
     1,0 .graph -fill both \
     2,0 .footer -fill x
 
-table configure . r0 r2 -resize none
+blt::table configure . r0 r2 -resize none
 	
 wm min . 0 0
 

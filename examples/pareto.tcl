@@ -22,25 +22,22 @@ package require BLT
 #
 # --------------------------------------------------------------------------
 
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
-
-
 # Example of a pareto chart.
 #
 # The pareto chart mixes line and bar elements in the same graph.
 # Each processing operating is represented by a bar element.  The
 # total accumulated defects is displayed with a single line element.
 
-barchart .b \
+blt::barchart .b \
     -title "Defects Found During Inspection" \
-    -font {Helvetica 12} \
-    -plotpady { 12 4 } \
+    -font {{Sans Serif} 12 Bold} \
     -width 6i \
-    -height 5i 
-table . .b -fill both
+    -height 5i \
+    -bg white \
+    -plotborderwidth 1 \
+    -plotrelief solid
+
+blt::table . .b -fill both
 
 set data {
     "Spot Weld"		82	yellow
@@ -59,23 +56,24 @@ set data {
 .b line create accum -label "" -symbol none -color red
 
 # Define a bitmap to be used to stipple the background of each bar.
-bitmap define pattern1 { {4 4} {01 02 04 08} }
+blt::bitmap define pattern1 { {4 4} {01 02 04 08} }
 
 # For each process, create a bar element to display the magnitude.
 set count 0
 set sum 0
 set ydata 0
 set xdata 0
+set bg [blt::bgpattern create solid -color orange -opacity 70]
+set areabg [blt::bgpattern create solid -color blue -opacity 20]
 foreach { label value color } $data {
     incr count
     .b element create $label \
 	-xdata $count \
 	-ydata $value \
 	-fg $color \
-	-relief solid \
+	-relief raised \
 	-borderwidth 1 \
-	-stipple pattern1 \
-	-bg lightblue 
+	-bg $bg 
 
     set labels($count) $label
     # Get the total number of defects.
@@ -86,8 +84,9 @@ foreach { label value color } $data {
 
 # Configure the coordinates of the accumulated defects, 
 # now that we know what they are.
-.b line configure accum -xdata $xdata -ydata $ydata 
-
+.b line configure accum -xdata $xdata -ydata $ydata \
+	-areabackground $areabg 
+.b element lower accum
 # Add text markers to label the percentage of total at each point.
 foreach x $xdata y $ydata {
     set percent [expr ($y * 100.0) / $sum]
@@ -99,7 +98,7 @@ foreach x $xdata y $ydata {
     .b marker create text \
 	-coords "$x $y" \
 	-text $text \
-	-font {Helvetica 10} \
+	-font {Math 9} \
 	-fg red4 \
 	-anchor c \
 	-yoffset -5
@@ -110,16 +109,22 @@ foreach x $xdata y $ydata {
     -hide no \
     -min 0.0 \
     -max 100.0 \
-    -title "Percentage"
+    -tickinterior yes \
+    -title "Percentage" -grid no
 
 # Title the y-axis
-.b axis configure y -title "Defects"
+.b axis configure y -title "Defects" -grid no \
+    -tickinterior yes \
 
 # Configure the x-axis to display the process names, instead of numbers.
 .b axis configure x \
     -title "Process" \
     -command FormatLabels \
-    -rotate 90 \
+    -rotate 290 \
+    -tickanchor nw \
+    -tickfont {{Sans Serif} 9} \
+    -tickinterior yes \
+    -ticklength 5 \
     -subdivisions 0
 
 proc FormatLabels { widget value } {
@@ -128,12 +133,12 @@ proc FormatLabels { widget value } {
     if {[info exists labels($value)] } {
 	return $labels($value)
     }
-    return $value
+    return ""
 }
 
 # No legend needed.
 .b legend configure -hide yes
 
 # Configure the grid lines.
-.b grid configure -mapx x -color lightblue
+.b axis configure x -gridcolor lightblue -grid yes
 

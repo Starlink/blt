@@ -1,3 +1,4 @@
+
 #
 # tabset.tcl
 #
@@ -35,7 +36,13 @@
 # Indicates whether to activate (highlight) tabs when the mouse passes
 # over them.  This is turned off during scan operations.
 #
-set bltTabset(activate) yes
+
+namespace eval blt {
+    namespace eval Tabset {
+	variable privateData
+	set privateData(activate) yes
+    }
+}
 
 # ----------------------------------------------------------------------
 # 
@@ -44,6 +51,9 @@ set bltTabset(activate) yes
 #   <ButtonPress-2>	Starts scan mechanism (pushes the tabs)
 #   <B2-Motion>		Adjust scan
 #   <ButtonRelease-2>	Stops scan
+#   <ButtonPress-3>	Starts scan mechanism (pushes the tabs)
+#   <B3-Motion>		Adjust scan
+#   <ButtonRelease-3>	Stops scan
 #
 # ----------------------------------------------------------------------
 bind Tabset <B2-Motion> {
@@ -51,15 +61,32 @@ bind Tabset <B2-Motion> {
 }
 
 bind Tabset <ButtonPress-2> {
-    set bltTabset(cursor) [%W cget -cursor]
-    set bltTabset(activate) no
+    set blt::Tabset::privateData(cursor) [%W cget -cursor]
+    set blt::Tabset::privateData(activate) no
     %W configure -cursor hand1
     %W scan mark %x %y
 }
 
 bind Tabset <ButtonRelease-2> {
-    %W configure -cursor $bltTabset(cursor)
-    set bltTabset(activate) yes
+    %W configure -cursor $::blt::Tabset::privateData(cursor)
+    set blt::Tabset::privateData(activate) yes
+    %W activate @%x,%y
+}
+
+bind Tabset <B3-Motion> {
+    %W scan dragto %x %y
+}
+
+bind Tabset <ButtonPress-3> {
+    set blt::Tabset::privateData(cursor) [%W cget -cursor]
+    set blt::Tabset::privateData(activate) no
+    %W configure -cursor hand1
+    %W scan mark %x %y
+}
+
+bind Tabset <ButtonRelease-3> {
+    %W configure -cursor $blt::Tabset::privateData(cursor)
+    set blt::Tabset::privateData(activate) yes
     %W activate @%x,%y
 }
 
@@ -79,24 +106,46 @@ bind Tabset <ButtonRelease-2> {
 #			tab.
 #   <KeyPress-Return>	Same as above.
 #   <KeyPress>		Go to next tab starting with the ASCII character.
+#   <KeyPress-End>	Moves focus to the last tab.
+#   <KeyPress-Home>	Moves focus to the last tab.
 #
 # ----------------------------------------------------------------------
-bind Tabset <KeyPress-Up> { blt::SelectTab %W "up" }
-bind Tabset <KeyPress-Down> { blt::SelectTab %W "down" }
-bind Tabset <KeyPress-Right> { blt::SelectTab %W "right" }
-bind Tabset <KeyPress-Left> { blt::SelectTab %W "left" }
-bind Tabset <KeyPress-space> { %W invoke focus }
-bind Tabset <KeyPress-Return> { %W invoke focus }
+
+bind Tabset <KeyPress-Up> { 
+    blt::Tabset::Select %W "up" 
+}
+bind Tabset <KeyPress-Down> { 
+    blt::Tabset::Select %W "down" 
+}
+bind Tabset <KeyPress-Right> { 
+    blt::Tabset::Select %W "right" 
+}
+bind Tabset <KeyPress-Left> { 
+    blt::Tabset::Select %W "left" 
+}
+bind Tabset <KeyPress-Home> { 
+    blt::Tabset::Select %W "first" 
+}
+bind Tabset <KeyPress-End> { 
+    blt::Tabset::Select %W "last" 
+}
+bind Tabset <KeyPress-space> { 
+    %W invoke focus 
+}
+
+bind Tabset <KeyPress-Return> { 
+    %W invoke focus 
+}
 
 bind Tabset <KeyPress> {
     if { [string match {[A-Za-z0-9]*} "%A"] } {
-	blt::FindMatchingTab %W %A
+	blt::Tabset::FindMatch %W %A
     }
 }
 
 # ----------------------------------------------------------------------
 #
-# FirstMatchingTab --
+# FindMatch --
 #
 #	Find the first tab (from the tab that currently has focus) 
 #	starting with the same first letter as the tab.  It searches
@@ -108,27 +157,26 @@ bind Tabset <KeyPress> {
 #	key		ASCII character of key pressed
 #
 # ----------------------------------------------------------------------
-proc blt::FindMatchingTab { widget key } {
+proc blt::Tabset::FindMatch { w key } {
     set key [string tolower $key]
-    set itab [$widget index focus]
-    set numTabs [$widget size]
+    set itab [$w index focus]
+    set numTabs [$w size]
     for { set i 0 } { $i < $numTabs } { incr i } {
 	if { [incr itab] >= $numTabs } {
 	    set itab 0
 	}
-	set name [$widget get $itab]
-	set label [string tolower [$widget tab cget $name -text]]
+	set label [string tolower [$w tab cget $itab -text]]
 	if { [string index $label 0] == $key } {
 	    break
 	}
     }
-    $widget focus $itab
-    $widget see focus
+    $w focus $itab
+    $w see focus
 }
 
 # ----------------------------------------------------------------------
 #
-# SelectTab --
+# Select --
 #
 #	Invokes the command for the tab.  If the widget associated tab 
 #	is currently torn off, the tearoff is raised.
@@ -138,17 +186,17 @@ proc blt::FindMatchingTab { widget key } {
 #	x y		Unused.
 #
 # ----------------------------------------------------------------------
-proc blt::SelectTab { widget tab } {
-    set index [$widget index $tab]
+proc blt::Tabset::Select { w tab } {
+    set index [$w index $tab]
     if { $index != "" } {
-	$widget select $index
-	$widget focus $index
-	$widget see $index
-	set w [$widget tab tearoff $index]
-	if { ($w != "") && ($w != "$widget") } {
-	    raise [winfo toplevel $w]
+	$w select $index
+	$w focus $index
+	$w see $index
+	set tearoff [$w tearoff $index]
+	if { ($tearoff != "") && ($tearoff != "$w") } {
+	    raise [winfo toplevel $tearoff]
 	}
-	$widget invoke $index
+	$w invoke $index
     }
 }
 
@@ -165,13 +213,13 @@ proc blt::SelectTab { widget tab } {
 #	tab		Tab selected.
 #
 # ----------------------------------------------------------------------
-proc blt::DestroyTearoff { widget tab } {
-    regsub -all {\.} [$widget get $tab] {_} name
-    set top "$widget.toplevel-$name"
+proc blt::Tabset::DestroyTearoff { w tab } {
+    set id [$w id $tab]
+    set top "$w.toplevel-$id"
     if { [winfo exists $top] } {
 	wm withdraw $top
 	update
-	$widget tab tearoff $tab $widget
+	$w tearoff $tab $w
 	destroy $top
     }
 }
@@ -194,7 +242,8 @@ proc blt::DestroyTearoff { widget tab } {
 #	x y		The coordinates of the mouse pointer.
 #
 # ----------------------------------------------------------------------
-proc blt::CreateTearoff { widget tab rootX rootY } {
+
+proc blt::Tabset::CreateTearoff { w tab rootX rootY } {
 
     # ------------------------------------------------------------------
     # When reparenting the window contained in the tab, check if the
@@ -207,42 +256,39 @@ proc blt::CreateTearoff { widget tab rootX rootY } {
     # ------------------------------------------------------------------
 
     set focus [focus]
-    set name [$widget get $tab]
-    set window [$widget tab cget $name -window]
-    if { ($focus == $window) || ([string match  $window.* $focus]) } {
-	focus -force $widget
+    set win [$w tab cget $tab -window]
+    set index [$w index $tab]
+    if { ($focus == $w) || ([string match  ${win}.* $focus]) } {
+	focus -force $w
     }
-    regsub -all {\.} [$widget get $tab] {_} name
-    set top "$widget.toplevel-$name"
+    set id [$w id $index]
+    set top "$w.toplevel-$id"
     toplevel $top
-    $widget tab tearoff $tab $top.container
-    table $top $top.container -fill both
+    $w tearoff $tab $top.container
+    blt::table $top 0,0 $top.container -fill both
 
     incr rootX 10 ; incr rootY 10
     wm geometry $top +$rootX+$rootY
-    set name [$widget get $tab]
 
-    set parent [winfo toplevel $widget]
-    wm title $top "[wm title $parent]: [$widget tab cget $name -text]"
-    wm transient $top $parent
+    set parent [winfo toplevel $w]
+    wm title $top "[wm title $parent]: [$w tab cget $index -text]"
+    #wm transient $top $parent
 
-    #blt::winop changes $top
-
-    # 
     # If the user tries to delete the toplevel, put the window back
     # into the tab folder.  
-    #
-    wm protocol $top WM_DELETE_WINDOW [list blt::DestroyTearoff $widget $tab]
-    # 
+
+    wm protocol $top WM_DELETE_WINDOW \
+	[list blt::Tabset::DestroyTearoff $w $tab]
+
     # If the container is ever destroyed, automatically destroy the
     # toplevel too.  
-    #
+
     bind $top.container <Destroy> [list destroy $top]
 }
 
 # ----------------------------------------------------------------------
 #
-# Tearoff --
+# ToggleTearoff --
 #
 #	Toggles the tab tearoff.  If the tab contains a embedded widget, 
 #	it is placed inside of a toplevel window.  If the widget has 
@@ -253,24 +299,25 @@ proc blt::CreateTearoff { widget tab rootX rootY } {
 #	x y		The coordinates of the mouse pointer.
 #
 # ----------------------------------------------------------------------
-proc blt::Tearoff { widget x y index } {
-    set tab [$widget index -index $index]
+
+proc blt::Tabset::ToggleTearoff { w index } {
+    set tab [$w index $index]
     if { $tab == "" } {
 	return
     }
-    $widget invoke $tab
-
-    set container [$widget tab tearoff $index]
-    if { $container == "$widget" } {
-	blt::CreateTearoff $widget $tab $x $y
-    } elseif { $container != "" } {
-	blt::DestroyTearoff $widget $tab
+    $w invoke $tab
+    set win [$w tearoff $index]
+    if { $win == "$w" } {
+	foreach { x1 y1 x2 y2 } [$w extents $tab] break
+	CreateTearoff $w $tab $x1 $y1
+    } elseif { $win != "" } {
+	DestroyTearoff $w $tab
     }
 }
 
 # ----------------------------------------------------------------------
 #
-# TabsetInit
+# Init
 #
 #	Invoked from C whenever a new tabset widget is created.
 #	Sets up the default bindings for the all tab entries.  
@@ -291,35 +338,30 @@ proc blt::Tearoff { widget x y index } {
 #	widget		tabset widget
 #
 # ----------------------------------------------------------------------
-proc blt::TabsetInit { widget } {
-    $widget bind all <Enter> { 
-	if { $bltTabset(activate) } {
+
+proc blt::Tabset::Init { w } {
+    $w bind all <Enter> { 
+	if { $::blt::Tabset::privateData(activate) } {
 	    %W activate current
         }
     }
-    $widget bind all <Leave> { 
+    $w bind all <Leave> { 
         %W activate "" 
     }
-    $widget bind all <ButtonPress-1> { 
-	blt::SelectTab %W "current"
+    $w bind all <ButtonPress-1> { 
+	blt::Tabset::Select %W "current"
     }
-    $widget bind all <Control-ButtonPress-1> { 
-	if { [%W cget -tearoff] } {
-	    blt::Tearoff %W %X %Y active
-	}
+    $w bind all <Control-ButtonPress-1> { 
+	blt::Tabset::ToggleTearoff %W active
     }
-    $widget configure -perforationcommand {
-	blt::Tearoff %W $bltTabset(x) $bltTabset(y) select
-    }
-    $widget bind Perforation <Enter> { 
+    $w configure -perforationcommand [list blt::Tabset::ToggleTearoff $w]
+    $w bind Perforation <Enter> { 
 	%W perforation activate on
     }
-    $widget bind Perforation <Leave> { 
+    $w bind Perforation <Leave> { 
 	%W perforation activate off
     }
-    $widget bind Perforation <ButtonPress-1> { 
-	set bltTabset(x) %X
-	set bltTabset(y) %Y
-	%W perforation invoke
+    $w bind Perforation <ButtonPress-1> { 
+	%W perforation invoke 
     }
 }

@@ -11,16 +11,38 @@ array set cursors {
     nw top_left_corner
 }
 
+set paperSizes {
+    "Letter (8 1/2 x 11 in.)"	"i 8.5i 11i" 
+    "A3 (29.7 x 42 cm.)"	"c 28.7c 41c" 
+    "A4 (21 x 29.7 cm.)"	"c 21c 29.7c" 
+    "A5 (14.85 x 21 cm.)"	"c 14.85c 21c" 
+    "Legal (8 1/2 x 14 in.)"	"i 8.5i 14i" 
+    "Large (11 x 17 in.)"	"i 11i 17i" 
+}
+
+array set paperSize $paperSizes
 
 array set pageInfo {
     gripSize 8
     scale 0.25
     radioFont -*-helvetica-medium-r-*-*-11-120-*-*-*-*-*-*
-    labelFont -*-helvetica-bold-r-*-*-12-120-*-*-*-*-*-*
+    labelFont   "Arial 10 bold"
     printCmd	"nlp -d2a211"
     printFile   "out.ps"
+    units	"i"
+    uscale	1.0
 }
 
+proc ApplyWhenIdle { } {
+    global pageInfo 
+
+    set data [$pageInfo(graph) postscript output]
+    puts stderr "landscape= [$pageInfo(graph) postscript cget -landscape]"
+    $pageInfo(image) import ps -data $data -crop no
+    puts stderr "writing out2.ps"
+    $pageInfo(graph) postscript output -file out2.ps
+    unset pageInfo(afterId)
+}
 
 proc SetUnits { units }  {
     global pageInfo
@@ -40,11 +62,14 @@ proc ConvertUnits { value } {
 }
 
 
-proc SetPaperSize { unit } {
-    global pageInfo
+proc SetPaperSize {} {
+    global pageInfo 
+
+    set extents $pageInfo(paperExtents)
+    foreach { unit w h } $extents break
     SetUnits $unit
-    set pageInfo(-paperwidth) [lindex $pageInfo(paperSize) 0]
-    set pageInfo(-paperheight) [lindex $pageInfo(paperSize) 1]
+    set pageInfo(-paperwidth) $w
+    set pageInfo(-paperheight) $h
     ApplyPs
 }
     
@@ -106,8 +131,8 @@ proc CreateOutline { canvas } {
     foreach var { gripSize xMin yMin xMax yMax } {
 	set $var $pageInfo($var)
     }
-    if { ![bitmap exists pattern8] } {
-	bitmap define pattern8 { {8 8} {ff 00 ff 00 ff 00 ff 00 } }
+    if { ![blt::bitmap exists pattern8] } {
+	blt::bitmap define pattern8 { {8 8} {ff 00 ff 00 ff 00 ff 00 } }
     }
     $canvas create eps $xMin $yMin \
 	-tags "outline image" \
@@ -159,9 +184,11 @@ proc CreateOutline { canvas } {
     $canvas raise grip
     $canvas itemconfigure grip -fill red -outline black
 
-    set pageInfo(image) [image create photo]
-    $pageInfo(graph) snap $pageInfo(image)
+    set pageInfo(image) [image create picture]
+    set data [$pageInfo(graph) postscript output]
+    $pageInfo(image) import ps -data $data -crop no
     $canvas itemconfigure image -image $pageInfo(image)
+    $pageInfo(graph) postscript output out2.ps
 }
 
 
@@ -376,12 +403,6 @@ proc ComputePlotGeometry { graph } {
     } else {
 	set paperHeight [expr $height + $pady]
     }
-    if { $pageInfo(-landscape) } {
-	set temp $paperWidth
-	set paperWidth $paperHeight
-	set paperHeight $temp
-    }
-
     set scale 1.0
     if { $pageInfo(-maxpect) } {
 	set xScale [expr ($paperWidth - $padx) / double($width)]
@@ -418,7 +439,7 @@ proc ComputePlotGeometry { graph } {
 }
 
 proc PsDialog { graph } {
-    global pageInfo
+    global pageInfo paperSizes 
 
     set pageInfo(graph) $graph
     set top $graph.top
@@ -432,142 +453,173 @@ proc PsDialog { graph } {
 	-bd 2 -relief sunken 
     CreateOutline $canvas
     SetCanvasOrientation $canvas
-    label $top.titleLabel -text "PostScript Options"
-    table $top \
+    blt::tk::label $top.titleLabel -text "PostScript Options"
+    blt::table $top \
 	0,0 $top.titleLabel -cspan 7 \
 	1,0 $canvas -cspan 7
 
     set row 2
     set col 0
-    label $top.paperLabel -text "Paper"
-    radiobutton $top.letter -text "Letter 8 1/2 x 11 in." -value "8.5i 11i" \
-	-variable pageInfo(paperSize) \
-	-command "SetPaperSize i"
-    radiobutton $top.a3 -text "A3 29.7 x 42 cm." -value "28.7c 41c" \
-	-variable pageInfo(paperSize) \
-	-command "SetPaperSize c"
-    radiobutton $top.a4 -text "A4 21 x 29.7 cm." -value "21c 29.7c" \
-	-variable pageInfo(paperSize) \
-	-command "SetPaperSize c"
-    radiobutton $top.a5 -text "A5 14.85 x 21 cm." -value "14.85c 21c" \
-	-variable pageInfo(paperSize) \
-	-command "SetPaperSize c"
-    radiobutton $top.legal -text "Legal 8 1/2 x 14 in." -value "8.5i 14i" \
-	-variable pageInfo(paperSize) \
-	-command "SetPaperSize i"
-    radiobutton $top.large -text "Large 11 x 17 in." -value "11i 17i" \
-	-variable pageInfo(paperSize) \
-	-command "SetPaperSize i"
-    table configure $top r$row -pady { 4 0 }
-    table $top \
+
+    blt::tk::label $top.paperLabel -text "Paper" -font "Arial 10 bold"
+    blt::combobutton $top.paper \
+	-textvariable pageInfo(paperSize)  \
+	-font { Arial 10 } \
+	-menu $top.paper.m
+
+    set menu [blt::combomenu $top.paper.m -textvariable pageInfo(paperSize)]
+    foreach { key value } $paperSizes {
+	$menu add -type command -text $key -value $value
+    }
+    $menu item configure command -variable pageInfo(paperExtents) \
+	-command "SetPaperSize"
+    set pageInfo(paperSize) [lindex $paperSizes 0]
+    blt::table $top \
 	$row,$col     $top.paperLabel -anchor e \
-	$row+0,$col+1 $top.letter -anchor w \
-	$row+1,$col+1 $top.legal -anchor w \
-	$row+2,$col+1 $top.large -anchor w \
-	$row+0,$col+2 $top.a3 -anchor w \
-	$row+1,$col+2 $top.a4 -anchor w \
-	$row+2,$col+2 $top.a5 -anchor w 
+	$row,$col+1   $top.paper -anchor e -fill x
+    incr row 
 
-    incr row 3
+    blt::tk::label $top.orientLabel -text "Orientation" -font "Arial 10 bold"
+    blt::combobutton $top.orient \
+	-textvariable pageInfo(orient)  \
+	-font { Arial 10 } \
+	-menu $top.orient.m
 
-    label $top.orientLabel -text "Orientation"
-    radiobutton $top.portrait -text "Portrait" -value "0" \
+    set menu [blt::combomenu $top.orient.m -textvariable pageInfo(orient)]
+    $menu add -type command -text "Portrait" -value "0" \
 	-variable pageInfo(-landscape) -command "ApplyPs"
-    radiobutton $top.landscape -text "Landscape" -value "1" \
+    $menu add -type command -text "Landscape" -value "1" \
 	-variable pageInfo(-landscape) -command "ApplyPs"
-    table configure $top r$row -pady { 4 0 }
-    table $top \
-	$row,$col+0   $top.orientLabel -anchor e \
-	$row,$col+1 $top.portrait -anchor w \
-	$row,$col+2 $top.landscape -anchor w 
-
-    incr row 6
+    set pageInfo(orient) "Landscape"
+    set pageInfo(-landscape) 1
+    blt::table $top \
+	$row,$col     $top.orientLabel -anchor e \
+	$row,$col+1   $top.orient -anchor e -fill x 
+    incr row 
 
     set col 0
-    label $top.plotLabel -text "Plot Options"
-    table $top \
-	$row,$col   $top.plotLabel -cspan 3 
     incr row
-    label $top.sizeLabel -text "Size"
-    radiobutton $top.default -text "Default" -value "default" \
-	-variable pageInfo(plotSize) \
- 	-command "SetPlotSize"
-    radiobutton $top.maxpect -text "Max Aspect" -value "maxpect" \
- 	-variable pageInfo(plotSize) \
- 	-command "SetPlotSize"
-    radiobutton $top.resize -text "Resize" -value "resize" \
- 	-variable pageInfo(plotSize) \
- 	-command "SizeDialog $graph {Adjust Plot Size}"
-    table configure $top r$row -pady { 4 0 }
-    table $top \
-	$row,$col   $top.sizeLabel -anchor e \
-	$row,$col+1 $top.default -anchor w \
-	$row+1,$col+1 $top.maxpect -anchor w \
-	$row+2,$col+1 $top.resize -anchor w 
+    blt::tk::label $top.sizeLabel -text "Plot Size" -font "Arial 10 bold"
+    blt::combobutton $top.plotsize \
+	-textvariable pageInfo(plotsize)  \
+	-font { Arial 10 } \
+	-menu $top.plotsize.m
 
-    #incr row 4
+    set menu [blt::combomenu $top.plotsize.m -textvariable pageInfo(plotsize)]
+    $menu add -type command -text "Default" -value "default" \
+	-variable pageInfo(-plotsize) -command "SetPlotSize"
+    $menu add -type command -text "Max Aspect" -value "maxpect" \
+	-variable pageInfo(-plotsize) -command "SetPlotSize"
+    $menu add -type command -text "Small (3.25 in x 3.25 in)" -value "small" \
+	-variable pageInfo(-plotsize) -command "SetPlotSize"
+    $menu add -type command -text "Large (6 in x 8 in)" -value "large" \
+	-variable pageInfo(-plotsize) -command "SetPlotSize"
+    $menu add -type command -text "Other" -value "other" \
+	-variable pageInfo(-plotsize) \
+	-command "SizeDialog $graph {Adjust Plot Size}"
+    set pageInfo(plotsize) "Default"
+    blt::table $top \
+	$row,$col     $top.sizeLabel -anchor e \
+	$row,$col+1   $top.plotsize -anchor e -fill x 
+    incr row 
+
+    blt::tk::label $top.modeLabel -text "Color mode" -font "Arial 10 bold"
+    blt::combobutton $top.colormode \
+	-textvariable pageInfo(colormode)  \
+	-font { Arial 10 } \
+	-menu $top.colormode.m
+
+    set menu [blt::combomenu $top.colormode.m -textvariable pageInfo(colormode)]
+    $menu add -type command -text "Full Color" -value "0" \
+	-variable pageInfo(-greyscale) -command "ApplyPs"
+    $menu add -type command -text "Greyscale" -value "1" \
+	-variable pageInfo(-greyscale) -command "ApplyPs"
+    set pageInfo(colormode) "Full Color"
+    blt::table $top \
+	$row,$col     $top.modeLabel -anchor e \
+	$row,$col+1   $top.colormode -anchor e -fill x 
+    incr row 
     
     set pageInfo(oldPadX) $pageInfo(-padx)
     set pageInfo(oldPadY) $pageInfo(-pady)
 
-    label $top.posLabel -text "Position"
-    set pageInfo(position) $pageInfo(-center)
-    radiobutton $top.center -text "Center" -value "1" \
-	-variable pageInfo(position) -command {
-	    set pageInfo(-center) 1
-	    CenterPlot
-	}
-    radiobutton $top.origin -text "Origin" -value "0" \
-	-variable pageInfo(position) -command {
-	    set pageInfo(-center) 0
-	    ApplyPs
-	}
-    radiobutton $top.move -text "Move" -value "move" \
- 	-variable pageInfo(position) -command {
-	    set pageInfo(-center) 0
-	    MoveDialog
-	}
-    table configure $top r$row -pady { 4 0 }
-    table $top \
-	$row,$col+2 $top.posLabel -anchor e \
-	$row,$col+3 $top.center -anchor w \
-	$row+1,$col+3 $top.origin -anchor w \
-	$row+2,$col+3 $top.move -anchor w 
+    blt::tk::label $top.posLabel -text "Position" -font "Arial 10 bold"
+    blt::combobutton $top.position \
+	-textvariable pageInfo(position)  \
+	-font { Arial 10 } \
+	-menu $top.position.m
 
-    incr row 4
-    label $top.printLabel -text "Print To"
-    radiobutton $top.toFile -text "File" -value "printFile" \
-	-variable pageInfo(printTo) -command "
-	    $top.fileEntry configure -textvariable pageInfo(printFile)
-	"
-    radiobutton $top.toCmd -text "Command" -value "printCmd" \
-	-variable pageInfo(printTo) -command "
-	    $top.fileEntry configure -textvariable pageInfo(printCmd)
-	"
-    entry $top.fileEntry 
-    table configure $top r$row -pady { 4 0 }
-    table configure $top r[expr $row+1] -pady { 4 0 }
-    table configure $top r[expr $row+2] -pady { 4 0 }
-    table $top \
-	$row,0   $top.printLabel -anchor e \
-	$row,1   $top.toFile -anchor w \
-	$row+1,1 $top.toCmd -anchor w \
-	$row+2,1 $top.fileEntry -anchor w -fill x -cspan 3 
-    $top.toFile invoke
-    incr row 3
-    #table configure $top c4 -width .125i
-    button $top.cancel -text "Cancel" -command "destroy $top"
-    button $top.print -text "Done" -command "PrintPs $graph"
-    button $top.advanced -text "Options" -command "MarginDialog $graph"
-    table $top \
-	$row,1 $top.print  -width 1i -pady 2  \
-	$row,2 $top.advanced  -width 1i -pady 2 \
-	$row,3 $top.cancel  -width 1i -pady 2 -anchor w 
+    set menu [blt::combomenu $top.position.m -textvariable pageInfo(position)]
 
-    SetUnits "inches"
-    foreach label [info commands $top.*Label] {
-	$label configure -font $pageInfo(labelFont) -padx 4
-    }
+    $menu add -type command -text "Center" -value "1" \
+	-variable pageInfo(-position) -command { CenterPlot }
+    $menu add -type command -text "Origin" -value "0" \
+	-variable pageInfo(-position) -command { ApplyPs }
+    $menu add -type command -text "Move" -value "move" \
+ 	-variable pageInfo(-position) -command { MoveDialog }
+
+    set pageInfo(position) "Center"
+    blt::table $top \
+	$row,$col     $top.posLabel -anchor e \
+	$row,$col+1   $top.position -anchor e -fill x 
+    incr row 
+
+    blt::tk::label $top.previewLabel -text "Preview" -font "Arial 10 bold"
+    blt::combobutton $top.preview \
+	-textvariable pageInfo(preview)  \
+	-font { Arial 10 } \
+	-menu $top.preview.m
+
+    set pageInfo(preview) "No"
+    set menu [blt::combomenu $top.preview.m -textvariable pageInfo(preview)]
+    $menu add -type command -text "Yes" -value "1" \
+	-variable pageInfo(-preview) -command "ApplyPs"
+    $menu add -type command -text "No" -value "0" \
+	-variable pageInfo(-preview) -command "ApplyPs"
+
+    blt::table $top \
+	$row,$col     $top.previewLabel -anchor e \
+	$row,$col+1   $top.preview -anchor e -fill x 
+    incr row 
+
+    blt::tk::label $top.printLabel -text "Print To" -font "Arial 10 bold"
+    blt::combobutton $top.printer \
+	-textvariable pageInfo(printer)  \
+	-font { Arial 10 } -justify left \
+	-menu $top.printer.m
+
+    set menu [blt::combomenu $top.printer.m -textvariable pageInfo(printer)]
+    $menu add -type command -text "File" -value "printFile" \
+	-command "$top.fileEntry configure -textvariable pageInfo(printCmd)" \
+	-variable pageInfo(printTo) 
+
+    $menu add -type command -text "Command" -value "printCmd" \
+	-command "$top.fileEntry configure -textvariable pageInfo(printCmd)" \
+	-variable pageInfo(printTo) 
+    
+    entry $top.fileEntry -textvariable pageInfo(printTo)
+    $menu invoke "File" 
+
+    blt::table $top \
+	$row,$col     $top.printLabel -anchor e \
+	$row,$col+1   $top.printer -anchor e -fill x \
+	$row+1,1 $top.fileEntry -anchor w -fill x -cspan 3 
+    incr row 2
+
+
+    #blt::table configure $top c4 -width .125i
+    frame $top.frame 
+    button $top.frame.cancel -text "Cancel" -command "destroy $top"
+    button $top.frame.print -text "Ok" -command "PrintPs $graph"
+    blt::table $top.frame \
+	0,0 $top.frame.cancel -width 0.5i \
+	0,1 $top.frame.print  -width 0.5i
+
+    blt::table $top \
+	$row,$col     $top.frame -fill x -columnspan 2
+
+    blt::table configure $top r* -resize none -pady { 0 2 }
+    blt::table configure $top r1 -resize both
 }
 
 proc PrintPs { graph } {
@@ -593,6 +645,9 @@ proc ApplyPs { } {
 	set pageInfo($var) [ConvertUnits $pageInfo($var)]
     }
     SetOutline $graph.top.layout
+    if { ![info exists pageInfo(afterId)] } {
+	set pageInfo(afterId) [after idle ApplyWhenIdle]
+    }
 }
 
 proc StartChange { w delta } {
@@ -634,7 +689,7 @@ proc MakeSizeAdjustor { w label var } {
     bind $w.plus <ButtonRelease-1> { EndChange %W }
     bind $w.minus <ButtonPress-1>  { StartChange %W -0.1}
     bind $w.minus <ButtonRelease-1> { EndChange %W }
-    table $w \
+    blt::table $w \
 	0,1 $w.label \
 	1,1 $w.entry -rspan 2 -fill y \
 	1,0 $w.minus -padx 2 -pady 2 \
@@ -656,7 +711,7 @@ proc SizeDialog { graph title } {
     button $top.ok -text "Ok" -command "ApplyPs; destroy $top"
     MakeSizeAdjustor $top.plotWidth "Width" -width
     MakeSizeAdjustor $top.plotHeight "Height" -height
-    table $top \
+    blt::table $top \
 	0,0 $top.title -cspan 2 \
 	1,0 $top.plotWidth \
 	1,1 $top.plotHeight \
@@ -678,7 +733,7 @@ proc SizeDialog { graph title } {
 proc SetPlotSize { } {
     global pageInfo
     set graph $pageInfo(graph)
-    switch $pageInfo(plotSize) {
+    switch $pageInfo(-plotsize) {
 	default { 
 	    set pageInfo(-width) 0
 	    set pageInfo(-height) 0 
@@ -710,7 +765,7 @@ proc PaperSizeDialog { title } {
     MakeSizeAdjustor $top.height "Height" -paperheight
     button $top.cancel -text "Cancel" -command "destroy $top"
     button $top.ok -text "Ok" -command "ApplyPs; destroy $top"
-    table $top \
+    blt::table $top \
 	0,0 $top.title -cspan 2 \
 	1,0 $top.width \
 	1,1 $top.height \
@@ -731,12 +786,12 @@ proc MarginDialog { graph } {
 	-variable pageInfo(-colormode) -command "ApplyPs"
     radiobutton $top.greyscale -text "Greyscale" -value "greyscale" \
 	-variable pageInfo(-colormode) -command "ApplyPs"
-    table $top \
+    blt::table $top \
 	$row,$col   $top.modeLabel -anchor e \
 	$row,$col+1 $top.color -anchor w \
 	$row+1,$col+1 $top.greyscale -anchor w 
 
-    table configure $top r$row -pady { 4 0 }
+    blt::table configure $top r$row -pady { 4 0 }
 
     label $top.previewLabel -text "Preview"
     radiobutton $top.previewYes -text "Yes" -value "1" \
@@ -744,7 +799,7 @@ proc MarginDialog { graph } {
     radiobutton $top.previewNo -text "No" -value "0" \
 	-variable pageInfo(-preview) -command "ApplyPs"
     set col 2
-    table $top \
+    blt::table $top \
 	$row,$col   $top.previewLabel -anchor e \
 	$row,$col+1 $top.previewYes -anchor w \
 	$row+1,$col+1 $top.previewNo -anchor w 
@@ -752,7 +807,7 @@ proc MarginDialog { graph } {
 
     button $top.cancel -text "Cancel" -command "destroy $top"
     button $top.ok -text "Done" -command "PrintPs $graph"
-    table $top \
+    blt::table $top \
 	$row,0 $top.cancel -pady 4 -padx 4 -width 1i \
 	$row,1 $top.ok -pady 4 -padx 4 -width 1i
 	

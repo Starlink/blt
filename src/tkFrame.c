@@ -16,10 +16,10 @@
  */
 
 #include "bltInt.h"
+#include "bltBgStyle.h"
 
-#ifndef NO_TILEFRAME
+#ifndef NO_TKFRAME
 
-#include "bltTile.h"
 /*
  * Defaults for frames:
  */
@@ -49,8 +49,6 @@
 #define DEF_TOPLEVEL_CLASS		"Toplevel"
 #define DEF_TOPLEVEL_SCREEN		""
 #define DEF_TOPLEVEL_MENU		""
-
-extern Tk_CustomOption bltTileOption;
 
 /*
  * A data structure of the following type is kept for each
@@ -87,7 +85,7 @@ typedef struct {
     Colormap colormap;		/* If not None, identifies a colormap
 				 * allocated for this window, which must be
 				 * freed when the window is deleted. */
-    Tk_3DBorder border;		/* Structure used to draw 3-D border and
+    Blt_Background normalBg;  /* Structure used to draw 3-D border and
 				 * background.  NULL means no background
 				 * or border. */
     int borderWidth;		/* Width of 3-D border (if any). */
@@ -115,7 +113,6 @@ typedef struct {
 				 * windows this is NULL. */
     int flags;			/* Various flags;  see below for
 				 * definitions. */
-    Blt_Tile tile;
 } Frame;
 
 /*
@@ -136,73 +133,64 @@ typedef struct {
  * defaults for some configuration options for frames and toplevels.
  */
 
-#define FRAME		TK_CONFIG_USER_BIT
-#define TOPLEVEL	(TK_CONFIG_USER_BIT << 1)
+#define FRAME		BLT_CONFIG_USER_BIT
+#define TOPLEVEL	(BLT_CONFIG_USER_BIT << 1)
 #define BOTH		(FRAME | TOPLEVEL)
 
-static Tk_ConfigSpec configSpecs[] =
+static Blt_ConfigSpec configSpecs[] =
 {
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_FRAME_BACKGROUND, Tk_Offset(Frame, border),
-	BOTH | TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_FRAME_BG_MONO, Tk_Offset(Frame, border),
-	BOTH | TK_CONFIG_MONO_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_SYNONYM, "-bd", "borderWidth", (char *)NULL,
+    {BLT_CONFIG_BACKGROUND, "-background", "background", "Background",
+	DEF_FRAME_BACKGROUND, Blt_Offset(Frame, normalBg),
+	BOTH | BLT_CONFIG_COLOR_ONLY | BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BACKGROUND, "-background", "background", "Background",
+	DEF_FRAME_BG_MONO, Blt_Offset(Frame, normalBg),
+	BOTH | BLT_CONFIG_MONO_ONLY | BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_SYNONYM, "-bd", "borderWidth", (char *)NULL,
 	(char *)NULL, 0, BOTH},
-    {TK_CONFIG_SYNONYM, "-bg", "background", (char *)NULL,
+    {BLT_CONFIG_SYNONYM, "-bg", "background", (char *)NULL,
 	(char *)NULL, 0, BOTH},
-    {TK_CONFIG_PIXELS, "-borderwidth", "borderWidth", "BorderWidth",
-	DEF_FRAME_BORDERWIDTH, Tk_Offset(Frame, borderWidth), BOTH},
-    {TK_CONFIG_STRING, "-class", "class", "Class",
-	DEF_FRAME_CLASS, Tk_Offset(Frame, className), FRAME},
-    {TK_CONFIG_STRING, "-class", "class", "Class",
-	DEF_TOPLEVEL_CLASS, Tk_Offset(Frame, className), TOPLEVEL},
-    {TK_CONFIG_STRING, "-colormap", "colormap", "Colormap",
-	DEF_FRAME_COLORMAP, Tk_Offset(Frame, colormapName),
-	BOTH | TK_CONFIG_NULL_OK},
-#if (TK_MAJOR_VERSION > 4)
-    {TK_CONFIG_BOOLEAN, "-container", "container", "Container",
-	DEF_FRAME_CONTAINER, Tk_Offset(Frame, isContainer), BOTH},
-#endif /* TK_MAJOR_VERSION > 4 */
-    {TK_CONFIG_ACTIVE_CURSOR, "-cursor", "cursor", "Cursor",
-	DEF_FRAME_CURSOR, Tk_Offset(Frame, cursor), BOTH | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_PIXELS, "-height", "height", "Height",
-	DEF_FRAME_HEIGHT, Tk_Offset(Frame, height), BOTH},
-    {TK_CONFIG_COLOR, "-highlightbackground", "highlightBackground",
+    {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", "BorderWidth",
+	DEF_FRAME_BORDERWIDTH, Blt_Offset(Frame, borderWidth), BOTH},
+    {BLT_CONFIG_STRING, "-class", "class", "Class",
+	DEF_FRAME_CLASS, Blt_Offset(Frame, className), FRAME},
+    {BLT_CONFIG_STRING, "-class", "class", "Class",
+	DEF_TOPLEVEL_CLASS, Blt_Offset(Frame, className), TOPLEVEL},
+    {BLT_CONFIG_STRING, "-colormap", "colormap", "Colormap",
+	DEF_FRAME_COLORMAP, Blt_Offset(Frame, colormapName),
+	BOTH | BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BOOLEAN, "-container", "container", "Container",
+	DEF_FRAME_CONTAINER, Blt_Offset(Frame, isContainer), BOTH},
+    {BLT_CONFIG_ACTIVE_CURSOR, "-cursor", "cursor", "Cursor",
+	DEF_FRAME_CURSOR, Blt_Offset(Frame, cursor), BOTH | BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_PIXELS_NNEG, "-height", "height", "Height",
+	DEF_FRAME_HEIGHT, Blt_Offset(Frame, height), BOTH},
+    {BLT_CONFIG_COLOR, "-highlightbackground", "highlightBackground",
 	"HighlightBackground", DEF_FRAME_HIGHLIGHT_BG,
-	Tk_Offset(Frame, highlightBgColorPtr), BOTH},
-    {TK_CONFIG_COLOR, "-highlightcolor", "highlightColor", "HighlightColor",
-	DEF_FRAME_HIGHLIGHT, Tk_Offset(Frame, highlightColorPtr), BOTH},
-    {TK_CONFIG_PIXELS, "-highlightthickness", "highlightThickness",
-	"HighlightThickness",
-	DEF_FRAME_HIGHLIGHT_WIDTH, Tk_Offset(Frame, highlightWidth), BOTH},
-#if (TK_MAJOR_VERSION > 4)
-    {TK_CONFIG_STRING, "-menu", "menu", "Menu",
-	DEF_TOPLEVEL_MENU, Tk_Offset(Frame, menuName),
-	TOPLEVEL | TK_CONFIG_NULL_OK},
-#endif /* TK_MAJOR_VERSION > 4 */
-    {TK_CONFIG_RELIEF, "-relief", "relief", "Relief",
-	DEF_FRAME_RELIEF, Tk_Offset(Frame, relief), BOTH},
-    {TK_CONFIG_STRING, "-screen", "screen", "Screen",
-	DEF_TOPLEVEL_SCREEN, Tk_Offset(Frame, screenName),
-	TOPLEVEL | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_STRING, "-takefocus", "takeFocus", "TakeFocus",
-	DEF_FRAME_TAKE_FOCUS, Tk_Offset(Frame, takeFocus),
-	BOTH | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-tile", "tile", "Tile",
-	(char *)NULL, Tk_Offset(Frame, tile), BOTH | TK_CONFIG_NULL_OK,
-	&bltTileOption},
-#if (TK_MAJOR_VERSION > 4)
-    {TK_CONFIG_STRING, "-use", "use", "Use",
-	DEF_FRAME_USE, Tk_Offset(Frame, useThis), TOPLEVEL|TK_CONFIG_NULL_OK},
-#endif
-    {TK_CONFIG_STRING, "-visual", "visual", "Visual",
-	DEF_FRAME_VISUAL, Tk_Offset(Frame, visualName),
-	BOTH | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_PIXELS, "-width", "width", "Width",
-	DEF_FRAME_WIDTH, Tk_Offset(Frame, width), BOTH},
-    {TK_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
+	Blt_Offset(Frame, highlightBgColorPtr), BOTH},
+    {BLT_CONFIG_COLOR, "-highlightcolor", "highlightColor", "HighlightColor",
+	DEF_FRAME_HIGHLIGHT, Blt_Offset(Frame, highlightColorPtr), BOTH},
+    {BLT_CONFIG_PIXELS_NNEG, "-highlightthickness", "highlightThickness",
+	"HighlightThickness", DEF_FRAME_HIGHLIGHT_WIDTH, 
+	Blt_Offset(Frame, highlightWidth), BOTH},
+    {BLT_CONFIG_STRING, "-menu", "menu", "Menu",
+	DEF_TOPLEVEL_MENU, Blt_Offset(Frame, menuName),
+	TOPLEVEL | BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief",
+	DEF_FRAME_RELIEF, Blt_Offset(Frame, relief), BOTH},
+    {BLT_CONFIG_STRING, "-screen", "screen", "Screen",
+	DEF_TOPLEVEL_SCREEN, Blt_Offset(Frame, screenName),
+	TOPLEVEL | BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_STRING, "-takefocus", "takeFocus", "TakeFocus",
+	DEF_FRAME_TAKE_FOCUS, Blt_Offset(Frame, takeFocus),
+	BOTH | BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_STRING, "-use", "use", "Use",
+	DEF_FRAME_USE, Blt_Offset(Frame, useThis), TOPLEVEL|BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_STRING, "-visual", "visual", "Visual",
+	DEF_FRAME_VISUAL, Blt_Offset(Frame, visualName),
+	BOTH | BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_PIXELS_NNEG, "-width", "width", "Width",
+	DEF_FRAME_WIDTH, Blt_Offset(Frame, width), BOTH},
+    {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
 	(char *)NULL, 0, 0}
 };
 
@@ -210,93 +198,88 @@ static Tk_ConfigSpec configSpecs[] =
  * Forward declarations for procedures defined later in this file:
  */
 
-static int ConfigureFrame _ANSI_ARGS_((Tcl_Interp *interp,
-	Frame * framePtr, int argc, char **argv,
-	int flags));
-static void DestroyFrame _ANSI_ARGS_((DestroyData *memPtr));
-static void DisplayFrame _ANSI_ARGS_((ClientData clientData));
-static void FrameCmdDeletedProc _ANSI_ARGS_((
-	ClientData clientData));
-static void FrameEventProc _ANSI_ARGS_((ClientData clientData,
-	XEvent *eventPtr));
-static int FrameWidgetCmd _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, int argc, char **argv));
-static void MapFrame _ANSI_ARGS_((ClientData clientData));
+static int ConfigureFrame (Tcl_Interp *interp, Frame * framePtr, 
+	int objc, Tcl_Obj *const *objv, int flags);
 
-static Blt_TileChangedProc TileChangedProc;
-static Tcl_CmdProc FrameCmd, ToplevelCmd;
+static Tcl_FreeProc DestroyFrame;
+static Tcl_IdleProc DisplayFrame;
+static Tcl_CmdDeleteProc FrameCmdDeletedProc;
+static Tk_EventProc FrameEventProc;
+static Tcl_ObjCmdProc FrameWidgetCmd;
+static Tcl_IdleProc MapFrame;
 
-#ifdef TILE_MAINWINDOW
-EXTERN
+static Tcl_ObjCmdProc FrameCmd, ToplevelCmd;
+
+#ifdef TK_MAINWINDOW
+BLT_EXTERN 
 #else
 static
 #endif
-int TkCreateFrame _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, int argc, char **argv,
-	int toplevel, char *appName));
+int TkCreateFrame (ClientData clientData, Tcl_Interp *interp, int objc, 
+	Tcl_Obj *const *objv, int toplevel, char *appName);
 
-EXTERN void TkSetWindowMenuBar _ANSI_ARGS_((Tcl_Interp *interp, Tk_Window tkwin,
-        char *oldMenuName, char *menuName));
+#ifndef USE_TK_STUBS
+BLT_EXTERN void TkSetWindowMenuBar (Tcl_Interp *interp, Tk_Window tkwin,
+        char *oldMenuName, char *menuName);
 
-EXTERN Tk_Window TkCreateMainWindow _ANSI_ARGS_((Tcl_Interp * interp, 
-	char * screenName, char * baseName));
-#if (TK_MAJOR_VERSION == 8) && (TK_MINOR_VERSION > 3)
+BLT_EXTERN Tk_Window TkCreateMainWindow (Tcl_Interp * interp, 
+	char *screenName, char *baseName);
+#if (_TK_VERSION >= _VERSION(8,4,0)) 
 #define TkSetClassProcs	Tk_SetClassProcs
 #else 
-EXTERN void TkSetClassProcs _ANSI_ARGS_((Tk_Window tkwin, void *procs, 
-	ClientData instanceData));
+BLT_EXTERN void TkSetClassProcs (Tk_Window tkwin, void *procs, 
+	ClientData instanceData);
 #endif /* TK_MAJOR_VERSION == 8 && TK_MINOR_VERSION > 3 */
 
-EXTERN void TkpSetMainMenubar _ANSI_ARGS_((Tcl_Interp * interp, Tk_Window tkwin,
-	char * menuName));
-EXTERN int TkpUseWindow _ANSI_ARGS_((Tcl_Interp * interp, Tk_Window tkwin, 
-	char * string));
-EXTERN void TkpMakeContainer _ANSI_ARGS_((Tk_Window tkwin));
-
+BLT_EXTERN void TkpSetMainMenubar (Tcl_Interp * interp, Tk_Window tkwin, 
+	char *menuName);
+BLT_EXTERN int TkpUseWindow (Tcl_Interp * interp, Tk_Window tkwin, char * string);
+BLT_EXTERN void TkpMakeContainer (Tk_Window tkwin);
+#endif
+
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * FrameCmd, ToplevelCmd --
  *
  *	These procedures are invoked to process the "frame" and
- *	"toplevel" Tcl commands.  See the user documentation for
+ *	"toplevel" TCL commands.  See the user documentation for
  *	details on what they do.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.  These procedures are just wrappers;
  *	they call ButtonCreate to do all of the real work.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-
 static int
-FrameCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Main window associated with
+FrameCmd(
+    ClientData clientData,	/* Main window associated with
 				 * interpreter. */
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
+    Tcl_Interp *interp,		/* Current interpreter. */
+    int objc,			/* Number of arguments. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
-    return TkCreateFrame(clientData, interp, argc, argv, 0, (char *)NULL);
+    return TkCreateFrame(clientData, interp, objc, objv, 0, (char *)NULL);
 }
 
 static int
-ToplevelCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Main window associated with
+ToplevelCmd(
+    ClientData clientData,	/* Main window associated with
 				 * interpreter. */
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
+    Tcl_Interp *interp,		/* Current interpreter. */
+    int objc,			/* Number of arguments. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
-    return TkCreateFrame(clientData, interp, argc, argv, 1, (char *)NULL);
+    return TkCreateFrame(clientData, interp, objc, objv, 1, (char *)NULL);
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * TkFrameCreate --
  *
@@ -306,44 +289,45 @@ ToplevelCmd(clientData, interp, argc, argv)
  *	and "toplevel" commands for details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 /*ARGSUSED*/
-#ifndef TILE_MAINWINDOW
+#ifndef TK_MAINWINDOW
 static
-#endif /* TILE_MAINWINDOW */
+#endif /* TK_MAINWINDOW */
 int
-TkCreateFrame(clientData, interp, argc, argv, toplevel, appName)
-    ClientData clientData;	/* Main window associated with interpreter.
+TkCreateFrame(
+    ClientData clientData,	/* Main window associated with interpreter.
 				 * If we're called by Tk_Init to create a
 				 * new application, then this is NULL. */
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
-    int toplevel;		/* Non-zero means create a toplevel window,
+    Tcl_Interp *interp,		/* Current interpreter. */
+    int objc,			/* Number of arguments. */
+    Tcl_Obj *const *objv,		/* Argument strings. */
+    int toplevel,		/* Non-zero means create a toplevel window,
 				 * zero means create a frame. */
-    char *appName;		/* Should only be non-NULL if clientData is
+    char *appName)		/* Should only be non-NULL if clientData is
 				 * NULL:  gives the base name to use for the
 				 * new application. */
 {
     Frame *framePtr;
     Tk_Window new;
-    char *className, *screenName, *visualName, *colormapName, *arg, *useOption;
-    int i, c, length, depth;
+    const char *className, *screenName, *visualName, *colormapName, *arg, 
+	*useOption;
+    int i, c, depth;
     unsigned int mask;
     Colormap colormap;
     Visual *visual;
     Tk_Window tkwin;
 
-    if (argc < 2) {
+    if (objc < 2) {
 	Tcl_AppendResult(interp, "wrong # args: should be \"",
-	    argv[0], " pathName ?options?\"", (char *)NULL);
+	    objv[0], " pathName ?options?\"", (char *)NULL);
 	return TCL_ERROR;
     }
     /*
@@ -355,28 +339,28 @@ TkCreateFrame(clientData, interp, argc, argv, toplevel, appName)
 
     className = colormapName = screenName = visualName = useOption = NULL;
     colormap = None;
-    for (i = 2; i < argc; i += 2) {
-	arg = argv[i];
-	length = strlen(arg);
+    for (i = 2; i < objc; i += 2) {
+	int length;
+
+	arg = Tcl_GetStringFromObj(objv[i], &length);
 	if (length < 2) {
 	    continue;
 	}
 	c = arg[1];
-	if ((c == 'c') && (strncmp(arg, "-class", strlen(arg)) == 0)
+	if ((c == 'c') && (strncmp(arg, "-class", length) == 0)
 	    && (length >= 3)) {
-	    className = argv[i + 1];
+	    className = Tcl_GetString(objv[i + 1]);
 	} else if ((c == 'c')
-	    && (strncmp(arg, "-colormap", strlen(arg)) == 0)) {
-	    colormapName = argv[i + 1];
-	} else if ((c == 's') && toplevel
-	    && (strncmp(arg, "-screen", strlen(arg)) == 0)) {
-	    screenName = argv[i + 1];
-	} else if ((c == 'u') && toplevel
-	    && (strncmp(arg, "-use", strlen(arg)) == 0)) {
-	    useOption = argv[i + 1];
-	} else if ((c == 'v')
-	    && (strncmp(arg, "-visual", strlen(arg)) == 0)) {
-	    visualName = argv[i + 1];
+	    && (strncmp(arg, "-colormap", length) == 0)) {
+	    colormapName = Tcl_GetString(objv[i + 1]);
+	} else if ((c == 's') && (toplevel) && 
+		   (strncmp(arg, "-screen", length) == 0)) {
+	    screenName = Tcl_GetString(objv[i + 1]);
+	} else if ((c == 'u') && (toplevel) && 
+		   (strncmp(arg, "-use", length) == 0)) {
+	    useOption = Tcl_GetString(objv[i + 1]);
+	} else if ((c == 'v') && (strncmp(arg, "-visual", length) == 0)) {
+	    visualName = Tcl_GetString(objv[i + 1]);
 	}
     }
 
@@ -400,7 +384,8 @@ TkCreateFrame(clientData, interp, argc, argv, toplevel, appName)
     }
     tkwin = Tk_MainWindow(interp);
     if (tkwin != NULL) {
-	new = Tk_CreateWindowFromPath(interp, tkwin, argv[1], screenName);
+	new = Tk_CreateWindowFromPath(interp, tkwin, Tcl_GetString(objv[1]), 
+		screenName);
     } else {
 	/*
 	 * We were called from Tk_Init;  create a new application.
@@ -409,7 +394,7 @@ TkCreateFrame(clientData, interp, argc, argv, toplevel, appName)
 	if (appName == NULL) {
 	    panic("TkCreateFrame didn't get application name");
 	}
-	new = (Tk_Window)TkCreateMainWindow(interp, screenName, appName);
+	new = (Tk_Window)TkCreateMainWindow(interp, (char *)screenName,appName);
     }
     if (new == NULL) {
 	goto error;
@@ -421,16 +406,14 @@ TkCreateFrame(clientData, interp, argc, argv, toplevel, appName)
 	}
     }
     Tk_SetClass(new, className);
-#if (TK_MAJOR_VERSION > 4)
     if (useOption == NULL) {
-	useOption = (char *)Tk_GetOption(new, "use", "Use");
+	useOption = Tk_GetOption(new, "use", "Use");
     }
     if (useOption != NULL) {
-	if (TkpUseWindow(interp, new, useOption) != TCL_OK) {
+	if (TkpUseWindow(interp, new, (char *)useOption) != TCL_OK) {
 	    goto error;
 	}
     }
-#endif
     if (visualName == NULL) {
 	visualName = (char *)Tk_GetOption(new, "visual", "Visual");
     }
@@ -467,51 +450,29 @@ TkCreateFrame(clientData, interp, argc, argv, toplevel, appName)
      * in the widget record from the special options.
      */
 
-    framePtr = Blt_Malloc(sizeof(Frame));
+    framePtr = Blt_AssertCalloc(1, sizeof(Frame));
     framePtr->tkwin = new;
     framePtr->display = Tk_Display(new);
     framePtr->interp = interp;
-    framePtr->widgetCmd = Tcl_CreateCommand(interp,
-	Tk_PathName(new), FrameWidgetCmd,
-	(ClientData)framePtr, FrameCmdDeletedProc);
-    framePtr->className = NULL;
+    framePtr->widgetCmd = Tcl_CreateObjCommand(interp, Tk_PathName(new), 
+	FrameWidgetCmd, (ClientData)framePtr, FrameCmdDeletedProc);
     framePtr->mask = (toplevel) ? TOPLEVEL : FRAME;
-    framePtr->screenName = NULL;
-    framePtr->visualName = NULL;
-    framePtr->colormapName = NULL;
     framePtr->colormap = colormap;
-    framePtr->border = NULL;
     framePtr->borderWidth = 0;
     framePtr->relief = TK_RELIEF_FLAT;
-    framePtr->highlightWidth = 0;
-    framePtr->highlightBgColorPtr = NULL;
-    framePtr->highlightColorPtr = NULL;
-    framePtr->width = 0;
-    framePtr->height = 0;
-    framePtr->cursor = None;
-    framePtr->takeFocus = NULL;
-    framePtr->isContainer = 0;
-    framePtr->useThis = NULL;
-    framePtr->flags = 0;
-    framePtr->tile = NULL;
-    framePtr->menuName = NULL;
 
-#if (TK_MAJOR_VERSION > 4)
     /*
      * Store backreference to frame widget in window structure.
      */
     TkSetClassProcs(new, NULL, (ClientData)framePtr);
-#endif
-
     mask = ExposureMask | StructureNotifyMask | FocusChangeMask;
     if (toplevel) {
 	mask |= ActivateMask;
     }
     Tk_CreateEventHandler(new, mask, FrameEventProc, (ClientData)framePtr);
-    if (ConfigureFrame(interp, framePtr, argc - 2, argv + 2, 0) != TCL_OK) {
+    if (ConfigureFrame(interp, framePtr, objc - 2, objv + 2, 0) != TCL_OK) {
 	goto error;
     }
-#if (TK_MAJOR_VERSION > 4)
     if ((framePtr->isContainer)) {
 	if (framePtr->useThis == NULL) {
 	    TkpMakeContainer(framePtr->tkwin);
@@ -521,11 +482,10 @@ TkCreateFrame(clientData, interp, argc, argv, toplevel, appName)
 	    return TCL_ERROR;
 	}
     }
-#endif
     if (toplevel) {
 	Tcl_DoWhenIdle(MapFrame, (ClientData)framePtr);
     }
-    Tcl_SetResult(interp, Tk_PathName(new), TCL_VOLATILE);
+    Tcl_SetStringObj(Tcl_GetObjResult(interp), Tk_PathName(new), -1);
     return TCL_OK;
 
   error:
@@ -534,101 +494,96 @@ TkCreateFrame(clientData, interp, argc, argv, toplevel, appName)
     }
     return TCL_ERROR;
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * FrameWidgetCmd --
  *
- *	This procedure is invoked to process the Tcl command
+ *	This procedure is invoked to process the TCL command
  *	that corresponds to a frame widget.  See the user
  *	documentation for details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static int
-FrameWidgetCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Information about frame widget. */
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
+FrameWidgetCmd(ClientData clientData, Tcl_Interp *interp, int objc,
+	       Tcl_Obj *const *objv)
 {
     register Frame *framePtr = (Frame *) clientData;
     int result;
-    size_t length;
+    int length;
     int c, i;
+    char *string;
 
-    if (argc < 2) {
+    if (objc < 2) {
 	Tcl_AppendResult(interp, "wrong # args: should be \"",
-	    argv[0], " option ?arg arg ...?\"", (char *)NULL);
+		Tcl_GetString(objv[0]), " option ?arg arg ...?\"", 
+		(char *)NULL);
 	return TCL_ERROR;
     }
     Tcl_Preserve((ClientData)framePtr);
-    c = argv[1][0];
-    length = strlen(argv[1]);
-    if ((c == 'c') && (strncmp(argv[1], "cget", length) == 0)
-	&& (length >= 2)) {
-	if (argc != 3) {
+    string = Tcl_GetStringFromObj(objv[1], &length);
+    c = string[0];
+    if ((c == 'c') && (length >= 2) && (strncmp(string, "cget", length) == 0)) {
+	if (objc != 3) {
 	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " cget option\"",
-		(char *)NULL);
+		Tcl_GetString(objv[0]), " cget option\"", (char *)NULL);
 	    result = TCL_ERROR;
 	    goto done;
 	}
-	result = Tk_ConfigureValue(interp, framePtr->tkwin, configSpecs,
-	    (char *)framePtr, argv[2], framePtr->mask);
-    } else if ((c == 'c') && (strncmp(argv[1], "configure", length) == 0)
-	&& (length >= 2)) {
-	if (argc == 2) {
-	    result = Tk_ConfigureInfo(interp, framePtr->tkwin, configSpecs,
-		(char *)framePtr, (char *)NULL, framePtr->mask);
-	} else if (argc == 3) {
-	    result = Tk_ConfigureInfo(interp, framePtr->tkwin, configSpecs,
-		(char *)framePtr, argv[2], framePtr->mask);
+	result = Blt_ConfigureValueFromObj(interp, framePtr->tkwin, configSpecs,
+	    (char *)framePtr, objv[2], framePtr->mask);
+    } else if ((c == 'c') && (length >= 2) 
+	       && (strncmp(string, "configure", length) == 0)) {
+	if (objc == 2) {
+	    result = Blt_ConfigureInfoFromObj(interp, framePtr->tkwin, 
+		configSpecs, (char *)framePtr, (Tcl_Obj *)NULL, framePtr->mask);
+	} else if (objc == 3) {
+	    result = Blt_ConfigureInfoFromObj(interp, framePtr->tkwin, 
+		configSpecs, (char *)framePtr, objv[2], framePtr->mask);
 	} else {
 	    /*
 	     * Don't allow the options -class, -colormap, -container,
 	     * -newcmap, -screen, -use, or -visual to be changed.
 	     */
 
-	    for (i = 2; i < argc; i++) {
-		length = strlen(argv[i]);
+	    for (i = 2; i < objc; i++) {
+		string = Tcl_GetStringFromObj(objv[i], &length);
 		if (length < 2) {
 		    continue;
 		}
-		c = argv[i][1];
-		if (((c == 'c') && (strncmp(argv[i], "-class", length) == 0)
-			&& (length >= 2))
-		    || ((c == 'c') && (framePtr->mask == TOPLEVEL)
-			&& (strncmp(argv[i], "-colormap", length) == 0)
-			&& (length >= 3))
-		    || ((c == 'c')
-			&& (strncmp(argv[i], "-container", length) == 0)
+		c = string[1];
+		if (((c == 'c') && (strncmp(string, "-class", length) == 0)) ||
+		    ((c == 'c') && (framePtr->mask == TOPLEVEL) && 
+		     (length >= 3) && 
+		     (strncmp(string, "-colormap", length) == 0)) || 
+		    ((c == 'c') && (strncmp(string, "-container", length) == 0)
 			&& (length >= 3))
 		    || ((c == 's') && (framePtr->mask == TOPLEVEL)
-			&& (strncmp(argv[i], "-screen", length) == 0))
+			&& (strncmp(string, "-screen", length) == 0))
 		    || ((c == 'u') && (framePtr->mask == TOPLEVEL)
-			&& (strncmp(argv[i], "-use", length) == 0))
+			&& (strncmp(string, "-use", length) == 0))
 		    || ((c == 'v') && (framePtr->mask == TOPLEVEL)
-			&& (strncmp(argv[i], "-visual", length) == 0))) {
-		    Tcl_AppendResult(interp, "can't modify ", argv[i],
+			&& (strncmp(string, "-visual", length) == 0))) {
+		    Tcl_AppendResult(interp, "can't modify ", string,
 			" option after widget is created", (char *)NULL);
 		    result = TCL_ERROR;
 		    goto done;
 		}
 	    }
-	    result = ConfigureFrame(interp, framePtr, argc - 2, argv + 2,
-		TK_CONFIG_ARGV_ONLY);
+	    result = ConfigureFrame(interp, framePtr, objc - 2, objv + 2,
+		BLT_CONFIG_OBJV_ONLY);
 	}
     } else {
-	Tcl_AppendResult(interp, "bad option \"", argv[1],
+	Tcl_AppendResult(interp, "bad option \"", string,
 	    "\": must be cget or configure", (char *)NULL);
 	result = TCL_ERROR;
     }
@@ -637,9 +592,9 @@ FrameWidgetCmd(clientData, interp, argc, argv)
     Tcl_Release((ClientData)framePtr);
     return result;
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DestroyFrame --
  *
@@ -653,63 +608,33 @@ FrameWidgetCmd(clientData, interp, argc, argv)
  * Side effects:
  *	Everything associated with the frame is freed up.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-DestroyFrame(memPtr)
-    DestroyData *memPtr;	/* Info about frame widget. */
+DestroyFrame(DestroyData memPtr)	/* Info about frame widget. */
 {
     register Frame *framePtr = (Frame *) memPtr;
     
-    Tk_FreeOptions(configSpecs, (char *)framePtr, framePtr->display,
+    Blt_FreeOptions(configSpecs, (char *)framePtr, framePtr->display,
 	framePtr->mask);
-    if (framePtr->tile != NULL) {
-	Blt_FreeTile(framePtr->tile);
-    }
     if (framePtr->colormap != None) {
 	Tk_FreeColormap(framePtr->display, framePtr->colormap);
     }
     Blt_Free(framePtr);
 }
-
-/*
- *----------------------------------------------------------------------
- *
- * TileChangedProc
- *
- * Results:
- *	None.
- *
- *----------------------------------------------------------------------
- */
-/* ARGSUSED */
-static void
-TileChangedProc(clientData, tile)
-    ClientData clientData;
-    Blt_Tile tile;
-{
-    Frame *framePtr = (Frame *) clientData;
-
-    if (framePtr->tkwin != NULL) {
-	if (!(framePtr->flags & REDRAW_PENDING)) {
-	    Tcl_DoWhenIdle(DisplayFrame, (ClientData)framePtr);
-	    framePtr->flags |= REDRAW_PENDING;
-	}
-    }
-}
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ConfigureFrame --
  *
- *	This procedure is called to process an argv/argc list, plus
+ *	This procedure is called to process an objv/objc list, plus
  *	the Tk option database, in order to configure (or
  *	reconfigure) a frame widget.
  *
  * Results:
- *	The return value is a standard Tcl result.  If TCL_ERROR is
+ *	The return value is a standard TCL result.  If TCL_ERROR is
  *	returned, then interp->result contains an error message.
  *
  * Side effects:
@@ -717,19 +642,17 @@ TileChangedProc(clientData, tile)
  *	etc. get set for framePtr;  old resources get freed, if there
  *	were any.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-
 static int
-ConfigureFrame(interp, framePtr, argc, argv, flags)
-    Tcl_Interp *interp;		/* Used for error reporting. */
-    register Frame *framePtr;	/* Information about widget;  may or may
+ConfigureFrame(
+    Tcl_Interp *interp,		/* Used for error reporting. */
+    register Frame *framePtr,	/* Information about widget;  may or may
 				 * not already have values for some fields. */
-    int argc;			/* Number of valid entries in argv. */
-    char **argv;		/* Arguments. */
-    int flags;			/* Flags to pass to Tk_ConfigureWidget. */
+    int objc,			/* Number of valid entries in objv. */
+    Tcl_Obj *const *objv,	/* Arguments. */
+    int flags)			/* Flags to pass to Blt_ConfigureWidget. */
 {
-#if (TK_MAJOR_VERSION > 4)
     char *oldMenuName;
 
     /*
@@ -739,20 +662,12 @@ ConfigureFrame(interp, framePtr, argc, argv, flags)
     if (framePtr->menuName == NULL) {
 	oldMenuName = NULL;
     } else {
-	oldMenuName = Blt_Malloc(strlen(framePtr->menuName) + 1);
-	strcpy(oldMenuName, framePtr->menuName);
+	oldMenuName = Blt_AssertStrdup(framePtr->menuName);
     }
-#endif /* TK_MAJOR_VERSION > 4 */
-
-    if (Tk_ConfigureWidget(interp, framePtr->tkwin, configSpecs,
-	    argc, argv, (char *)framePtr, flags | framePtr->mask) != TCL_OK) {
+    if (Blt_ConfigureWidgetFromObj(interp, framePtr->tkwin, configSpecs,
+	    objc, objv, (char *)framePtr, flags | framePtr->mask) != TCL_OK) {
 	return TCL_ERROR;
     }
-    if (framePtr->tile != NULL) {
-	Blt_SetTileChangedProc(framePtr->tile, TileChangedProc,
-	    (ClientData)framePtr);
-    }
-#if (TK_MAJOR_VERSION > 4)
     if (((oldMenuName == NULL) && (framePtr->menuName != NULL))
 	|| ((oldMenuName != NULL) && (framePtr->menuName == NULL))
 	|| ((oldMenuName != NULL) && (framePtr->menuName != NULL)
@@ -760,12 +675,14 @@ ConfigureFrame(interp, framePtr, argc, argv, flags)
 	TkSetWindowMenuBar(interp, framePtr->tkwin, oldMenuName,
 	    framePtr->menuName);
     }
-#endif /* TK_MAJOR_VERSION > 4 */
-    if (framePtr->border != NULL) {
-	Tk_SetBackgroundFromBorder(framePtr->tkwin, framePtr->border);
+#ifdef notdef
+    if (framePtr->normalBg != NULL) {
+	Tk_SetBackgroundFromBorder(framePtr->tkwin, framePtr->normalBg);
     } else {
 	Tk_SetWindowBackgroundPixmap(framePtr->tkwin, None);
     }
+#endif
+    Tk_SetWindowBackgroundPixmap(framePtr->tkwin, None);
     if (framePtr->highlightWidth < 0) {
 	framePtr->highlightWidth = 0;
     }
@@ -775,12 +692,9 @@ ConfigureFrame(interp, framePtr, argc, argv, flags)
 	Tk_GeometryRequest(framePtr->tkwin, framePtr->width,
 	    framePtr->height);
     }
-#if (TK_MAJOR_VERSION > 4)
     if (oldMenuName != NULL) {
 	Blt_Free(oldMenuName);
     }
-#endif /* TK_MAJOR_VERSION > 4 */
-
     if (Tk_IsMapped(framePtr->tkwin)) {
 	if (!(framePtr->flags & REDRAW_PENDING)) {
 	    Tcl_DoWhenIdle(DisplayFrame, (ClientData)framePtr);
@@ -789,9 +703,9 @@ ConfigureFrame(interp, framePtr, argc, argv, flags)
     }
     return TCL_OK;
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DisplayFrame --
  *
@@ -804,11 +718,10 @@ ConfigureFrame(interp, framePtr, argc, argv, flags)
  *	Commands are output to X to display the frame in its
  *	current mode.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DisplayFrame(clientData)
-    ClientData clientData;	/* Information about widget. */
+DisplayFrame(ClientData clientData) /* Information about widget. */
 {
     register Frame *framePtr = (Frame *) clientData;
     register Tk_Window tkwin = framePtr->tkwin;
@@ -819,27 +732,11 @@ DisplayFrame(clientData)
 	|| framePtr->isContainer) {
 	return;
     }
-    if (framePtr->tile == NULL) {
-	Blt_Fill3DRectangle(tkwin, Tk_WindowId(tkwin),
-	    framePtr->border, framePtr->highlightWidth,
-	    framePtr->highlightWidth,
-	    Tk_Width(tkwin) - 2 * framePtr->highlightWidth,
-	    Tk_Height(tkwin) - 2 * framePtr->highlightWidth,
-	    framePtr->borderWidth, framePtr->relief);
-    } else {
-	Blt_SetTileOrigin(tkwin, framePtr->tile, 0, 0);
-	Blt_TileRectangle(tkwin, Tk_WindowId(tkwin), framePtr->tile, 0, 0, 
-		Tk_Width(tkwin), Tk_Height(tkwin));
-	if ((framePtr->border != NULL) && 
-	    (framePtr->relief != TK_RELIEF_FLAT)) {
-	    Blt_Draw3DRectangle(tkwin, Tk_WindowId(tkwin),
-		framePtr->border, framePtr->highlightWidth,
-		framePtr->highlightWidth,
-		Tk_Width(tkwin) - 2 * framePtr->highlightWidth,
-		Tk_Height(tkwin) - 2 * framePtr->highlightWidth,
-		framePtr->borderWidth, framePtr->relief);
-	}
-    }
+    Blt_FillBackgroundRectangle(tkwin, Tk_WindowId(tkwin), framePtr->normalBg, 
+	framePtr->highlightWidth, framePtr->highlightWidth,
+	Tk_Width(tkwin) - 2 * framePtr->highlightWidth,
+	Tk_Height(tkwin) - 2 * framePtr->highlightWidth,
+	framePtr->borderWidth, framePtr->relief);
     if (framePtr->highlightWidth != 0) {
 	if (framePtr->flags & GOT_FOCUS) {
 	    gc = Tk_GCForColor(framePtr->highlightColorPtr,
@@ -852,9 +749,9 @@ DisplayFrame(clientData)
 	    Tk_WindowId(tkwin));
     }
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * FrameEventProc --
  *
@@ -869,13 +766,13 @@ DisplayFrame(clientData)
  *	When the window gets deleted, internal structures get
  *	cleaned up.  When it gets exposed, it is redisplayed.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-FrameEventProc(clientData, eventPtr)
-    ClientData clientData;	/* Information about window. */
-    register XEvent *eventPtr;	/* Information about event. */
+FrameEventProc(
+    ClientData clientData,	/* Information about window. */
+    register XEvent *eventPtr)	/* Information about event. */
 {
     register Frame *framePtr = (Frame *) clientData;
 
@@ -883,14 +780,12 @@ FrameEventProc(clientData, eventPtr)
 	|| (eventPtr->type == ConfigureNotify)) {
 	goto redraw;
     } else if (eventPtr->type == DestroyNotify) {
-#if (TK_MAJOR_VERSION > 4)
 	if (framePtr->menuName != NULL) {
 	    TkSetWindowMenuBar(framePtr->interp, framePtr->tkwin,
 		framePtr->menuName, NULL);
 	    Blt_Free(framePtr->menuName);
 	    framePtr->menuName = NULL;
 	}
-#endif /* TK_MAJOR_VERSION > 4 */
 	if (framePtr->tkwin != NULL) {
 
 	    /*
@@ -927,11 +822,9 @@ FrameEventProc(clientData, eventPtr)
 		goto redraw;
 	    }
 	}
-#if (TK_MAJOR_VERSION > 4)
     } else if (eventPtr->type == ActivateNotify) {
 	TkpSetMainMenubar(framePtr->interp, framePtr->tkwin,
 	    framePtr->menuName);
-#endif /* TK_MAJOR_VERSION > 4 */
     }
     return;
 
@@ -941,9 +834,9 @@ FrameEventProc(clientData, eventPtr)
 	framePtr->flags |= REDRAW_PENDING;
     }
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * FrameCmdDeletedProc --
  *
@@ -957,24 +850,21 @@ FrameEventProc(clientData, eventPtr)
  * Side effects:
  *	The widget is destroyed.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-
 static void
-FrameCmdDeletedProc(clientData)
-    ClientData clientData;	/* Pointer to widget record for widget. */
+FrameCmdDeletedProc(ClientData clientData) /* Pointer to widget record
+					      for widget. */
 {
     Frame *framePtr = (Frame *) clientData;
     Tk_Window tkwin = framePtr->tkwin;
 
-#if (TK_MAJOR_VERSION > 4)
     if (framePtr->menuName != NULL) {
 	TkSetWindowMenuBar(framePtr->interp, framePtr->tkwin,
 	    framePtr->menuName, NULL);
 	Blt_Free(framePtr->menuName);
 	framePtr->menuName = NULL;
     }
-#endif /* TK_MAJOR_VERSION > 4 */
 
     /*
      * This procedure could be invoked either because the window was
@@ -988,9 +878,9 @@ FrameCmdDeletedProc(clientData)
 	Tk_DestroyWindow(tkwin);
     }
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * MapFrame --
  *
@@ -1003,12 +893,10 @@ FrameCmdDeletedProc(clientData)
  * Side effects:
  *	The frame given by the clientData argument is mapped.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-
 static void
-MapFrame(clientData)
-    ClientData clientData;	/* Pointer to frame structure. */
+MapFrame(ClientData clientData)	/* Pointer to frame structure. */
 {
     Frame *framePtr = (Frame *) clientData;
 
@@ -1037,9 +925,9 @@ MapFrame(clientData)
     Tk_MapWindow(framePtr->tkwin);
     Tcl_Release((ClientData)framePtr);
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * TkInstallFrameMenu --
  *
@@ -1055,15 +943,12 @@ MapFrame(clientData)
  *	The system menu (if any) is created for the menubar
  *	associated with this frame.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-
 #ifdef notdef	
 void
-TkInstallFrameMenu(tkwin)
-    Tk_Window tkwin;		/* The window that was just created. */
+TkInstallFrameMenu(Tk_Window tkwin) /* The window that was just created. */
 {
-#if (TK_MAJOR_VERSION > 4)
 #define Tk_InstanceData(tkwin)	(((Tk_FakeWin *)(tkwin))->dummy18)
 #define Tk_MainPtr(tkwin)	(((Tk_FakeWin *)(tkwin))->dummy5)
     if (Tk_MainPtr(tkwin) != NULL) {
@@ -1072,26 +957,18 @@ TkInstallFrameMenu(tkwin)
 	framePtr = (Frame *) Tk_InstanceData(tkwin);
 	TkpMenuNotifyToplevelCreate(framePtr->interp, framePtr->menuName);
     }
-#endif /* TK_MAJOR_VERSION > 4 */
 }
 
 #endif
 
 int
-Blt_FrameInit(interp)
-    Tcl_Interp *interp;
+Blt_FrameCmdInitProc(Tcl_Interp *interp)
 {
-    static Blt_CmdSpec cmdSpecs[2] =
-    {
-#if HAVE_NAMESPACES
+    static Blt_InitCmdSpec cmdSpecs[2] = {
 	{"frame", FrameCmd,},
 	{"toplevel", ToplevelCmd,},
-#else
-	{"tileframe", FrameCmd,},
-	{"tiletoplevel", ToplevelCmd,},
-#endif /* HAVE_NAMESPACES */
     };
-    return Blt_InitCmds(interp, "blt::tile", cmdSpecs, 2);
+    return Blt_InitCmds(interp, "::blt::tk", cmdSpecs, 2);
 }
 
-#endif /* NO_TILEFRAME */
+#endif /* NO_TKFRAME */

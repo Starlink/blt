@@ -1,40 +1,70 @@
+
 /*
- *  bltDnd.c --
+ * bltDragdrop.c --
  *
- *	This module implements a drag-and-drop mechanism for the Tk
- *	Toolkit.  Allows widgets to be registered as drag&drop sources
- *	and targets for handling "drag-and-drop" operations between
- *	Tcl/Tk applications.
+ * This module implements a drag-and-drop mechanism for the Tk Toolkit.
+ * Allows widgets to be registered as drag&drop sources and targets for
+ * handling "drag-and-drop" operations between Tcl/Tk applications.
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ * The "drag&drop" command was created by Michael J. McLennan.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Copyright 1993-1998 Lucent Technologies, Inc.
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	Permission to use, copy, modify, and distribute this software
+ *	and its documentation for any purpose and without fee is
+ *	hereby granted, provided that the above copyright notice
+ *	appear in all copies and that both that the copyright notice
+ *	and warranty disclaimer appear in supporting documentation,
+ *	and that the names of Lucent Technologies any of their
+ *	entities not be used in advertising or publicity pertaining to
+ *	distribution of the software without specific, written prior
+ *	permission.
  *
- *	The "drag&drop" command was created by Michael J. McLennan.
+ *	Lucent Technologies disclaims all warranties with regard to
+ *	this software, including all implied warranties of
+ *	merchantability and fitness.  In no event shall Lucent
+ *	Technologies be liable for any special, indirect or
+ *	consequential damages or any damages whatsoever resulting from
+ *	loss of use, data or profits, whether in an action of
+ *	contract, negligence or other tortuous action, arising out of
+ *	or in connection with the use or performance of this software.
+ *
+ *	Copyright 1998-2004 George A Howlett.
+ *
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
+ *
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
  */
 #include "bltInt.h"
 
+
 #ifndef NO_DRAGDROP
+#include "bltOp.h"
 #include "bltHash.h"
 #include "bltChain.h"
-
 #include <X11/Xatom.h>
+#include "tkDisplay.h"
+
+#define DRAGDROP_THREAD_KEY "BLT Dragdrop Command Data"
 
 #ifdef WIN32
 #define MAX_PROP_SIZE 255	/* Maximum size of property. */
@@ -48,7 +78,7 @@ static Atom dndAtom;
 /*
  *	Each "drag&drop" target widget is tagged with a "BltDrag&DropTarget" 
  *	property in XA_STRING format.  This property identifies the window 
- *	as a "drag&drop" target.  It's formated as a Tcl list and contains
+ *	as a "drag&drop" target.  It's formated as a TCL list and contains
  *	the following information:
  *
  *	    "INTERP_NAME TARGET_NAME DATA_TYPE DATA_TYPE ..."
@@ -77,53 +107,48 @@ static Atom dndAtom;
  *  CONFIG PARAMETERS
  */
 #define DEF_DND_BUTTON_BACKGROUND		RGB_YELLOW
-#define DEF_DND_BUTTON_BG_MONO		STD_NORMAL_BG_MONO
 #define DEF_DND_BUTTON_NUMBER		"3"
 #define DEF_DND_PACKAGE_COMMAND		(char *)NULL
 #define DEF_DND_SELF_TARGET		"no"
 #define DEF_DND_SEND			"all"
 #define DEF_DND_SITE_COMMAND		(char *)NULL
 #define DEF_TOKEN_ACTIVE_BACKGROUND	STD_ACTIVE_BACKGROUND
-#define DEF_TOKEN_ACTIVE_BG_MONO	STD_ACTIVE_BG_MONO
 #define DEF_TOKEN_ACTIVE_BORDERWIDTH	"3"
 #define DEF_TOKEN_ACTIVE_RELIEF		"sunken"
 #define DEF_TOKEN_ANCHOR		"se"
 #define DEF_TOKEN_BACKGROUND		STD_NORMAL_BACKGROUND
-#define DEF_TOKEN_BG_MONO		STD_NORMAL_BG_MONO
 #define DEF_TOKEN_BORDERWIDTH		"3"
 #define DEF_TOKEN_CURSOR		"arrow"
 #define DEF_TOKEN_OUTLINE_COLOR		RGB_BLACK
-#define DEF_TOKEN_OUTLINE_MONO		RGB_BLACK
 #define DEF_TOKEN_REJECT_BACKGROUND	STD_NORMAL_BACKGROUND
-#define DEF_TOKEN_REJECT_BG_MONO	RGB_WHITE
 #define DEF_TOKEN_REJECT_FOREGROUND	RGB_RED
-#define DEF_TOKEN_REJECT_FG_MONO	RGB_BLACK
 #define DEF_TOKEN_REJECT_STIPPLE_COLOR	(char *)NULL
-#define DEF_TOKEN_REJECT_STIPPLE_MONO	RGB_GREY50
 #define DEF_TOKEN_RELIEF		"raised"
 
-#if HAVE_NAMESPACES
-static char dragDropCmd[] = "blt::drag&drop";
-#else
-static char dragDropCmd[] = "drag&drop";
-#endif
+static char dragDropCmd[] = "::blt::drag&drop";
 
 static char className[] = "DragDropToken";	/* CLASS NAME of token window */
 static char propName[] = "BltDrag&DropTarget";	/* Property name */
 
-static Blt_HashTable sourceTable;
-static Blt_HashTable targetTable;
-static char *errorCmd;
-static int nActive;
-static int locX, locY;
+#ifndef WIN32
 static int initialized = FALSE;
+#endif
+
+typedef struct {
+    Blt_HashTable sourceTable;
+    Blt_HashTable targetTable;
+    int nActive;
+    int locX, locY;
+    Tcl_Interp *interp;
+    Tk_Window tkMain;		/* Main window of the interpreter. */
+} DragdropCmdInterpData;
 
 /*
  *  Percent substitutions
  */
 typedef struct {
     char letter;		/* character like 'x' in "%x" */
-    char *value;		/* value to be substituted in place of "%x" */
+    const char *value;		/* value to be substituted in place of "%x" */
 } SubstDescriptors;
 
 
@@ -135,9 +160,9 @@ typedef struct {
  *	to reduce the round-trip calls to the server needed to query
  *	window geometry information and grab the target property.
  */
-typedef struct AnyWindowStruct AnyWindow;
+typedef struct _AnyWindow AnyWindow;
 
-struct AnyWindowStruct {
+struct _AnyWindow {
     WINDOW nativeWindow;	/* Native window: HWINDOW (Win32) or 
 				 * Window (X11). */
 
@@ -150,10 +175,10 @@ struct AnyWindowStruct {
     AnyWindow *parentPtr;	/* Parent node. NULL if root. Used to
 				  * compute offset for X11 windows. */
 
-    Blt_Chain *chainPtr;	/* List of this window's children. If NULL,
+    Blt_Chain chain;		/* List of this window's children. If NULL,
 				 * there are no children. */
 
-    char **targetInfo;		/* An array of target window drag&drop
+    const char **targetInfo;	/* An array of target window drag&drop
 				 * information: target interpreter,
 				 * pathname, and optionally possible
 				 * type matches. NULL if the window is
@@ -188,21 +213,21 @@ typedef struct {
     Tcl_Interp *interp;		/* Interpreter associated with widget.  Used
 				 * to delete widget command. */
     Tcl_Command widgetCmd;	/* Token for frame's widget command. */
-    char *className;		/* Class name for widget (from configuration
+    const char *className;	/* Class name for widget (from configuration
 				 * option).  Malloc-ed. */
     int mask;			/* Either FRAME or TOPLEVEL;  used to select
 				 * which configuration options are valid for
 				 * widget. */
-    char *screenName;		/* Screen on which widget is created.  Non-null
+    const char *screenName;    /* Screen on which widget is created.  Non-null
 				 * only for top-levels.  Malloc-ed, may be
 				 * NULL. */
-    char *visualName;		/* Textual description of visual for window,
+    const char *visualName;	/* Textual description of visual for window,
 				 * from -visual option.  Malloc-ed, may be
 				 * NULL. */
-    char *colormapName;		/* Textual description of colormap for window,
+    const char *colormapName;	/* Textual description of colormap for window,
 				 * from -colormap option.  Malloc-ed, may be
 				 * NULL. */
-    char *menuName;		/* Textual description of menu to use for
+    const char *menuName;	/* Textual description of menu to use for
 				 * menubar. Malloc-ed, may be NULL. */
     Colormap colormap;		/* If not None, identifies a colormap
 				 * allocated for this window, which must be
@@ -224,12 +249,12 @@ typedef struct {
     int height;			/* Height to request for window.  <= 0 means
 				 * don't request any size. */
     Tk_Cursor cursor;		/* Current cursor for window, or None. */
-    char *takeFocus;		/* Value of -takefocus option;  not used in
+    const char *takeFocus;	/* Value of -takefocus option;  not used in
 				 * the C code, but used by keyboard traversal
 				 * scripts.  Malloc'ed, but may be NULL. */
     int isContainer;		/* 1 means this window is a container, 0 means
 				 * that it isn't. */
-    char *useThis;		/* If the window is embedded, this points to
+    const char *useThis;	/* If the window is embedded, this points to
 				 * the name of the window in which it is
 				 * embedded (malloc'ed).  For non-embedded
 				 * windows this is NULL. */
@@ -274,14 +299,14 @@ typedef struct {
     Token token;		/* Token used to provide special cursor. */
     
     int pkgCmdInProgress;	/* Indicates if a pkgCmd is currently active. */
-    char *pkgCmd;		/* Tcl command executed at start of "drag"
+    const char *pkgCmd;		/* TCL command executed at start of "drag"
 				 * operation to gather information about 
 				 * the source data. */
 
-    char *pkgCmdResult;		/* Result returned by the most recent 
+    const char *pkgCmdResult;	/* Result returned by the most recent 
 				 * pkgCmd. */
 
-    char *siteCmd;		/* Tcl command executed to update token 
+    const char *siteCmd;	/* TCL command executed to update token 
 				 * window. */
 
     AnyWindow *rootPtr;		/* Cached window information: Gathered
@@ -294,13 +319,15 @@ typedef struct {
 
     Tk_Cursor cursor;		/* cursor restored after dragging */
 
-    char **sendTypes;		/* list of data handler names or "all" */
+    const char **sendTypes;	/* list of data handler names or "all" */
 
     Blt_HashEntry *hashPtr;
 
     AnyWindow *windowPtr;	/* Last target examined. If NULL, mouse 
 				 * pointer is not currently over a valid 
 				 * target. */
+    Tcl_Obj *errorCmdObjPtr;	
+    DragdropCmdInterpData *dataPtr;
 } Source;
 
 typedef struct {
@@ -310,122 +337,80 @@ typedef struct {
     Blt_HashTable handlerTable;	/* Table of data handlers (converters)
 				 * registered for this target. */
     Blt_HashEntry *hashPtr;
+    DragdropCmdInterpData *dataPtr;
 } Target;
 
-
-extern Tk_CustomOption bltListOption;
-
-static Tk_ConfigSpec configSpecs[] =
+static Blt_ConfigSpec configSpecs[] =
 {
-    {TK_CONFIG_INT, "-button", "buttonBinding", "ButtonBinding",
-	DEF_DND_BUTTON_NUMBER, Tk_Offset(Source, button), 0},
-    {TK_CONFIG_STRING, "-packagecmd", "packageCommand", "Command",
-	DEF_DND_PACKAGE_COMMAND, Tk_Offset(Source, pkgCmd), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_COLOR, "-rejectbg", "rejectBackground", "Background",
-	DEF_TOKEN_REJECT_BACKGROUND, Tk_Offset(Source, token.rejectBg),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-rejectbg", "rejectBackground", "Background",
-	DEF_TOKEN_REJECT_BG_MONO, Tk_Offset(Source, token.rejectBg),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_COLOR, "-rejectfg", "rejectForeground", "Foreground",
-	DEF_TOKEN_REJECT_FOREGROUND, Tk_Offset(Source, token.rejectFg),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-rejectfg", "rejectForeground", "Foreground",
-	DEF_TOKEN_REJECT_BACKGROUND, Tk_Offset(Source, token.rejectFg),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
-	DEF_TOKEN_REJECT_STIPPLE_COLOR, Tk_Offset(Source, token.rejectStipple),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
-	DEF_TOKEN_REJECT_STIPPLE_MONO, Tk_Offset(Source, token.rejectStipple),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_BOOLEAN, "-selftarget", "selfTarget", "SelfTarget",
-	DEF_DND_SELF_TARGET, Tk_Offset(Source, selfTarget), 0},
-    {TK_CONFIG_CUSTOM, "-send", "send", "Send", DEF_DND_SEND, 
-	Tk_Offset(Source, sendTypes), TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_STRING, "-sitecmd", "siteCommand", "Command",
-	DEF_DND_SITE_COMMAND, Tk_Offset(Source, siteCmd), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_ANCHOR, "-tokenanchor", "tokenAnchor", "Anchor",
-	DEF_TOKEN_ANCHOR, Tk_Offset(Source, token.anchor), 0},
-    {TK_CONFIG_BORDER, "-tokenactivebackground", "tokenActiveBackground", 
+    {BLT_CONFIG_INT, "-button", "buttonBinding", "ButtonBinding",
+	DEF_DND_BUTTON_NUMBER, Blt_Offset(Source, button), 0},
+    {BLT_CONFIG_OBJ, "-errorcmd", "errorCommand", "ErrorCommand",
+	"bgerror", Blt_Offset(Source, errorCmdObjPtr), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_STRING, "-packagecmd", "packageCommand", "PackageCommand",
+	DEF_DND_PACKAGE_COMMAND, Blt_Offset(Source, pkgCmd), 
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-rejectbg", "rejectBackground", "Background",
+	DEF_TOKEN_REJECT_BACKGROUND, Blt_Offset(Source, token.rejectBg), 0},
+    {BLT_CONFIG_COLOR, "-rejectfg", "rejectForeground", "Foreground",
+	DEF_TOKEN_REJECT_FOREGROUND, Blt_Offset(Source, token.rejectFg), 0},
+    {BLT_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
+	DEF_TOKEN_REJECT_STIPPLE_COLOR, 
+	Blt_Offset(Source, token.rejectStipple), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BOOLEAN, "-selftarget", "selfTarget", "SelfTarget",
+	DEF_DND_SELF_TARGET, Blt_Offset(Source, selfTarget), 0},
+    {BLT_CONFIG_LIST, "-send", "send", "Send", DEF_DND_SEND, 
+	Blt_Offset(Source, sendTypes), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_STRING, "-sitecmd", "siteCommand", "Command",
+	DEF_DND_SITE_COMMAND, Blt_Offset(Source, siteCmd), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_ANCHOR, "-tokenanchor", "tokenAnchor", "Anchor",
+	DEF_TOKEN_ANCHOR, Blt_Offset(Source, token.anchor), 0},
+    {BLT_CONFIG_BORDER, "-tokenactivebackground", "tokenActiveBackground", 
 	"ActiveBackground", DEF_TOKEN_ACTIVE_BACKGROUND, 
-	Tk_Offset(Source, token.activeBorder), TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-tokenactivebackground", "tokenActiveBackground", 
-	"ActiveBackground", DEF_TOKEN_ACTIVE_BG_MONO, 
-	Tk_Offset(Source, token.activeBorder), TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_BORDER, "-tokenbg", "tokenBackground", "Background",
-	DEF_TOKEN_BACKGROUND, Tk_Offset(Source, token.normalBorder),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-tokenbg", "tokenBackground", "Background",
-	DEF_TOKEN_BG_MONO, Tk_Offset(Source, token.normalBorder),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_BORDER, "-tokenoutline", "tokenOutline", "Outline",
-	DEF_TOKEN_OUTLINE_COLOR, Tk_Offset(Source, token.outline),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-tokenoutline", "tokenOutline", "Outline",
-	DEF_TOKEN_OUTLINE_MONO, Tk_Offset(Source, token.outline),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_PIXELS, "-tokenborderwidth", "tokenBorderWidth", "BorderWidth",
-	DEF_TOKEN_BORDERWIDTH, Tk_Offset(Source, token.borderWidth), 0},
-    {TK_CONFIG_CURSOR, "-tokencursor", "tokenCursor", "Cursor",
-	DEF_TOKEN_CURSOR, Tk_Offset(Source, token.cursor), 
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
+	Blt_Offset(Source, token.activeBorder), 0},
+    {BLT_CONFIG_BORDER, "-tokenbg", "tokenBackground", "Background",
+	DEF_TOKEN_BACKGROUND, Blt_Offset(Source, token.normalBorder), 0},
+    {BLT_CONFIG_BORDER, "-tokenoutline", "tokenOutline", "Outline",
+	DEF_TOKEN_OUTLINE_COLOR, Blt_Offset(Source, token.outline), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-tokenborderwidth", "tokenBorderWidth", 
+	"BorderWidth", DEF_TOKEN_BORDERWIDTH, 
+	Blt_Offset(Source, token.borderWidth), 0},
+    {BLT_CONFIG_CURSOR, "-tokencursor", "tokenCursor", "Cursor",
+	DEF_TOKEN_CURSOR, Blt_Offset(Source, token.cursor), 
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
 	0, 0},
 };
 
-static Tk_ConfigSpec tokenConfigSpecs[] =
+static Blt_ConfigSpec tokenConfigSpecs[] =
 {
-    {TK_CONFIG_BORDER, "-activebackground", "activeBackground",
-	"ActiveBackground", DEF_TOKEN_ACTIVE_BACKGROUND,
-	Tk_Offset(Token, activeBorder), TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-activebackground", "activeBackground",
-	"ActiveBackground", DEF_TOKEN_ACTIVE_BG_MONO, 
-	Tk_Offset(Token, activeBorder), TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_RELIEF, "-activerelief", "activeRelief", "activeRelief",
-	DEF_TOKEN_ACTIVE_RELIEF, Tk_Offset(Token, activeRelief), 0},
-    {TK_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
-	DEF_TOKEN_ANCHOR, Tk_Offset(Token, anchor), 0},
-    {TK_CONFIG_PIXELS, "-activeborderwidth", "activeBorderWidth",
+    {BLT_CONFIG_BORDER, "-activebackground", "activeBackground",
+	"ActiveBackground", DEF_TOKEN_ACTIVE_BACKGROUND, 
+	Blt_Offset(Token, activeBorder), 0},
+    {BLT_CONFIG_RELIEF, "-activerelief", "activeRelief", "activeRelief",
+	DEF_TOKEN_ACTIVE_RELIEF, Blt_Offset(Token, activeRelief), 0},
+    {BLT_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
+	DEF_TOKEN_ANCHOR, Blt_Offset(Token, anchor), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-activeborderwidth", "activeBorderWidth",
 	"ActiveBorderWidth", DEF_TOKEN_ACTIVE_BORDERWIDTH, 
-	Tk_Offset(Token, activeBorderWidth), 0},
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_TOKEN_BACKGROUND, Tk_Offset(Token, normalBorder),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_TOKEN_BG_MONO, Tk_Offset(Token, normalBorder),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_PIXELS, "-borderwidth", "borderWidth", "BorderWidth",
-	DEF_TOKEN_BORDERWIDTH, Tk_Offset(Token, borderWidth), 0},
-    {TK_CONFIG_CURSOR, "-cursor", "cursor", "Cursor",
-	DEF_TOKEN_CURSOR, Tk_Offset(Token, cursor), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BORDER, "-outline", "outline", "Outline",
-	DEF_TOKEN_OUTLINE_COLOR, Tk_Offset(Token, outline),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-outline", "outline", "Outline",
-	DEF_TOKEN_OUTLINE_MONO, Tk_Offset(Token, outline), 
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_COLOR, "-rejectbg", "rejectBackground", "Background",
-	DEF_TOKEN_REJECT_BACKGROUND, Tk_Offset(Token, rejectBg), 
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-rejectbg", "rejectBackground", "Background",
-	DEF_TOKEN_REJECT_BG_MONO, Tk_Offset(Token, rejectBg), 
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_COLOR, "-rejectfg", "rejectForeground", "Foreground",
-	DEF_TOKEN_REJECT_FOREGROUND, Tk_Offset(Token, rejectFg), 
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-rejectfg", "rejectForeground", "Foreground",
-	DEF_TOKEN_REJECT_BACKGROUND, Tk_Offset(Token, rejectFg), 
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
-	DEF_TOKEN_REJECT_STIPPLE_COLOR, Tk_Offset(Token, rejectStipple),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
-	DEF_TOKEN_REJECT_STIPPLE_MONO, Tk_Offset(Token, rejectStipple),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_RELIEF, "-relief", "relief", "Relief",
-	DEF_TOKEN_RELIEF, Tk_Offset(Token, relief), 0},
-    {TK_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
+	Blt_Offset(Token, activeBorderWidth), 0},
+    {BLT_CONFIG_BORDER, "-background", "background", "Background",
+	DEF_TOKEN_BACKGROUND, Blt_Offset(Token, normalBorder), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", "BorderWidth", 
+	DEF_TOKEN_BORDERWIDTH, Blt_Offset(Token, borderWidth), 0},
+    {BLT_CONFIG_CURSOR, "-cursor", "cursor", "Cursor",
+	DEF_TOKEN_CURSOR, Blt_Offset(Token, cursor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BORDER, "-outline", "outline", "Outline",
+	DEF_TOKEN_OUTLINE_COLOR, Blt_Offset(Token, outline), 0},
+    {BLT_CONFIG_COLOR, "-rejectbg", "rejectBackground", "Background",
+	DEF_TOKEN_REJECT_BACKGROUND, Blt_Offset(Token, rejectBg), 0},
+    {BLT_CONFIG_COLOR, "-rejectfg", "rejectForeground", "Foreground",
+	DEF_TOKEN_REJECT_FOREGROUND, Blt_Offset(Token, rejectFg), 0},
+    {BLT_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
+	DEF_TOKEN_REJECT_STIPPLE_COLOR, Blt_Offset(Token, rejectStipple),
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief",
+	DEF_TOKEN_RELIEF, Blt_Offset(Token, relief), 0},
+    {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
 	0, 0},
 };
 
@@ -433,45 +418,103 @@ static Tk_ConfigSpec tokenConfigSpecs[] =
 /*
  *  Forward Declarations
  */
-static int DragDropCmd _ANSI_ARGS_((ClientData clientData, Tcl_Interp *interp,
-	int argc, char **argv));
-static void TokenEventProc _ANSI_ARGS_((ClientData clientData, 
-	XEvent *eventPtr));
-static void TargetEventProc _ANSI_ARGS_((ClientData clientData, 
-	XEvent *eventPtr));
-static void MoveToken _ANSI_ARGS_((Source * srcPtr, Token *tokenPtr));
-static void UpdateToken _ANSI_ARGS_((ClientData clientData));
-static void HideToken _ANSI_ARGS_((Token *tokenPtr));
-static void RejectToken _ANSI_ARGS_((Token *tokenPtr));
+static Tcl_ObjCmdProc DragDropCmd;
+static Tk_EventProc TokenEventProc;
+static Tk_EventProc TargetEventProc;
 
-static int GetSource _ANSI_ARGS_((Tcl_Interp *interp, char *name, 
-	Source **srcPtrPtr));
-static Source *CreateSource _ANSI_ARGS_((Tcl_Interp *interp, char *pathname,
-	int *newEntry));
-static void DestroySource _ANSI_ARGS_((Source * srcPtr));
-static void SourceEventProc _ANSI_ARGS_((ClientData clientData,
-	XEvent *eventPtr));
-static int ConfigureSource _ANSI_ARGS_((Tcl_Interp *interp, Source * srcPtr,
-	int argc, char **argv, int flags));
-static int ConfigureToken _ANSI_ARGS_((Tcl_Interp *interp, Source * srcPtr,
-	int argc, char **argv));
+static void MoveToken(Source * srcPtr, Token *tokenPtr);
+static void UpdateToken(ClientData clientData);
+static void HideToken(Token *tokenPtr);
+static void RejectToken(Token *tokenPtr);
 
-static Target *CreateTarget _ANSI_ARGS_((Tcl_Interp *interp, Tk_Window tkwin));
-static Target *FindTarget _ANSI_ARGS_((Tk_Window tkwin));
-static void DestroyTarget _ANSI_ARGS_((DestroyData dataPtr));
-static int OverTarget _ANSI_ARGS_((Source * srcPtr, int x, int y));
-static void AddTargetProperty _ANSI_ARGS_((Tcl_Interp *interp,
-	Target * targetPtr));
+static int GetSourceFromObj(DragdropCmdInterpData *dataPtr, Tcl_Interp *interp,
+	Tcl_Obj *objPtr, Source **srcPtrPtr);
+static Source *CreateSource(DragdropCmdInterpData *dataPtr, Tcl_Interp *interp,
+	Tcl_Obj *objPtr, int *newEntry);
+static void DestroySource(Source * srcPtr);
+static void SourceEventProc(ClientData clientData, XEvent *eventPtr);
+static int ConfigureSource(Tcl_Interp *interp, Source * srcPtr, int objc, 
+	Tcl_Obj *const *objv, int flags);
+static int ConfigureToken(Tcl_Interp *interp, Source * srcPtr, int objc, 
+	Tcl_Obj *const *objv);
 
-static void DndSend _ANSI_ARGS_((Source * srcPtr));
+static Target *CreateTarget(DragdropCmdInterpData *dataPtr, Tcl_Interp *interp,
+	Tk_Window tkwin);
+static Target *FindTarget(DragdropCmdInterpData *dataPtr, Tk_Window tkwin);
+static void DestroyTarget(DestroyData data);
+static int OverTarget(Source * srcPtr, int x, int y);
+static void AddTargetProperty(Tcl_Interp *interp, Target *targetPtr);
 
-static void InitRoot _ANSI_ARGS_((Source * srcPtr));
-static void RemoveWindow _ANSI_ARGS_((AnyWindow *wr));
-static void QueryWindow _ANSI_ARGS_((Display *display, AnyWindow * windowPtr));
+static void DndSend(Source *srcPtr);
 
-static char *ExpandPercents _ANSI_ARGS_((char *str, SubstDescriptors * subs,
-	int nsubs, Tcl_DString *resultPtr));
-
+static void InitRoot(Source * srcPtr);
+static void RemoveWindow(AnyWindow *wr);
+static void QueryWindow(Display *display, AnyWindow * windowPtr);
+
+static const char *ExpandPercents(const char *str, SubstDescriptors *subs, 
+	int nsubs, Tcl_DString *resultPtr);
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * DragdropInterpDeleteProc --
+ *
+ *	This is called when the interpreter hosting the "dragdrop"
+ *	command is deleted.
+ *
+ * Results:
+ *	None.
+ *
+ * Side effects:
+ *	Removes the hash table managing all dragdrop names.
+ *
+ *---------------------------------------------------------------------------
+ */
+/* ARGSUSED */
+static void
+DragdropInterpDeleteProc(
+    ClientData clientData,	/* Interpreter-specific data. */
+    Tcl_Interp *interp)
+{
+    DragdropCmdInterpData *dataPtr = clientData;
+
+    /* All dragdrop instances should already have been destroyed when
+     * their respective TCL commands were deleted. */
+    Blt_DeleteHashTable(&dataPtr->sourceTable);
+    Blt_DeleteHashTable(&dataPtr->targetTable);
+    Tcl_DeleteAssocData(interp, DRAGDROP_THREAD_KEY);
+    Blt_Free(dataPtr);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * GetDragdropdCmdInterpData --
+ *
+ *---------------------------------------------------------------------------
+ */
+static DragdropCmdInterpData *
+GetDragdropCmdInterpData(Tcl_Interp *interp)
+{
+    DragdropCmdInterpData *dataPtr;
+    Tcl_InterpDeleteProc *proc;
+
+    dataPtr = (DragdropCmdInterpData *)
+	Tcl_GetAssocData(interp, DRAGDROP_THREAD_KEY, &proc);
+    if (dataPtr == NULL) {
+	dataPtr = Blt_AssertMalloc(sizeof(DragdropCmdInterpData));
+	dataPtr->interp = interp;
+	dataPtr->tkMain = Tk_MainWindow(interp);
+	Tcl_SetAssocData(interp, DRAGDROP_THREAD_KEY, DragdropInterpDeleteProc,
+		 dataPtr);
+	Blt_InitHashTable(&dataPtr->sourceTable, BLT_ONE_WORD_KEYS);
+	Blt_InitHashTable(&dataPtr->targetTable, BLT_ONE_WORD_KEYS);
+	dataPtr->nActive = 0;
+	dataPtr->locX = dataPtr->locY = 0;
+    }
+    return dataPtr;
+}
 
 
 #ifdef	WIN32
@@ -481,20 +524,22 @@ static char *ExpandPercents _ANSI_ARGS_((char *str, SubstDescriptors * subs,
 #endif /* _MSC_VER || __BORLANDC__ */
 
 typedef struct {
-    char *prefix;
+    const char *prefix;
     int prefixSize;
-    char *propReturn;
+    const char *propReturn;
 } PropertyInfo;
 
 
+#ifdef notdef
 static BOOL CALLBACK
 GetEnumWindowsProc(HWND hWnd, LPARAM clientData)
 {
-    Blt_Chain *chainPtr = (Blt_Chain *) clientData;
+    Blt_Chain chain = (Blt_Chain)clientData;
 
-    Blt_ChainAppend(chainPtr, (ClientData)hWnd);
+    Blt_Chain_Append(chain, (ClientData)hWnd);
     return TRUE;
 }
+#endif
 
 static WINDOW
 GetNativeWindow(Tk_Window tkwin)
@@ -502,38 +547,37 @@ GetNativeWindow(Tk_Window tkwin)
     return (WINDOW) Tk_GetHWND(Tk_WindowId(tkwin));
 }
 
+
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetWindowZOrder --
  *
  *	Returns a list of the child windows according to their stacking
  *	order.  The window handles are ordered from top to bottom.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-static Blt_Chain *
-GetWindowZOrder(
-    Display *display,
-    HWND parent)
+static Blt_Chain
+GetWindowZOrder(Display *display, HWND parent)
 {
-    Blt_Chain *chainPtr;
+    Blt_Chain chain;
     HWND hWnd;
 
-    chainPtr = Blt_ChainCreate();
+    chain = Blt_Chain_Create();
     for (hWnd = GetTopWindow(parent); hWnd != NULL;
 	hWnd = GetNextWindow(hWnd, GW_HWNDNEXT)) {
-	Blt_ChainAppend(chainPtr, (ClientData)hWnd);
+	Blt_Chain_Append(chain, (ClientData)hWnd);
     }
-    return chainPtr;
+    return chain;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetEnumPropsExProc --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static BOOL CALLBACK
 GetEnumPropsExProc(
@@ -546,14 +590,15 @@ GetEnumPropsExProc(
 
     if (strncmp(infoPtr->prefix, atom, infoPtr->prefixSize) == 0) {
 	assert(infoPtr->propReturn == NULL);
-	infoPtr->propReturn = (char *)atom;
+	infoPtr->propReturn = (const char *)atom;
 	return FALSE;
     }
     return TRUE;
 }
 
+#ifdef notdef
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetPropData --
  *
@@ -572,10 +617,10 @@ GetEnumPropsExProc(
  *
  *	We'll plug in the OLE stuff later.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
-static char *
+static const char *
 GetPropData(HWND hWnd, char *atom)
 {
     PropertyInfo propInfo;
@@ -588,30 +633,33 @@ GetPropData(HWND hWnd, char *atom)
     EnumPropsEx(hWnd, (PROPENUMPROCEX)GetEnumPropsExProc, (DWORD)&propInfo);
     return propInfo.propReturn;
 }
+#endif
 
-
-static char *
+static const unsigned char *
 GetProperty(Display *display, HWND hWnd)
 {
-    ATOM atom;
-
-    atom = (ATOM)GetProp(hWnd, propName);
-    if (atom != (ATOM)0) {
+    HANDLE handle;
+    
+    handle = GetProp(hWnd, propName);
+    if (handle != NULL) {
+	ATOM atom;
 	char buffer[MAX_PROP_SIZE + 1];
 	UINT nBytes;
 
+	atom = (ATOM)((int)handle);
 	nBytes = GlobalGetAtomName(atom, buffer, MAX_PROP_SIZE);
 	if (nBytes > 0) {
 	    buffer[nBytes] = '\0';
-	    return Blt_Strdup(buffer);
+	    return Blt_AssertStrdup(buffer);
 	}
     }
     return NULL;
 }
 
 static void
-SetProperty(Tk_Window tkwin, char *data)
+SetProperty(Tk_Window tkwin, const char *data)
 {
+    HANDLE handle;
     HWND hWnd;
     ATOM atom;
 
@@ -619,13 +667,15 @@ SetProperty(Tk_Window tkwin, char *data)
     if (hWnd == NULL) {
 	return;
     }
-    atom = (ATOM)GetProp(hWnd, propName);
-    if (atom != 0) {
+    handle = GetProp(hWnd, propName);
+    atom = (ATOM)((int)handle);
+    if (atom != (ATOM)0) {
 	GlobalDeleteAtom(atom);
     }
-    atom = GlobalAddAtom(data);
+    atom = GlobalAddAtom((unsigned char *)data);
     if (atom != (ATOM)0) {
-	SetProp(hWnd, propName, (HANDLE)atom);
+	handle = (HANDLE)((int)atom);
+	SetProp(hWnd, propName, handle);
     }
 }
 
@@ -633,25 +683,28 @@ static void
 RemoveProperty(Tk_Window tkwin)
 {
     HWND hWnd;
-    ATOM atom;
+    HANDLE handle;
 
     hWnd = Tk_GetHWND(Tk_WindowId(tkwin));
     if (hWnd == NULL) {
 	return;
     }
-    atom = (ATOM)GetProp(hWnd, propName);
-    if (atom != 0) {
+    handle = GetProp(hWnd, propName);
+    if (handle != NULL) {
+	ATOM atom;
+
+	atom = (ATOM)((int)handle);
 	GlobalDeleteAtom(atom);
     }
     RemoveProp(hWnd, propName);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * GetWindowRegion --
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
@@ -678,58 +731,55 @@ GetWindowRegion(
 #else
 
 static WINDOW
-GetNativeWindow(tkwin)
-    Tk_Window tkwin;
+GetNativeWindow(Tk_Window tkwin)
 {
     return Tk_WindowId(tkwin);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetWindowZOrder --
  *
  *	Returns a chain of the child windows according to their stacking
  *	order.  The window ids are ordered from top to bottom.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-static Blt_Chain *
-GetWindowZOrder(display, window)
-    Display *display;
-    Window window;
+static Blt_Chain 
+GetWindowZOrder(Display *display, Window window)
 {
-    Blt_Chain *chainPtr;
-    Window *childArr;
-    unsigned int nChildren;
+    Blt_Chain chain;
+    Window *winv;
+    unsigned int winc;
     Window dummy;
 
-    chainPtr = NULL;
-    if ((XQueryTree(display, window, &dummy, &dummy, &childArr, &nChildren)) &&
-	(nChildren > 0)) {
-	register int i;
+    chain = NULL;
+    if ((XQueryTree(display, window, &dummy, &dummy, &winv, &winc)) && 
+	(winc > 0)) {
+	unsigned int i;
 
-	chainPtr = Blt_ChainCreate();
-	for (i = 0; i < nChildren; i++) {
+	chain = Blt_Chain_Create();
+	for (i = 0; i < winc; i++) {
 	    /*
 	     *  XQuery returns windows in bottom to top order.
 	     *  We only care about the top window.
 	     */
-	    Blt_ChainPrepend(chainPtr, (ClientData)childArr[i]);
+	    Blt_Chain_Prepend(chain, (ClientData)winv[i]);
 	}
-	if (childArr != NULL) {
-	    XFree((char *)childArr);	/* done with list of kids */
+	if (winv != NULL) {
+	    XFree((char *)winv);	/* done with list of kids */
 	}
     }
-    return chainPtr;
+    return chain;
 }
 
-static char *
-GetProperty(display, window)
-    Display *display;
-    Window window;
+static const unsigned char *
+GetProperty(
+    Display *display,
+    Window window)
 {
-    char *data;
+    unsigned char *data;
     int result, actualFormat;
     Atom actualType;
     unsigned long nItems, bytesAfter;
@@ -740,11 +790,11 @@ GetProperty(display, window)
     data = NULL;
     result = XGetWindowProperty(display, window, dndAtom, 0, MAX_PROP_SIZE,
 	False, XA_STRING, &actualType, &actualFormat, &nItems, &bytesAfter,
-	(unsigned char **)&data);
+	&data);
     if ((result != Success) || (actualFormat != 8) ||
 	(actualType != XA_STRING)) {
 	if (data != NULL) {
-	    XFree((char *)data);
+	    XFree(data);
 	    data = NULL;
 	}
     }
@@ -752,19 +802,18 @@ GetProperty(display, window)
 }
 
 static void
-SetProperty(tkwin, data)
-    Tk_Window tkwin;
-    char *data;
+SetProperty(Tk_Window tkwin, char *data)
 {
     XChangeProperty(Tk_Display(tkwin), Tk_WindowId(tkwin), dndAtom, XA_STRING,
 	8, PropModeReplace, (unsigned char *)data, strlen(data) + 1);
 }
 
 static int
-GetWindowRegion(display, window, x1Ptr, y1Ptr, x2Ptr, y2Ptr)
-    Display *display;
-    Window window;
-    int *x1Ptr, *y1Ptr, *x2Ptr, *y2Ptr;
+GetWindowRegion(
+    Display *display,
+    Window window,
+    int *x1Ptr, int *y1Ptr, 
+    int *x2Ptr, int *y2Ptr)
 {
     XWindowAttributes winAttrs;
 
@@ -780,16 +829,14 @@ GetWindowRegion(display, window, x1Ptr, y1Ptr, x2Ptr, y2Ptr)
 #endif /* WIN32 */
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  ChangeToken --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-ChangeToken(tokenPtr, active)
-    Token *tokenPtr;
-    int active;
+ChangeToken(Token *tokenPtr, int active)
 {
     int relief;
     Tk_3DBorder border;
@@ -813,19 +860,19 @@ ChangeToken(tokenPtr, active)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  TokenEventProc --
  *
  *	Invoked by the Tk dispatcher to handle widget events.
  *	Manages redraws for the drag&drop token window.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-TokenEventProc(clientData, eventPtr)
-    ClientData clientData;	/* data associated with widget */
-    XEvent *eventPtr;		/* information about event */
+TokenEventProc(
+    ClientData clientData,	/* data associated with widget */
+    XEvent *eventPtr)		/* information about event */
 {
     Token *tokenPtr = clientData;
 
@@ -839,7 +886,7 @@ TokenEventProc(clientData, eventPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  HideToken --
  *
@@ -847,11 +894,10 @@ TokenEventProc(clientData, eventPtr)
  *	successful communication, or after a delay if the communication
  *	fails (allowing the user to see a graphical picture of failure).
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-HideToken(tokenPtr)
-    Token *tokenPtr;
+HideToken(Token *tokenPtr)
 {
     if (tokenPtr->tkwin != NULL) {
 	Tk_UnmapWindow(tokenPtr->tkwin);
@@ -860,34 +906,33 @@ HideToken(tokenPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  RaiseToken --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-RaiseToken(tokenPtr)
-    Token *tokenPtr;
+RaiseToken(Token *tokenPtr)
 {
-    Blt_MapToplevel(tokenPtr->tkwin);
-    Blt_RaiseToplevel(tokenPtr->tkwin);
+    Blt_MapToplevelWindow(tokenPtr->tkwin);
+    Blt_RaiseToplevelWindow(tokenPtr->tkwin);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  MoveToken --
  *
  *	Invoked during "drag" operations to move a token window to its
  *	current "drag" coordinate.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MoveToken(srcPtr, tokenPtr)
-    Source *srcPtr;		/* drag&drop source window data */
-    Token *tokenPtr;
+MoveToken(
+    Source *srcPtr,		/* drag&drop source window data */
+    Token *tokenPtr)
 {
     int x, y;
     int maxX, maxY;
@@ -921,11 +966,11 @@ MoveToken(srcPtr, tokenPtr)
 }
 
 static Tk_Cursor
-GetWidgetCursor(interp, tkwin)
-    Tk_Window tkwin;
-    Tcl_Interp *interp;
+GetWidgetCursor(
+    Tcl_Interp *interp,
+    Tk_Window tkwin)
 {
-    CONST char *cursorName;
+    const char *cursorName;
     Tk_Cursor cursor;
 
     cursor = None;
@@ -941,8 +986,24 @@ GetWidgetCursor(interp, tkwin)
     return cursor;
 }
 
+static void
+Bgerror(Source *srcPtr)
+{
+    if (srcPtr->errorCmdObjPtr != NULL) {
+	Tcl_Obj *objv[2];
+
+	objv[0] = srcPtr->errorCmdObjPtr;
+	objv[1] = Tcl_GetObjResult(srcPtr->interp);
+	Tcl_IncrRefCount(objv[0]);
+	Tcl_IncrRefCount(objv[1]);
+	Tcl_EvalObjv(srcPtr->interp, 2, objv, 0);
+	Tcl_DecrRefCount(objv[1]);
+	Tcl_DecrRefCount(objv[0]);
+    }
+}
+
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  UpdateToken --
  *
@@ -950,14 +1011,13 @@ GetWidgetCursor(interp, tkwin)
  *	the current drag&drop token position is over another drag&drop
  *	target.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-UpdateToken(clientData)
-    ClientData clientData;	/* widget data */
+UpdateToken(ClientData clientData)	/* widget data */
 {
     Source *srcPtr = clientData;
-    Token *tokenPtr = &(srcPtr->token);
+    Token *tokenPtr = &srcPtr->token;
 
     ChangeToken(tokenPtr, tokenPtr->active);
     /*
@@ -971,7 +1031,7 @@ UpdateToken(clientData)
 	int result;
 	SubstDescriptors subs[2];
 	
-	sprintf(buffer, "%d", tokenPtr->active);
+	sprintf_s(buffer, 200, "%d", tokenPtr->active);
 	subs[0].letter = 's';
 	subs[0].value = buffer;
 	subs[1].letter = 't';
@@ -981,26 +1041,24 @@ UpdateToken(clientData)
 	result = Tcl_Eval(srcPtr->interp, 
 			  ExpandPercents(srcPtr->siteCmd, subs, 2, &dString));
 	Tcl_DStringFree(&dString);
-	if ((result != TCL_OK) && (errorCmd != NULL) && (*errorCmd)) {
-	    (void)Tcl_VarEval(srcPtr->interp, errorCmd, " {",
-	      Tcl_GetStringResult(srcPtr->interp), "}", (char *)NULL);
+	if (result != TCL_OK) {
+	    Bgerror(srcPtr);
 	}
     }
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  RejectToken --
  *
  *	Draws a rejection mark on the current drag&drop token, and arranges
  *	for the token to be unmapped after a small delay.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-RejectToken(tokenPtr)
-    Token *tokenPtr;
+RejectToken(Token *tokenPtr)
 {
     int divisor = 6;		/* controls size of rejection symbol */
     int w, h, lineWidth, x, y, margin;
@@ -1049,50 +1107,50 @@ RejectToken(tokenPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  ConfigureToken --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigureToken(interp, srcPtr, argc, argv)
-    Tcl_Interp *interp;
-    Source *srcPtr;
-    int argc;
-    char **argv;
+ConfigureToken(
+    Tcl_Interp *interp,
+    Source *srcPtr,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     Token *tokenPtr;
 
-    tokenPtr = &(srcPtr->token);
-    if (Tk_ConfigureWidget(interp, srcPtr->tkwin, tokenConfigSpecs, argc, argv,
-	    (char *)tokenPtr, TK_CONFIG_ARGV_ONLY) != TCL_OK) {
+    tokenPtr = &srcPtr->token;
+    if (Blt_ConfigureWidgetFromObj(interp, srcPtr->tkwin, tokenConfigSpecs, 
+	objc, objv, (char *)tokenPtr, BLT_CONFIG_OBJV_ONLY) != TCL_OK) {
 	return TCL_ERROR;
     }
-    return ConfigureSource(interp, srcPtr, 0, (char **)NULL,
-	TK_CONFIG_ARGV_ONLY);
+    return ConfigureSource(interp, srcPtr, 0, (Tcl_Obj **)NULL,
+	BLT_CONFIG_OBJV_ONLY);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  CreateToken --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-CreateToken(interp, srcPtr)
-    Tcl_Interp *interp;
-    Source *srcPtr;
+CreateToken(
+    Tcl_Interp *interp,
+    Source *srcPtr)
 {
     XSetWindowAttributes attrs;
     Tk_Window tkwin;
     char string[200];
     static int nextTokenId = 0;
     unsigned int mask;
-    Token *tokenPtr = &(srcPtr->token);
+    Token *tokenPtr = &srcPtr->token;
 
-    sprintf(string, "dd-token%d", ++nextTokenId);
+    sprintf_s(string, 200, "dd-token%d", ++nextTokenId);
 
     /* Create toplevel on parent's screen. */
     tkwin = Tk_CreateWindow(interp, srcPtr->tkwin, string, "");
@@ -1122,7 +1180,7 @@ CreateToken(interp, srcPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  CreateSource --
  *
@@ -1130,28 +1188,30 @@ CreateToken(interp, srcPtr)
  *	widgets.  Creates a new record if the widget name is not already
  *	registered.  Returns a pointer to the desired record.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Source *
-CreateSource(interp, pathName, newPtr)
-    Tcl_Interp *interp;
-    char *pathName;		/* widget pathname for desired record */
-    int *newPtr;		/* returns non-zero => new record created */
+CreateSource(
+    DragdropCmdInterpData *dataPtr,
+    Tcl_Interp *interp,
+    Tcl_Obj *objPtr,		/* widget pathname for desired record */
+    int *newPtr)		/* returns non-zero => new record created */
 {
+    char *pathName;		/* widget pathname for desired record */
     Blt_HashEntry *hPtr;
     Tk_Window tkwin;
     Source *srcPtr;
 
-    tkwin = Tk_NameToWindow(interp, pathName, Tk_MainWindow(interp));
+    pathName = Tcl_GetString(objPtr);
+    tkwin = Tk_NameToWindow(interp, pathName, dataPtr->tkMain);
     if (tkwin == NULL) {
 	return NULL;
     }
-    hPtr = Blt_CreateHashEntry(&sourceTable, (char *)tkwin, newPtr);
+    hPtr = Blt_CreateHashEntry(&dataPtr->sourceTable, (char *)tkwin, newPtr);
     if (!(*newPtr)) {
-	return (Source *) Blt_GetHashValue(hPtr);
+	return Blt_GetHashValue(hPtr);
     }
-    srcPtr = Blt_Calloc(1, sizeof(Source));
-    assert(srcPtr);
+    srcPtr = Blt_AssertCalloc(1, sizeof(Source));
     srcPtr->tkwin = tkwin;
     srcPtr->display = Tk_Display(tkwin);
     srcPtr->interp = interp;
@@ -1160,8 +1220,9 @@ CreateSource(interp, pathName, newPtr)
     srcPtr->token.activeRelief = TK_RELIEF_SUNKEN;
     srcPtr->token.borderWidth = srcPtr->token.activeBorderWidth = 3;
     srcPtr->hashPtr = hPtr;
-    Blt_InitHashTable(&(srcPtr->handlerTable), BLT_STRING_KEYS);
-    if (ConfigureSource(interp, srcPtr, 0, (char **)NULL, 0) != TCL_OK) {
+    srcPtr->dataPtr = dataPtr;
+    Blt_InitHashTable(&srcPtr->handlerTable, BLT_STRING_KEYS);
+    if (ConfigureSource(interp, srcPtr, 0, (Tcl_Obj **)NULL, 0) != TCL_OK) {
 	DestroySource(srcPtr);
 	return NULL;
     }
@@ -1173,30 +1234,28 @@ CreateSource(interp, pathName, newPtr)
     Tk_CreateEventHandler(tkwin, StructureNotifyMask, SourceEventProc, srcPtr);
     return srcPtr;
 }
-
+
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DestroySource --
  *
  *	Looks for a Source record in the hash table for drag&drop source
  *	widgets.  Destroys the record if found.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DestroySource(srcPtr)
-    Source *srcPtr;
+DestroySource(Source *srcPtr)
 {
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
-    char *cmd;
 
     Tcl_CancelIdleCall(UpdateToken, srcPtr);
     if (srcPtr->token.timer) {
 	Tcl_DeleteTimerHandler(srcPtr->token.timer);
     }
-    Tk_FreeOptions(configSpecs, (char *)srcPtr, srcPtr->display, 0);
+    Blt_FreeOptions(configSpecs, (char *)srcPtr, srcPtr->display, 0);
 
     if (srcPtr->token.rejectFgGC != NULL) {
 	Tk_FreeGC(srcPtr->display, srcPtr->token.rejectFgGC);
@@ -1218,70 +1277,96 @@ DestroySource(srcPtr)
     }
     Blt_Free(srcPtr->sendTypes);
 
-    for (hPtr = Blt_FirstHashEntry(&(srcPtr->handlerTable), &cursor);
+    for (hPtr = Blt_FirstHashEntry(&srcPtr->handlerTable, &cursor);
 	hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	cmd = (char *)Blt_GetHashValue(hPtr);
+	const char *cmd;
+
+	cmd = Blt_GetHashValue(hPtr);
 	if (cmd != NULL) {
 	    Blt_Free(cmd);
 	}
     }
-    Blt_DeleteHashTable(&(srcPtr->handlerTable));
+    Blt_DeleteHashTable(&srcPtr->handlerTable);
     if (srcPtr->hashPtr != NULL) {
-	Blt_DeleteHashEntry(&sourceTable, srcPtr->hashPtr);
+	Blt_DeleteHashEntry(&srcPtr->dataPtr->sourceTable, srcPtr->hashPtr);
     }
     Blt_Free(srcPtr);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- *  GetSource --
+ *  GetSourceFromObj --
  *
  *	Looks for a Source record in the hash table for drag&drop source
  *	widgets.  Returns a pointer to the desired record.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-GetSource(interp, pathName, srcPtrPtr)
-    Tcl_Interp *interp;
-    char *pathName;		/* widget pathname for desired record */
-    Source **srcPtrPtr;
+GetSourceFromObj(
+    DragdropCmdInterpData *dataPtr,
+    Tcl_Interp *interp,
+    Tcl_Obj *objPtr,		/* widget pathname for desired record */
+    Source **srcPtrPtr)
 {
     Blt_HashEntry *hPtr;
     Tk_Window tkwin;
+    char *pathName;
 
-    tkwin = Tk_NameToWindow(interp, pathName, Tk_MainWindow(interp));
+    pathName = Tcl_GetString(objPtr);
+    tkwin = Tk_NameToWindow(interp, pathName, dataPtr->tkMain);
     if (tkwin == NULL) {
 	return TCL_ERROR;
     }
-    hPtr = Blt_FindHashEntry(&sourceTable, (char *)tkwin);
+    hPtr = Blt_FindHashEntry(&dataPtr->sourceTable, (char *)tkwin);
     if (hPtr == NULL) {
 	Tcl_AppendResult(interp, "window \"", pathName,
 	     "\" has not been initialized as a drag&drop source", (char *)NULL);
 	return TCL_ERROR;
     }
-    *srcPtrPtr = (Source *)Blt_GetHashValue(hPtr);
+    *srcPtrPtr = Blt_GetHashValue(hPtr);
     return TCL_OK;
 }
-
+
+static char *
+ConcatArgs(int objc, Tcl_Obj *const *objv)
+{
+    char *string;
+
+    if (objc == 1) {
+	string = Blt_AssertStrdup(Tcl_GetString(objv[0]));
+    } else {
+	Tcl_DString dString;
+	int i;
+
+	Tcl_DStringInit(&dString);
+	for(i = 0; i < objc; i++) {
+	    Tcl_DStringAppendElement(&dString, Tcl_GetString(objv[i]));
+	}
+	string = Blt_AssertStrdup(Tcl_DStringValue(&dString));
+	Tcl_DStringFree(&dString);
+    }
+    return string;
+} 
+
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  ConfigureSource --
  *
- *	Called to process an (argc,argv) list to configure (or
+ *	Called to process an (objc,objv) list to configure (or
  *	reconfigure) a drag&drop source widget.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigureSource(interp, srcPtr, argc, argv, flags)
-    Tcl_Interp *interp;		/* current interpreter */
-    register Source *srcPtr;	/* drag&drop source widget record */
-    int argc;			/* number of arguments */
-    char **argv;		/* argument strings */
-    int flags;			/* flags controlling interpretation */
+ConfigureSource(
+    Tcl_Interp *interp,		/* current interpreter */
+    Source *srcPtr,		/* drag&drop source widget record */
+    int objc,			/* number of arguments */
+    Tcl_Obj *const *objv,	/* argument strings */
+    int flags)			/* flags controlling interpretation */
 {
     unsigned long gcMask;
     XGCValues gcValues;
@@ -1293,8 +1378,8 @@ ConfigureSource(interp, srcPtr, argc, argv, flags)
     /*
      *  Handle the bulk of the options...
      */
-    if (Tk_ConfigureWidget(interp, srcPtr->tkwin, configSpecs, argc, argv,
-	    (char *)srcPtr, flags) != TCL_OK) {
+    if (Blt_ConfigureWidgetFromObj(interp, srcPtr->tkwin, configSpecs, 
+		objc, objv, (char *)srcPtr, flags) != TCL_OK) {
 	return TCL_ERROR;
     }
     /*
@@ -1348,7 +1433,7 @@ ConfigureSource(interp, srcPtr, argc, argv, flags)
 	Tk_SetInternalBorder(srcPtr->token.tkwin,
 	    srcPtr->token.borderWidth + 2);
     }
-    if (!Tcl_GetCommandInfo(interp, "blt::Drag&DropInit", &cmdInfo)) {
+    if (!Tcl_GetCommandInfo(interp, "::blt::Drag&DropInit", &cmdInfo)) {
 	static char cmd[] = "source [file join $blt_library dragdrop.tcl]";
 
 	if (Tcl_GlobalEval(interp, cmd) != TCL_OK) {
@@ -1358,27 +1443,27 @@ ConfigureSource(interp, srcPtr, argc, argv, flags)
 	}
     }
     Tcl_DStringInit(&dString);
-    Blt_DStringAppendElements(&dString, "blt::Drag&DropInit",
+    Blt_DStringAppendElements(&dString, "::blt::Drag&DropInit",
       Tk_PathName(srcPtr->tkwin), Blt_Itoa(srcPtr->button), (char *)NULL);
     result = Tcl_Eval(interp, Tcl_DStringValue(&dString));
     Tcl_DStringFree(&dString);
     return result;
 }
-
+
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  SourceEventProc --
  *
  *	Invoked by Tk_HandleEvent whenever a DestroyNotify event is received
  *	on a registered drag&drop source widget.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-SourceEventProc(clientData, eventPtr)
-    ClientData clientData;	/* drag&drop registration list */
-    XEvent *eventPtr;		/* event description */
+SourceEventProc(
+    ClientData clientData,	/* drag&drop registration list */
+    XEvent *eventPtr)		/* event description */
 {
     Source *srcPtr = (Source *) clientData;
 
@@ -1388,7 +1473,7 @@ SourceEventProc(clientData, eventPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  FindTarget --
  *
@@ -1397,24 +1482,25 @@ SourceEventProc(clientData, eventPtr)
  *	not already registered.  Returns a pointer to the desired
  *	record.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Target *
-FindTarget(tkwin)
-    Tk_Window tkwin;		/* Widget pathname for desired record */
+FindTarget(
+    DragdropCmdInterpData *dataPtr,
+    Tk_Window tkwin)		/* Widget pathname for desired record */
 {
     Blt_HashEntry *hPtr;
 
-    hPtr = Blt_FindHashEntry(&targetTable, (char *)tkwin);
+    hPtr = Blt_FindHashEntry(&dataPtr->targetTable, (char *)tkwin);
     if (hPtr == NULL) {
 	return NULL;
     }
-    return (Target *) Blt_GetHashValue(hPtr);
+    return Blt_GetHashValue(hPtr);
 }
 
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  CreateTarget --
  *
@@ -1423,23 +1509,24 @@ FindTarget(tkwin)
  *	not already registered.  Returns a pointer to the desired
  *	record.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Target *
-CreateTarget(interp, tkwin)
-    Tcl_Interp *interp;
-    Tk_Window tkwin;		/* Widget pathname for desired record */
+CreateTarget(
+    DragdropCmdInterpData *dataPtr,
+    Tcl_Interp *interp,
+    Tk_Window tkwin)		/* Widget pathname for desired record */
 {
     Target *targetPtr;
     int isNew;
 
-    targetPtr = Blt_Calloc(1, sizeof(Target));
-    assert(targetPtr);
+    targetPtr = Blt_AssertCalloc(1, sizeof(Target));
     targetPtr->display = Tk_Display(tkwin);
     targetPtr->tkwin = tkwin;
-    Blt_InitHashTable(&(targetPtr->handlerTable), BLT_STRING_KEYS);
-    targetPtr->hashPtr = Blt_CreateHashEntry(&targetTable, (char *)tkwin, 
-	     &isNew);
+    targetPtr->dataPtr = dataPtr;
+    Blt_InitHashTable(&targetPtr->handlerTable, BLT_STRING_KEYS);
+    targetPtr->hashPtr = Blt_CreateHashEntry(&dataPtr->targetTable, 
+	(char *)tkwin, &isNew);
     Blt_SetHashValue(targetPtr->hashPtr, targetPtr);
 
     /* 
@@ -1458,31 +1545,32 @@ CreateTarget(interp, tkwin)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DestroyTarget --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DestroyTarget(data)
-    DestroyData data;
+DestroyTarget(DestroyData data)
 {
     Target *targetPtr = (Target *)data;
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
-    char *cmd;
 
-    for (hPtr = Blt_FirstHashEntry(&(targetPtr->handlerTable), &cursor);
+    for (hPtr = Blt_FirstHashEntry(&targetPtr->handlerTable, &cursor);
 	hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	cmd = (char *)Blt_GetHashValue(hPtr);
+	char *cmd;
+
+	cmd = Blt_GetHashValue(hPtr);
 	if (cmd != NULL) {
 	    Blt_Free(cmd);
 	}
     }
-    Blt_DeleteHashTable(&(targetPtr->handlerTable));
+    Blt_DeleteHashTable(&targetPtr->handlerTable);
     if (targetPtr->hashPtr != NULL) {
-	Blt_DeleteHashEntry(&targetTable, targetPtr->hashPtr);
+	Blt_DeleteHashEntry(&targetPtr->dataPtr->targetTable, 
+		targetPtr->hashPtr);
     }
     Tk_DeleteEventHandler(targetPtr->tkwin, StructureNotifyMask,
 	  TargetEventProc, targetPtr);
@@ -1490,19 +1578,19 @@ DestroyTarget(data)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  TargetEventProc --
  *
  *  Invoked by Tk_HandleEvent whenever a DestroyNotify event is received
  *  on a registered drag&drop target widget.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-TargetEventProc(clientData, eventPtr)
-    ClientData clientData;	/* drag&drop registration list */
-    XEvent *eventPtr;		/* event description */
+TargetEventProc(
+    ClientData clientData,	/* drag&drop registration list */
+    XEvent *eventPtr)		/* event description */
 {
     Target *targetPtr = (Target *) clientData;
 
@@ -1519,34 +1607,33 @@ TargetEventProc(clientData, eventPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DndSend --
  *
  *	Invoked after a drop operation to send data to the drop
  *	application.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DndSend(srcPtr)
-    register Source *srcPtr;	/* drag&drop source record */
+DndSend(Source *srcPtr)		/* drag&drop source record */
 {
     int status;
     SubstDescriptors subs[3];
     Tcl_DString dString;
     Blt_HashEntry *hPtr;
-    char *dataType;
-    char **targetInfo;
+    const char *dataType;
+    const char **targv;
     char *cmd;
 
     /* See if current position is over drop point.  */
     if (!OverTarget(srcPtr, srcPtr->token.lastX, srcPtr->token.lastY)) {
 	return;
     }
-    targetInfo = srcPtr->windowPtr->targetInfo;
+    targv = srcPtr->windowPtr->targetInfo;
     Tcl_DStringInit(&dString);
-    Blt_DStringAppendElements(&dString, "send", targetInfo[INTERP_NAME],
+    Blt_DStringAppendElements(&dString, "send", targv[INTERP_NAME],
 	dragDropCmd, "location", (char *)NULL);
     Tcl_DStringAppendElement(&dString, Blt_Itoa(srcPtr->token.lastX));
     Tcl_DStringAppendElement(&dString, Blt_Itoa(srcPtr->token.lastY));
@@ -1556,34 +1643,33 @@ DndSend(srcPtr)
     if (status != TCL_OK) {
 	goto reject;
     }
-    if (targetInfo[DATA_TYPE] == NULL) {
+    if (targv[DATA_TYPE] == NULL) {
 	Blt_HashSearch cursor;
 
-	hPtr = Blt_FirstHashEntry(&(srcPtr->handlerTable), &cursor);
-	dataType = Blt_GetHashKey(&(srcPtr->handlerTable), hPtr);
+	hPtr = Blt_FirstHashEntry(&srcPtr->handlerTable, &cursor);
+	dataType = Blt_GetHashKey(&srcPtr->handlerTable, hPtr);
     } else {
-	hPtr = Blt_FindHashEntry(&(srcPtr->handlerTable),
-	    targetInfo[DATA_TYPE]);
-	dataType = targetInfo[DATA_TYPE];
+	hPtr = Blt_FindHashEntry(&srcPtr->handlerTable, targv[DATA_TYPE]);
+	dataType = targv[DATA_TYPE];
     }
     /* Start building the command line here, before we invoke any Tcl
-     * commands. The is because the Tcl command may let in another
+     * commands. The is because the TCL command may let in another
      * drag event and change the target property data. */
     Tcl_DStringInit(&dString);
-    Blt_DStringAppendElements(&dString, "send", targetInfo[INTERP_NAME],
-	dragDropCmd, "target", targetInfo[TARGET_NAME], "handle",
-	dataType, (char *)NULL);
+    Blt_DStringAppendElements(&dString, "send", targv[INTERP_NAME],
+	dragDropCmd, "target", targv[TARGET_NAME], "handle", dataType, 
+	(char *)NULL);
     cmd = NULL;
     if (hPtr != NULL) {
-	cmd = (char *)Blt_GetHashValue(hPtr);
+	cmd = Blt_GetHashValue(hPtr);
     }
     if (cmd != NULL) {
 	Tcl_DString cmdString;
 
 	subs[0].letter = 'i';
-	subs[0].value = targetInfo[INTERP_NAME];
+	subs[0].value = targv[INTERP_NAME];
 	subs[1].letter = 'w';
-	subs[1].value = targetInfo[TARGET_NAME];
+	subs[1].value = targv[TARGET_NAME];
 	subs[2].letter = 'v';
 	subs[2].value = srcPtr->pkgCmdResult;
 	
@@ -1607,22 +1693,19 @@ DndSend(srcPtr)
     if (status != TCL_OK) {
 	goto reject;
     }
-    HideToken(&(srcPtr->token));
+    HideToken(&srcPtr->token);
     return;
   reject:
     /*
      * Give failure information to user.  If an error occurred and an
      * error proc is defined, then use it to handle the error.
      */
-    RejectToken(&(srcPtr->token));
-    if (errorCmd != NULL) {
-	Tcl_VarEval(srcPtr->interp, errorCmd, " {",
-	    Tcl_GetStringResult(srcPtr->interp), "}", (char *)NULL);
-    }
+    RejectToken(&srcPtr->token);
+    Bgerror(srcPtr);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  InitRoot --
  *
@@ -1638,14 +1721,12 @@ DndSend(srcPtr)
  *	Returns the record for the root window, which contains records
  *	for all other windows as children.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-InitRoot(srcPtr)
-    Source *srcPtr;
+InitRoot(Source *srcPtr)
 {
-    srcPtr->rootPtr = Blt_Calloc(1, sizeof(AnyWindow));
-    assert(srcPtr->rootPtr);
+    srcPtr->rootPtr = Blt_AssertCalloc(1, sizeof(AnyWindow));
 #ifdef WIN32
     srcPtr->rootPtr->nativeWindow = GetDesktopWindow();
 #else
@@ -1656,7 +1737,7 @@ InitRoot(srcPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  FindTopWindow --
  *
@@ -1666,16 +1747,16 @@ InitRoot(srcPtr)
  *	Returns a pointer to the node representing the window containing
  *	the point.  If one can't be found, NULL is returned.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static AnyWindow *
-FindTopWindow(srcPtr, x, y)
-    Source *srcPtr;
-    int x, y;
+FindTopWindow(
+    Source *srcPtr,
+    int x, int y)
 {
     AnyWindow *rootPtr;
-    register Blt_ChainLink *linkPtr;
-    register AnyWindow *windowPtr;
+    Blt_ChainLink link;
+    AnyWindow *windowPtr;
     WINDOW nativeTokenWindow;
 
     rootPtr = srcPtr->rootPtr;
@@ -1688,7 +1769,7 @@ FindTopWindow(srcPtr, x, y)
     }
     windowPtr = rootPtr;
 
-    nativeTokenWindow = (WINDOW)Blt_GetRealWindowId(srcPtr->token.tkwin);
+    nativeTokenWindow = (WINDOW)Blt_GetWindowId(srcPtr->token.tkwin);
     /*
      * The window list is ordered top to bottom, so stop when we find
      * the first child that contains the X-Y coordinate. It will be
@@ -1696,9 +1777,9 @@ FindTopWindow(srcPtr, x, y)
      * already have the topmost window.
      */
   descend:
-    for (linkPtr = Blt_ChainFirstLink(rootPtr->chainPtr); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	rootPtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(rootPtr->chain); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	rootPtr = Blt_Chain_GetValue(link);
 	if (!rootPtr->initialized) {
 	    QueryWindow(srcPtr->display, rootPtr);
 	}
@@ -1720,7 +1801,7 @@ FindTopWindow(srcPtr, x, y)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  OverTarget --
  *
@@ -1733,20 +1814,20 @@ FindTopWindow(srcPtr, x, y)
  *	Returns a pointer to a structure describing the target, or NULL
  *	if no compatible target is found.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-OverTarget(srcPtr, x, y)
-    Source *srcPtr;		/* drag&drop source window */
-    int x, y;			/* current drag&drop location
+OverTarget(
+    Source *srcPtr,		/* drag&drop source window */
+    int x, int y)		/* current drag&drop location
 				 * (in virtual coords) */
 {
     int virtX, virtY;
     int dummy;
     AnyWindow *newPtr, *oldPtr;
-    char **elemArr;
-    int nElems;
-    char *data;
+    const char **argv;
+    int argc;
+    const unsigned char *data;
     int result;
 
     /*
@@ -1791,17 +1872,17 @@ OverTarget(srcPtr, x, y)
     if (data == NULL) {
 	return FALSE;		/* No such property on window. */
     }
-    result = Tcl_SplitList(srcPtr->interp, data, &nElems, &elemArr);
+    result = Tcl_SplitList(srcPtr->interp, (char *)data, &argc, &argv);
     XFree((char *)data);
     if (result != TCL_OK) {
 	return FALSE;		/* Malformed property list. */
     }
     srcPtr->windowPtr = newPtr;
     /* Interpreter name, target name, type1, type2, ... */
-    if (nElems > 2) {
-	register char **s;
+    if (argc > 2) {
+	const char **s;
 	int count;
-	register int i;
+	int i;
 
 	/*
 	 * The candidate target has a list of possible types.
@@ -1811,46 +1892,45 @@ OverTarget(srcPtr, x, y)
 	 * it wants.
 	 */
 	count = 2;
-	for (i = 2; i < nElems; i++) {
+	for (i = 2; i < argc; i++) {
 	    for (s = srcPtr->sendTypes; *s != NULL; s++) {
 		if (((**s == 'a') && (strcmp(*s, "all") == 0)) ||
-		    ((**s == elemArr[i][0]) && (strcmp(*s, elemArr[i]) == 0))) {
-		    elemArr[count++] = elemArr[i];
+		    ((**s == argv[i][0]) && (strcmp(*s, argv[i]) == 0))) {
+		    argv[count++] = argv[i];
 		}
 	    }
 	}
 	if (count == 2) {
-	    Blt_Free(elemArr);
+	    Blt_Free(argv);
 	    fprintf(stderr, "source/target mismatch: No matching types\n");
 	    return FALSE;	/* No matching data type. */
 	}
-	elemArr[count] = NULL;
+	argv[count] = NULL;
     }
-    newPtr->targetInfo = elemArr;
+    newPtr->targetInfo = argv;
     return TRUE;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  RemoveWindow --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-RemoveWindow(windowPtr)
-    AnyWindow *windowPtr;		/* window rep to be freed */
+RemoveWindow(AnyWindow *windowPtr) /* window rep to be freed */
 {
     AnyWindow *childPtr;
-    Blt_ChainLink *linkPtr;
+    Blt_ChainLink link;
 
     /* Throw away leftover slots. */
-    for (linkPtr = Blt_ChainFirstLink(windowPtr->chainPtr); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	childPtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(windowPtr->chain); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	childPtr = Blt_Chain_GetValue(link);
 	RemoveWindow(childPtr);
     }
-    Blt_ChainDestroy(windowPtr->chainPtr);
+    Blt_Chain_Destroy(windowPtr->chain);
     if (windowPtr->targetInfo != NULL) {
 	Blt_Free(windowPtr->targetInfo);
     }
@@ -1858,7 +1938,7 @@ RemoveWindow(windowPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  QueryWindow --
  *
@@ -1871,64 +1951,63 @@ RemoveWindow(windowPtr)
  *	Further queries will cause these structures to be initialized
  *	in turn.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-QueryWindow(display, windowPtr)
-    Display *display;
-    AnyWindow *windowPtr;		/* window rep to be initialized */
+QueryWindow(
+    Display *display,
+    AnyWindow *winPtr)		/* window rep to be initialized */
 {
     int visible;
 
-    if (windowPtr->initialized) {
+    if (winPtr->initialized) {
 	return;
     }
     /*
      *  Query for the window coordinates.
      */
-    visible = GetWindowRegion(display, windowPtr->nativeWindow, 
-      &(windowPtr->x1), &(windowPtr->y1), &(windowPtr->x2), &(windowPtr->y2));
+    visible = GetWindowRegion(display, winPtr->nativeWindow, 
+	&winPtr->x1, &winPtr->y1, &winPtr->x2, &winPtr->y2);
     if (visible) {
-	Blt_ChainLink *linkPtr;
-	Blt_Chain *chainPtr;
+	Blt_ChainLink link;
+	Blt_Chain chain;
 	AnyWindow *childPtr;
 
 #ifndef WIN32
 	/* Add offset from parent's origin to coordinates */
-	if (windowPtr->parentPtr != NULL) {
-	    windowPtr->x1 += windowPtr->parentPtr->x1;
-	    windowPtr->y1 += windowPtr->parentPtr->y1;
-	    windowPtr->x2 += windowPtr->parentPtr->x1;
-	    windowPtr->y2 += windowPtr->parentPtr->y1;
+	if (winPtr->parentPtr != NULL) {
+	    winPtr->x1 += winPtr->parentPtr->x1;
+	    winPtr->y1 += winPtr->parentPtr->y1;
+	    winPtr->x2 += winPtr->parentPtr->x1;
+	    winPtr->y2 += winPtr->parentPtr->y1;
 	}
 #endif
 	/*
 	 * Collect a list of child windows, sorted in z-order.  The
 	 * topmost window will be first in the list.
 	 */
-	chainPtr = GetWindowZOrder(display, windowPtr->nativeWindow);
+	chain = GetWindowZOrder(display, winPtr->nativeWindow);
 
 	/* Add and initialize extra slots if needed. */
-	for (linkPtr = Blt_ChainFirstLink(chainPtr); linkPtr != NULL;
-	    linkPtr = Blt_ChainNextLink(linkPtr)) {
-	    childPtr = Blt_Calloc(1, sizeof(AnyWindow));
-	    assert(childPtr);
+	for (link = Blt_Chain_FirstLink(chain); link != NULL;
+	    link = Blt_Chain_NextLink(link)) {
+	    childPtr = Blt_AssertCalloc(1, sizeof(AnyWindow));
 	    childPtr->initialized = FALSE;
-	    childPtr->nativeWindow = (WINDOW)Blt_ChainGetValue(linkPtr);
-	    childPtr->parentPtr = windowPtr;
-	    Blt_ChainSetValue(linkPtr, childPtr);
+	    childPtr->nativeWindow = (WINDOW)Blt_Chain_GetValue(link);
+	    childPtr->parentPtr = winPtr;
+	    Blt_Chain_SetValue(link, childPtr);
 	}
-	windowPtr->chainPtr = chainPtr;
+	winPtr->chain = chain;
     } else {
 	/* If it's not viewable don't bother doing anything else. */
-	windowPtr->x1 = windowPtr->y1 = windowPtr->x2 = windowPtr->y2 = -1;
-	windowPtr->chainPtr = NULL;
+	winPtr->x1 = winPtr->y1 = winPtr->x2 = winPtr->y2 = -1;
+	winPtr->chain = NULL;
     }
-    windowPtr->initialized = TRUE;
+    winPtr->initialized = TRUE;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  AddTargetProperty --
  *
@@ -1940,12 +2019,12 @@ QueryWindow(display, windowPtr)
  *	is first registered or first exposed (so that the X-window
  *	really exists).
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-AddTargetProperty(interp, targetPtr)
-    Tcl_Interp *interp;
-    Target *targetPtr;		/* drag&drop target window data */
+AddTargetProperty(
+    Tcl_Interp *interp,
+    Target *targetPtr)		/* drag&drop target window data */
 {
     Tcl_DString dString;
     Blt_HashEntry *hPtr;
@@ -1965,17 +2044,17 @@ AddTargetProperty(interp, targetPtr)
      */
     Tcl_DStringAppendElement(&dString, Tk_Name(Tk_MainWindow(interp)));
     Tcl_DStringAppendElement(&dString, Tk_PathName(targetPtr->tkwin));
-    for (hPtr = Blt_FirstHashEntry(&(targetPtr->handlerTable), &cursor);
+    for (hPtr = Blt_FirstHashEntry(&targetPtr->handlerTable, &cursor);
 	hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
 	Tcl_DStringAppendElement(&dString,
-	    Blt_GetHashKey(&(targetPtr->handlerTable), hPtr));
+	    Blt_GetHashKey(&targetPtr->handlerTable, hPtr));
     }
     SetProperty(targetPtr->tkwin, Tcl_DStringValue(&dString));
     Tcl_DStringFree(&dString);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  ExpandPercents --
  *
@@ -1985,18 +2064,17 @@ AddTargetProperty(interp, targetPtr)
  *	Returns a string that remains valid until the next call to
  *	this routine.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-static char *
-ExpandPercents(string, subsArr, nSubs, resultPtr)
-    char *string;		/* Incoming command string */
-    SubstDescriptors *subsArr;	/* Array of known substitutions */
-    int nSubs;			/* Number of elements in subs array */
-    Tcl_DString *resultPtr;
+static const char *
+ExpandPercents(
+    const char *string,		/* Incoming command string */
+    SubstDescriptors *subsArr,	/* Array of known substitutions */
+    int nSubs,			/* Number of elements in subs array */
+    Tcl_DString *resultPtr)
 {
-    register char *chunk, *p;
+    const char *chunk, *p;
     char letter;
-    char percentSign;
     int i;
 
     /*
@@ -2008,10 +2086,7 @@ ExpandPercents(string, subsArr, nSubs, resultPtr)
     while ((p = strchr(p, '%')) != NULL) {
 
 	/* Copy up to the percent sign.  Repair the string afterwards */
-	percentSign = *p;
-	*p = '\0';
-	Tcl_DStringAppend(resultPtr, chunk, -1);
-	*p = percentSign;
+	Tcl_DStringAppend(resultPtr, chunk, p - chunk);
 
 	/* Search for a matching substition rule */
 	letter = *(p + 1);
@@ -2046,37 +2121,35 @@ ExpandPercents(string, subsArr, nSubs, resultPtr)
 }
 
 
+/*ARGSUSED*/
 static int
-DragOp(interp, argc, argv)
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+DragOp(
+    ClientData clientData, 
+    Tcl_Interp *interp, 
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
+    DragdropCmdInterpData *dataPtr = clientData;
     int x, y;
     Token *tokenPtr;
     int status;
     Source *srcPtr;
     SubstDescriptors subst[2];
     int active;
-    CONST char *result;
+    const char *result;
 
     /*
      *  HANDLE:  drag&drop drag <path> <x> <y>
      */
-    if (argc != 5) {
-	Tcl_AppendResult(interp, "wrong # args: should be \"", argv[0],
-	    " drag pathname x y\"", (char *)NULL);
+    if ((GetSourceFromObj(dataPtr, interp, objv[2], &srcPtr) != TCL_OK) || 
+	(Tcl_GetIntFromObj(interp, objv[3], &x) != TCL_OK) ||
+	(Tcl_GetIntFromObj(interp, objv[4], &y) != TCL_OK)) {
 	return TCL_ERROR;
     }
-    if ((GetSource(interp, argv[2], &srcPtr) != TCL_OK) || 
-	(Tcl_GetInt(interp, argv[3], &x) != TCL_OK) ||
-	(Tcl_GetInt(interp, argv[4], &y) != TCL_OK)) {
-	return TCL_ERROR;
-    }
-    tokenPtr = &(srcPtr->token);
+    tokenPtr = &srcPtr->token;
 
-    tokenPtr->lastX = locX = x;	/* Save drag&drop location */
-    tokenPtr->lastY = locY = y;
+    tokenPtr->lastX = dataPtr->locX = x;	/* Save drag&drop location */
+    tokenPtr->lastY = dataPtr->locY = y;
 
     /* If HideToken() is pending, then do it now!  */
     if (tokenPtr->timer != 0) {
@@ -2104,7 +2177,7 @@ DragOp(interp, argc, argv)
 	 *  Signal error.
 	 */
 	if (srcPtr->pkgCmd == NULL) {
-	    Tcl_AppendResult(interp, "missing -packagecmd: ", argv[2],
+	    Tcl_AppendResult(interp, "missing -packagecmd: ", objv[2],
 		(char *)NULL);
 	    return TCL_ERROR;
 	}
@@ -2137,16 +2210,13 @@ DragOp(interp, argc, argv)
 	if (srcPtr->pkgCmdResult != NULL) {
 	    Blt_Free(srcPtr->pkgCmdResult);
 	}
-	srcPtr->pkgCmdResult = Blt_Strdup(result);
+	srcPtr->pkgCmdResult = Blt_AssertStrdup(result);
 	if (status != TCL_OK) {
 	    /*
 	     * Token building failed.  If an error handler is defined,
 	     * then signal the error.  Otherwise, abort quietly.
 	     */
-	    if ((errorCmd != NULL) && (errorCmd[0] != '\0')) {
-		return Tcl_VarEval(interp, errorCmd, " {", result, "}",
-		    (char *)NULL);
-	    }
+	    Bgerror(srcPtr);
 	    return TCL_OK;
 	}
 	/* Install token cursor.  */
@@ -2172,7 +2242,7 @@ DragOp(interp, argc, argv)
 	}
 	InitRoot(srcPtr);
 
-	nActive++;		/* One more drag&drop window active */
+	dataPtr->nActive++;		/* One more drag&drop window active */
 
 	if (Tk_WindowId(tokenPtr->tkwin) == None) {
 	    Tk_MakeWindowExist(tokenPtr->tkwin);
@@ -2198,29 +2268,27 @@ DragOp(interp, argc, argv)
 /*
  *  HANDLE:  drag&drop drop <path> <x> <y>
  */
+/*ARGSUSED*/
 static int
-DropOp(interp, argc, argv)
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+DropOp(
+    ClientData clientData, 
+    Tcl_Interp *interp, 
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
+    DragdropCmdInterpData *dataPtr = clientData;
     Source *srcPtr;
     Token *tokenPtr;
     int x, y;
 
-    if (argc < 5) {
-	Tcl_AppendResult(interp, "wrong # args: should be \"", argv[0],
-	    " drop pathname x y\"", (char *)NULL);
+    if ((GetSourceFromObj(dataPtr, interp, objv[2], &srcPtr) != TCL_OK)  ||
+	(Tcl_GetIntFromObj(interp, objv[3], &x) != TCL_OK) ||
+	(Tcl_GetIntFromObj(interp, objv[4], &y) != TCL_OK)) {
 	return TCL_ERROR;
     }
-    if ((GetSource(interp, argv[2], &srcPtr) != TCL_OK)  ||
-	(Tcl_GetInt(interp, argv[3], &x) != TCL_OK) ||
-	(Tcl_GetInt(interp, argv[4], &y) != TCL_OK)) {
-	return TCL_ERROR;
-    }
-    tokenPtr = &(srcPtr->token);
-    tokenPtr->lastX = locX = x;			/* Save drag&drop location */
-    tokenPtr->lastY = locY = y;
+    tokenPtr = &srcPtr->token;
+    tokenPtr->lastX = dataPtr->locX = x; /* Save drag&drop location */
+    tokenPtr->lastY = dataPtr->locY = y;
     
     /* Put the cursor back to its usual state.  */
     if (srcPtr->cursor == None) {
@@ -2249,50 +2317,25 @@ DropOp(interp, argc, argv)
 		HideToken(tokenPtr);
 	    }
 	}
-	nActive--;		/* One less active token window. */
+	dataPtr->nActive--;		/* One less active token window. */
     }
-    return TCL_OK;
-}
-
-/*
- *  HANDLE:  drag&drop errors ?<proc>?
- */
-static int
-ErrorsOp(interp, argc, argv)
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
-{
-    if (argc == 3) {
-	if (errorCmd) {
-	    Blt_Free(errorCmd);
-	}
-	errorCmd = Blt_Strdup(argv[2]);
-    } else if (argc != 2) {
-	Tcl_AppendResult(interp, "wrong # args: should be \"",
-	    argv[0], " errors ?proc?\"",
-	    (char *)NULL);
-	return TCL_ERROR;
-    }
-    Tcl_SetResult(interp, errorCmd, TCL_VOLATILE);
     return TCL_OK;
 }
 
 /*
  *  HANDLE:  drag&drop active
  */
+/*ARGSUSED*/
 static int
-ActiveOp(interp, argc, argv)
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+ActiveOp(
+    ClientData clientData, 
+    Tcl_Interp *interp, 
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
-    if (argc != 2) {
-	Tcl_AppendResult(interp, "wrong # args: should be \"", argv[0],
-	    " active\"", (char *)NULL);
-	return TCL_ERROR;
-    }
-    Blt_SetBooleanResult(interp, (nActive > 0));
+    DragdropCmdInterpData *dataPtr = clientData;
+
+    Tcl_SetBooleanObj(Tcl_GetObjResult(interp), (dataPtr->nActive > 0));
     return TCL_OK;
 }
 
@@ -2300,28 +2343,34 @@ ActiveOp(interp, argc, argv)
  *  HANDLE:  drag&drop location ?<x> <y>?
  */
 static int
-LocationOp(interp, argc, argv)
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+LocationOp(
+    ClientData clientData, 
+    Tcl_Interp *interp, 
+    int objc, 
+    Tcl_Obj *const *objv)
 {
-    if ((argc != 2) && (argc != 4)) {
-	Tcl_AppendResult(interp, "wrong # args: should be \"", argv[0],
-	    " location ?x y?\"", (char *)NULL);
+    DragdropCmdInterpData *dataPtr = clientData;
+    Tcl_Obj *listObjPtr;
+
+    if ((objc != 2) && (objc != 4)) {
+	Tcl_AppendResult(interp, "wrong # args: should be \"", 
+		Tcl_GetString(objv[0]), " location ?x y?\"", (char *)NULL);
 	return TCL_ERROR;
     }
-    if (argc == 4) {
+    if (objc == 4) {
 	int x, y;
 
-	if ((Tcl_GetInt(interp, argv[2], &x) != TCL_OK) ||
-	    (Tcl_GetInt(interp, argv[3], &y) != TCL_OK)) {
+	if ((Tcl_GetIntFromObj(interp, objv[2], &x) != TCL_OK) ||
+	    (Tcl_GetIntFromObj(interp, objv[3], &y) != TCL_OK)) {
 	    return TCL_ERROR;
 	}
-	locX = x;
-	locY = y;
+	dataPtr->locX = x;
+	dataPtr->locY = y;
     }
-    Tcl_AppendElement(interp, Blt_Itoa(locX));
-    Tcl_AppendElement(interp, Blt_Itoa(locY));
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(dataPtr->locX));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(dataPtr->locY));
+    Tcl_SetObjResult(interp, listObjPtr);
     return TCL_OK;
 }
 
@@ -2329,50 +2378,50 @@ LocationOp(interp, argc, argv)
  *  HANDLE:  drag&drop token <pathName>
  */
 static int
-TokenOp(interp, argc, argv)
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+TokenOp(
+    ClientData clientData, 
+    Tcl_Interp *interp, 
+    int objc, 
+    Tcl_Obj *const *objv)
 {
+    DragdropCmdInterpData *dataPtr = clientData;
     Source *srcPtr;
 
-    if (GetSource(interp, argv[2], &srcPtr) != TCL_OK) {
+    if (GetSourceFromObj(dataPtr, interp, objv[2], &srcPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    if ((argc > 3) && 
-	(ConfigureToken(interp, srcPtr, argc - 3, argv + 3) != TCL_OK)) {
+    if ((objc > 3) && 
+	(ConfigureToken(interp, srcPtr, objc - 3, objv + 3) != TCL_OK)) {
 	return TCL_ERROR;
     }
-    Tcl_SetResult(interp, Tk_PathName(srcPtr->token.tkwin), TCL_VOLATILE);
+    Tcl_SetStringObj(Tcl_GetObjResult(interp), 
+	Tk_PathName(srcPtr->token.tkwin), -1);
     return TCL_OK;
 }
 
 static int
-HandlerOpOp(srcPtr, interp, argc, argv)
-    Source *srcPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+HandlerOpOp(Source *srcPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
+    const char *cmd;
     int isNew;
-    char *cmd;
 
     /*
      *  HANDLE:  drag&drop source <pathName> handler \
      *             ?<data>? ?<scmd>...?
      */
-    if (argc == 4) {
+    if (objc == 4) {
 	/* Show source handler data types */
-	for (hPtr = Blt_FirstHashEntry(&(srcPtr->handlerTable), &cursor);
+	for (hPtr = Blt_FirstHashEntry(&srcPtr->handlerTable, &cursor);
 	    hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
 	    Tcl_AppendElement(interp,
-		Blt_GetHashKey(&(srcPtr->handlerTable), hPtr));
+		Blt_GetHashKey(&srcPtr->handlerTable, hPtr));
 	}
 	return TCL_OK;
     }
-    hPtr = Blt_CreateHashEntry(&(srcPtr->handlerTable), argv[4], &isNew);
+    hPtr = Blt_CreateHashEntry(&srcPtr->handlerTable, Tcl_GetString(objv[4]),
+	&isNew);
 
     /*
      *  HANDLE:  drag&drop source <pathName> handler <data>
@@ -2380,12 +2429,12 @@ HandlerOpOp(srcPtr, interp, argc, argv)
      *    Create the new <data> type if it doesn't already
      *    exist, and return the code associated with it.
      */
-    if (argc == 5) {
-	cmd = (char *)Blt_GetHashValue(hPtr);
+    if (objc == 5) {
+	cmd = Blt_GetHashValue(hPtr);
 	if (cmd == NULL) {
 	    cmd = "";
 	}
-	Tcl_SetResult(interp, cmd, TCL_VOLATILE);
+	Tcl_SetStringObj(Tcl_GetObjResult(interp), cmd, -1);
 	return TCL_OK;
     }
     /*
@@ -2394,7 +2443,7 @@ HandlerOpOp(srcPtr, interp, argc, argv)
      *
      *    Create the new <data> type and set its command
      */
-    cmd = Tcl_Concat(argc - 5, argv + 5);
+    cmd = ConcatArgs(objc - 5, objv + 5);
     Blt_SetHashValue(hPtr, cmd);
     return TCL_OK;
 }
@@ -2405,23 +2454,25 @@ HandlerOpOp(srcPtr, interp, argc, argv)
  *           drag&drop source <pathName> handler ?<data>? ?<scmd> <arg>...?
  */
 static int
-SourceOp(interp, argc, argv)
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+SourceOp(
+    ClientData clientData, 
+    Tcl_Interp *interp, 
+    int objc, 
+    Tcl_Obj *const *objv)
 {
+    DragdropCmdInterpData *dataPtr = clientData;
     Source *srcPtr;
     int isNew;
     Token *tokenPtr;
 
-    if (argc == 2) {
+    if (objc == 2) {
 	Blt_HashSearch cursor;
 	Blt_HashEntry *hPtr;
 	Tk_Window tkwin;
 
-	for (hPtr = Blt_FirstHashEntry(&sourceTable, &cursor);
+	for (hPtr = Blt_FirstHashEntry(&dataPtr->sourceTable, &cursor);
 	    hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	    tkwin = (Tk_Window)Blt_GetHashKey(&sourceTable, hPtr);
+	    tkwin = (Tk_Window)Blt_GetHashKey(&dataPtr->sourceTable, hPtr);
 	    Tcl_AppendElement(interp, Tk_PathName(tkwin));
 	}
 	return TCL_OK;
@@ -2429,40 +2480,41 @@ SourceOp(interp, argc, argv)
     /*
      *  Find or create source info...
      */
-    srcPtr = CreateSource(interp, argv[2], &isNew);
+    srcPtr = CreateSource(dataPtr, interp, objv[2], &isNew);
     if (srcPtr == NULL) {
 	return TCL_ERROR;
     }
-    tokenPtr = &(srcPtr->token);
-    if (argc > 3) {
+    tokenPtr = &srcPtr->token;
+    if (objc > 3) {
 	char c;
 	int length;
 	int status;
+	char *string;
 
 	/*
 	 *  HANDLE:  drag&drop source <pathName> ?options...?
 	 */
-	c = argv[3][0];
-	length = strlen(argv[3]);
+	string = Tcl_GetStringFromObj(objv[3], &length);
+	c = string[0];
 
 	if (c == '-') {
-	    if (argc == 3) {
-		status = Tk_ConfigureInfo(interp, tokenPtr->tkwin, configSpecs,
-		    (char *)srcPtr, (char *)NULL, 0);
-	    } else if (argc == 4) {
-		status = Tk_ConfigureInfo(interp, tokenPtr->tkwin, configSpecs,
-		    (char *)srcPtr, argv[3], 0);
+	    if (objc == 3) {
+		status = Blt_ConfigureInfoFromObj(interp, tokenPtr->tkwin, 
+			configSpecs, (char *)srcPtr, (Tcl_Obj *)NULL, 0);
+	    } else if (objc == 4) {
+		status = Blt_ConfigureInfoFromObj(interp, tokenPtr->tkwin, 
+			configSpecs, (char *)srcPtr, objv[3], 0);
 	    } else {
-		status = ConfigureSource(interp, srcPtr, argc - 3, argv + 3,
-		    TK_CONFIG_ARGV_ONLY);
+		status = ConfigureSource(interp, srcPtr, objc - 3, objv + 3,
+		    BLT_CONFIG_OBJV_ONLY);
 	    }
 	    if (status != TCL_OK) {
 		return TCL_ERROR;
 	    }
-	} else if ((c == 'h') && strncmp(argv[3], "handler", length) == 0) {
-	    return HandlerOpOp(srcPtr, interp, argc, argv);
+	} else if ((c == 'h') && strncmp(string, "handler", length) == 0) {
+	    return HandlerOpOp(srcPtr, interp, objc, objv);
 	} else {
-	    Tcl_AppendResult(interp, "bad operation \"", argv[3],
+	    Tcl_AppendResult(interp, "bad operation \"", string,
 		"\": must be \"handler\" or a configuration option",
 		(char *)NULL);
 	    return TCL_ERROR;
@@ -2484,127 +2536,142 @@ SourceOp(interp, argc, argv)
  *  HANDLE:  drag&drop target ?<pathName>? ?handling info...?
  */
 static int
-TargetOp(interp, argc, argv)
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+TargetOp(
+    ClientData clientData, 
+    Tcl_Interp *interp, 
+    int objc, 
+    Tcl_Obj *const *objv)
 {
+    DragdropCmdInterpData *dataPtr = clientData;
     SubstDescriptors subst[2];
     Tk_Window tkwin;
     Blt_HashEntry *hPtr;
     Target *targetPtr;
     int isNew;
+    char *string;
 
-    if (argc == 2) {
+    if (objc == 2) {
 	Blt_HashSearch cursor;
 
-	for (hPtr = Blt_FirstHashEntry(&targetTable, &cursor);
+	for (hPtr = Blt_FirstHashEntry(&dataPtr->targetTable, &cursor);
 	    hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	    tkwin = (Tk_Window)Blt_GetHashKey(&targetTable, hPtr);
+	    tkwin = (Tk_Window)Blt_GetHashKey(&dataPtr->targetTable, hPtr);
 	    Tcl_AppendElement(interp, Tk_PathName(tkwin));
 	}
 	return TCL_OK;
     }
-    tkwin = Tk_NameToWindow(interp, argv[2], Tk_MainWindow(interp));
+    string = Tcl_GetString(objv[2]);
+    tkwin = Tk_NameToWindow(interp, string, dataPtr->tkMain);
     if (tkwin == NULL) {
 	return TCL_ERROR;
     }
-    targetPtr = FindTarget(tkwin);
+    targetPtr = FindTarget(dataPtr, tkwin);
     if (targetPtr == NULL) {
-	targetPtr = CreateTarget(interp, tkwin);
+	targetPtr = CreateTarget(dataPtr, interp, tkwin);
     }
     if (targetPtr == NULL) {
 	return TCL_ERROR;
     }
 
-    if ((argc >= 4) && (strcmp(argv[3], "handler") == 0)) {
-	/*
-	 *  HANDLE:  drag&drop target <pathName> handler
-	 *           drag&drop target <pathName> handler ?<data> <cmd> <arg>...?
-	 */
-	if (argc == 4) {
-	    Blt_HashSearch cursor;
-
-	    for (hPtr = Blt_FirstHashEntry(&(targetPtr->handlerTable), &cursor);
-		hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-		Tcl_AppendElement(interp,
-		    Blt_GetHashKey(&(targetPtr->handlerTable), hPtr));
-	    }
-	    return TCL_OK;
-	} else if (argc >= 6) {
-	    char *cmd;
-
+    if (objc >= 4) {
+	string = Tcl_GetString(objv[3]);
+	if (strcmp(string, "handler") == 0) {
 	    /*
-	     *  Process handler definition
+	     *  HANDLE: drag&drop target <pathName> handler drag&drop
+	     *  target <pathName> handler ?<data> <cmd> <arg>...?
 	     */
-	    hPtr = Blt_CreateHashEntry(&(targetPtr->handlerTable), argv[4],
-		&isNew);
-	    cmd = Tcl_Concat(argc - 5, argv + 5);
-	    if (hPtr != NULL) {
-		char *oldCmd;
-
-		oldCmd = (char *)Blt_GetHashValue(hPtr);
-		if (oldCmd != NULL) {
-		    Blt_Free(oldCmd);
+	    
+	    if (objc == 4) {
+		Blt_HashSearch cursor;
+		
+		for (hPtr =Blt_FirstHashEntry(&targetPtr->handlerTable,&cursor);
+		     hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
+		    Tcl_AppendElement(interp,
+			Blt_GetHashKey(&targetPtr->handlerTable, hPtr));
 		}
+		return TCL_OK;
+	    } else if (objc >= 6) {
+		char *cmd;
+		
+		/*
+		 *  Process handler definition
+		 */
+		hPtr = Blt_CreateHashEntry(&targetPtr->handlerTable, 
+			Tcl_GetString(objv[4]), &isNew);
+		cmd = ConcatArgs(objc - 5, objv + 5);
+		if (hPtr != NULL) {
+		    const char *oldCmd;
+		    
+		    oldCmd = Blt_GetHashValue(hPtr);
+		    if (oldCmd != NULL) {
+			Blt_Free(oldCmd);
+		    }
+		}
+		Blt_SetHashValue(hPtr, cmd);
+		/*
+		 * Update the target property on the window.
+		 */
+		AddTargetProperty(interp, targetPtr);
+		return TCL_OK;
 	    }
-	    Blt_SetHashValue(hPtr, cmd);
+	    Tcl_AppendResult(interp, "wrong # args: should be \"", 
+			     Tcl_GetString(objv[0]), " ", 
+			     Tcl_GetString(objv[1]), " ", 
+			     Tcl_GetString(objv[2]), " ", 
+			     Tcl_GetString(objv[3]), " data command ?arg arg...?", 
+			     (char *)NULL);
+	    return TCL_ERROR;
+	} else if (strcmp(string, "handle") == 0) {
 	    /*
-	     * Update the target property on the window.
+	     *  HANDLE:  drag&drop target <pathName> handle <data> ?<value>?
 	     */
-	    AddTargetProperty(interp, targetPtr);
+	    Tcl_DString dString;
+	    int result;
+	    char *cmd;
+	    
+	    if (objc < 5 || objc > 6) {
+		Tcl_AppendResult(interp, "wrong # args: should be \"",
+			Tcl_GetString(objv[0]), " ", 
+			Tcl_GetString(objv[1]), " ", 
+			Tcl_GetString(objv[2]), " handle data ?value?",
+			(char *)NULL);
+		return TCL_ERROR;
+	    }
+	    hPtr = Blt_FindHashEntry(&targetPtr->handlerTable, 
+		Tcl_GetString(objv[4]));
+	    if (hPtr == NULL) {
+		Tcl_AppendResult(interp, "target can't handle datatype: ",
+				 Tcl_GetString(objv[4]), (char *)NULL);
+		return TCL_ERROR;	/* no handler found */
+	    }
+	    cmd = Blt_GetHashValue(hPtr);
+	    if (cmd != NULL) {
+		subst[0].letter = 'W';
+		subst[0].value = Tk_PathName(targetPtr->tkwin);
+		subst[1].letter = 'v';
+		if (objc > 5) {
+		    subst[1].value = Tcl_GetString(objv[5]);
+		} else {
+		    subst[1].value = "";
+		}
+		Tcl_DStringInit(&dString);
+		result = Tcl_Eval(interp, 
+			  ExpandPercents(cmd, subst, 2, &dString));
+		Tcl_DStringFree(&dString);
+		return result;
+	    }
 	    return TCL_OK;
 	}
-	Tcl_AppendResult(interp, "wrong # args: should be \"", argv[0],
-	    " ", argv[1], " ", argv[2], " ", argv[3],
-	    " data command ?arg arg...?", (char *)NULL);
-	return TCL_ERROR;
-    } else if ((argc >= 4) && (strcmp(argv[3], "handle") == 0)) {
-	/*
-	 *  HANDLE:  drag&drop target <pathName> handle <data> ?<value>?
-	 */
-	Tcl_DString dString;
-	int result;
-	char *cmd;
-
-	if (argc < 5 || argc > 6) {
-	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " ", argv[1], " ", argv[2], " handle data ?value?",
-		(char *)NULL);
-	    return TCL_ERROR;
-	}
-	hPtr = Blt_FindHashEntry(&(targetPtr->handlerTable), argv[4]);
-	if (hPtr == NULL) {
-	    Tcl_AppendResult(interp, "target can't handle datatype: ",
-		argv[4], (char *)NULL);
-	    return TCL_ERROR;	/* no handler found */
-	}
-	cmd = (char *)Blt_GetHashValue(hPtr);
-	if (cmd != NULL) {
-	    subst[0].letter = 'W';
-	    subst[0].value = Tk_PathName(targetPtr->tkwin);
-	    subst[1].letter = 'v';
-	    if (argc > 5) {
-		subst[1].value = argv[5];
-	    } else {
-		subst[1].value = "";
-	    }
-	    Tcl_DStringInit(&dString);
-	    result = Tcl_Eval(interp, ExpandPercents(cmd, subst, 2, &dString));
-	    Tcl_DStringFree(&dString);
-	    return result;
-	}
-	return TCL_OK;
     }
-    Tcl_AppendResult(interp, "usage: ", argv[0], " target ", argv[2],
-	" handler ?data command arg arg...?\n   or: ",
-	argv[0], " target ", argv[2], " handle <data>",
-	(char *)NULL);
+    Tcl_AppendResult(interp, "usage: ", Tcl_GetString(objv[0]), " target ", 
+	Tcl_GetString(objv[2]), " handler ?data command arg arg...?\n   or: ",
+	Tcl_GetString(objv[0]), " target ", 
+	Tcl_GetString(objv[2]), " handle <data>", (char *)NULL);
     return TCL_ERROR;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DragDropCmd --
  *
@@ -2623,95 +2690,66 @@ TargetOp(interp, argc, argv)
  *    drag&drop drag <pathName> <x> <y>
  *    drag&drop drop <pathName> <x> <y>
  *
- *    drag&drop errors ?<proc>?
  *    drag&drop active
  *    drag&drop location ?<x> <y>?
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
+
+static Blt_OpSpec dndOps[] =
+{
+    {"active", 1, ActiveOp, 2, 2, "",},
+    {"drag", 2, DragOp, 5, 5, "pathname x y",},
+    {"drop", 2, DropOp, 5, 5, "pathname x y",},
+    {"location", 1, LocationOp, 2, 4, "?x y?",},
+    {"source", 1, SourceOp, 2, 0, "?pathname? ?options...?",},
+    {"target", 2, TargetOp, 2, 0, "?pathname? ?options...?",},
+    {"token", 2, TokenOp, 2, 0, "?option value?...",},
+};
+
+static int nDndOps = sizeof(dndOps) / sizeof(Blt_OpSpec);
+
 /*ARGSUSED*/
 static int
-DragDropCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Current interpreter */
-    int argc;			/* # of arguments */
-    char **argv;		/* Argument strings */
+DragDropCmd(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,		/* Current interpreter */
+    int objc,			/* # of arguments */
+    Tcl_Obj *const *objv)	/* Argument strings */
 {
-    int length;
-    char c;
+    Tcl_ObjCmdProc *proc;
 
-    if (argc < 2) {
-	Tcl_AppendResult(interp, "wrong # args: should be \"", argv[0],
-	    " oper ?args?\"", (char *)NULL);
+    proc = Blt_GetOpFromObj(interp, nDndOps, dndOps, BLT_OP_ARG1, objc, objv,0);
+    if (proc == NULL) {
 	return TCL_ERROR;
     }
-    c = argv[1][0];
-    length = strlen(argv[1]);
-
-    if ((c == 's') && strncmp(argv[1], "source", length) == 0) {
-	return SourceOp(interp, argc, argv);
-    } else if ((c == 't') && (length >= 2) &&
-	(strncmp(argv[1], "target", length) == 0)) {
-	return TargetOp(interp, argc, argv);
-    } else if ((c == 't') && (length >= 2) &&
-	(strncmp(argv[1], "token", length) == 0)) {
-	return TokenOp(interp, argc, argv);
-    } else if ((c == 'd') && strncmp(argv[1], "drag", length) == 0) {
-	return DragOp(interp, argc, argv);
-    } else if ((c == 'd') && strncmp(argv[1], "drop", length) == 0) {
-	return DropOp(interp, argc, argv);
-    } else if ((c == 'e') && strncmp(argv[1], "errors", length) == 0) {
-	return ErrorsOp(interp, argc, argv);
-    } else if ((c == 'a') && strncmp(argv[1], "active", length) == 0) {
-	return ActiveOp(interp, argc, argv);
-    } else if ((c == 'l') && strncmp(argv[1], "location", length) == 0) {
-	return LocationOp(interp, argc, argv);
-    }
-    /*
-     *  Report improper command arguments
-     */
-    Tcl_AppendResult(interp, "bad operation \"", argv[1],
-	"\": must be active, drag, drop, errors, location, ",
-	"source, target or token",
-	(char *)NULL);
-    return TCL_ERROR;
+    return (*proc) (clientData, interp, objc, objv);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- *  Blt_DragDropInit --
+ *  Blt_DragDropCmdInitProc --
  *
  *	Adds the drag&drop command to the given interpreter.  Should
  *	be invoked to properly install the command whenever a new
  *	interpreter is created.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_DragDropInit(interp)
-    Tcl_Interp *interp;		/* interpreter to be updated */
+Blt_DragDropCmdInitProc(Tcl_Interp *interp) /* interpreter to be updated */
 {
-    static Blt_CmdSpec cmdSpec =
-    {
-	"drag&drop", DragDropCmd,
-    };
+    static Blt_InitCmdSpec cmdSpec = { "drag&drop", DragDropCmd, };
 
-    if (Blt_InitCmd(interp, "blt", &cmdSpec) == NULL) {
-	return TCL_ERROR;
-    }
-    if (!initialized) {
-	Blt_InitHashTable(&sourceTable, BLT_ONE_WORD_KEYS);
-	Blt_InitHashTable(&targetTable, BLT_ONE_WORD_KEYS);
-	errorCmd = Blt_Strdup(DEF_ERROR_PROC);
-	nActive = 0;
-	locX = locY = 0;
-	initialized = TRUE;
+    cmdSpec.clientData = GetDragdropCmdInterpData(interp);
 #ifndef WIN32
+    if (!initialized) {
 	dndAtom = XInternAtom(Tk_Display(Tk_MainWindow(interp)), propName, 
 		False);
-#endif
+	initialized = TRUE;
     }
-    return TCL_OK;
+#endif
+    return Blt_InitCmd(interp, "::blt", &cmdSpec);
 }
 #endif /* NO_DRAGDROP */

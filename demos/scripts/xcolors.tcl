@@ -4,29 +4,6 @@
 #
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 set numCols 0
 set numRows 0
@@ -94,7 +71,7 @@ bind .canvas <Enter> {
 }
 
 
-table . \
+blt::table . \
     .sample 0,0 -cspan 2 -fill both -reqheight 1i \
     .name 1,0 -fill both -anchor w \
     .rgb 1,1 -fill both -anchor w \
@@ -251,12 +228,14 @@ proc DisplayColors { how } {
 wm min . 0 0
 
 foreach location {
-	/usr/X11R6
-	/util/X11R6
-	/usr/openwin
-	/usr/dt
+	/usr/X11R6/lib/X11
+	/util/X11R6/lib/X11
+	/usr/openwin/lib/X11
+	/usr/dt/lib/X11
+	/usr/lib/X11
+	/usr/share/X11
 } {
-    set file [file join $location lib X11 rgb.txt]
+    set file [file join $location rgb.txt]
     if { [file exists $file] } {
        break
     }

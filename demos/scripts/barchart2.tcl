@@ -15,7 +15,7 @@ proc FormatXTicks { w value } {
 
 source scripts/patterns.tcl
 
-image create photo bgTexture -file ./images/chalk.gif
+image create picture bgTexture -file ./images/chalk.gif
 
 set configOptions {
     Axis.TickFont		-*-helvetica-medium-r-*-*-12-*-*
@@ -47,6 +47,7 @@ set resource [string trimleft $graph .]
 foreach { option value } $configOptions {
     option add *$resource.$option $value
 }
+$graph configure -barmode stacked
 
 set visual [winfo screenvisual .] 
 if { $visual != "staticgray" && $visual != "grayscale" } {
@@ -55,7 +56,7 @@ if { $visual != "staticgray" && $visual != "grayscale" } {
     option add *quit.activeBackground	red2
 }
 
-vector X Y0 Y1 Y2 Y3 Y4
+blt::vector X Y0 Y1 Y2 Y3 Y4
 
 X set { 1 2 3 4 5 6 7 8 9 }
 Y0 set { 
@@ -85,13 +86,13 @@ Y4 set {
 #
 #    Label	yData	Color		Stipple Pattern
 set attributes { 
-    "Load"	Y2	lightblue	pattern1
-    "Other"	Y4	lightpink	pattern1
-    "Read In"	Y0	lightgoldenrod	pattern1
-    "Setup"	Y1	lightyellow	pattern2
+    "Load"	Y2	lightblue	pattern1 
+    "Other"	Y4	lightpink	pattern1 1
+    "Read In"	Y0	lightgoldenrod	pattern1 1
+    "Setup"	Y1	lightyellow	pattern2 1
 }
 set attributes { 
-    "Load"	Y2	white	 	white3		""		0
+    "Load"	Y2	lightblue1	lightblue3	pattern1	1
     "Solve"	Y3	cyan1		cyan3		pattern2 	1
     "zOther"	Y4	lightpink1	lightpink3 	pattern1	1
     "Read In"	Y0	lightgoldenrod1	lightgoldenrod3 pattern1	1

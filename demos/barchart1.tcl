@@ -1,30 +1,6 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 
 source scripts/demo.tcl
 
@@ -57,25 +33,24 @@ proc FormatLabel { w value } {
 
 source scripts/stipples.tcl
 
-image create photo bgTexture -file ./images/rain.gif
+image create picture bgTexture -file ./images/rain.gif
 
-option add *tile			bgTexture
+set normalBg [blt::bgpattern create gradient -shape linear \
+		  -dir y -low white -high grey -relativeto self]
+
+#option add *tile			bgTexture
 
 option add *Button.tile			""
 
 option add *Htext.tileOffset		no
-option add *Htext.font			{ Times 12 }
 
-option add *Barchart.title		"A Simple Barchart"
+option add *Barchart.title "A Simple Barchart"
 
-option add *Axis.tickFont		{ Courier 10 }
-option add *Axis.titleFont		{ Helvetica 12 bold }
-
-option add *x.Title			"X Axis Label"
-option add *x.Rotate			90
-option add *x.Command			FormatLabel
-option add *y.Title			"Y Axis Label"
-
+option add *x.Title	"X Axis Label"
+option add *x.Rotate	60
+option add *x.Command	FormatLabel
+option add *y.Title	"Y Axis Label"
+option add *x.tickFont  "{San Serif} 8"
 option add *Element.Background		white
 option add *Element.Relief		solid
 option add *Element.BorderWidth		1
@@ -93,7 +68,7 @@ if { $visual != "staticgray" && $visual != "grayscale" } {
     option add *graph.background palegreen
 }
 
-htext .header -text {
+blt::htext .header -text {
     The barchart has several components: coordinate axes, data 
     elements, legend, crosshairs, grid,  postscript, and markers.  
     They each control various aspects of the barchart.  For example,
@@ -109,7 +84,7 @@ htext .header -text {
 %% button will create a file "bar.ps" 
 }
 
-htext .footer -text {
+blt::htext .footer -text {
     Hit the %%
 
     set w $htext(widget)
@@ -123,14 +98,17 @@ htext .footer -text {
 
 %% }
 
-barchart .bc
+blt::barchart .bc
 
+.bc configure -bg white -plotborderwidth 0
 #
 # Element attributes:  
 #
 #    Label	Foreground	Background	Stipple Pattern
 
 source scripts/stipples.tcl
+set bg [blt::bgpattern create gradient -high orange2 -low yellow2 \
+	-shape linear -dir y -jitter no -log no -relativeto toplevel] 
 
 set bitmaps { 
     bdiagonal1 bdiagonal2 checker2 checker3 cross1 cross2 cross3 crossdiag
@@ -145,17 +123,17 @@ foreach stipple $bitmaps {
     set yhigh [expr $y + 0.5]
     set ylow [expr $y - 0.5]
     .bc element create $label -y $y -x $count \
-	-fg brown -bg orange -stipple $stipple -yhigh $yhigh -ylow $ylow 
+	 -fg "" -bg $normalBg -yhigh $yhigh -ylow $ylow -errorbarcolor brown
     set elemLabels($count) $label
     incr count
 }
 
-table . \
+blt::table . \
     0,0 .header -fill x \
     1,0 .bc -fill both \
     2,0	.footer -fill x	
 	
-table configure . r0 r2 -resize none
+blt::table configure . r0 r2 -resize none
 
 Blt_ZoomStack .bc
 Blt_Crosshairs .bc
@@ -163,13 +141,13 @@ Blt_ActiveLegend .bc
 Blt_ClosestPoint .bc
 
 if 0 {
-set printer [printer open [lindex [printer names] 0]]
-printer getattr $printer attrs
+set printer [blt::printer open [lindex [blt::printer names] 0]]
+blt::printer getattr $printer attrs
 set attrs(Orientation) Portrait
-printer setattr $printer attrs
+blt::printer setattr $printer attrs
 after 2000 {
 	$graph print2 $printer
-	printer close $printer
+	blt::printer close $printer
 }
 }
 

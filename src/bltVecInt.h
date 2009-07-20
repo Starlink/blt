@@ -1,33 +1,34 @@
+
 /*
  * bltVecInt.h --
  *
- *	This module implements vector data objects.
+ *	Copyright 1995-2004 George A Howlett.
  *
- * Copyright 1995-1998 Lucent Technologies, Inc.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #include "bltInt.h"
 #include <bltHash.h>
 #include <bltChain.h>
+#include <bltVector.h>
 
 #define VECTOR_THREAD_KEY	"BLT Vector Data"
 #define VECTOR_MAGIC		((unsigned int) 0x46170277)
@@ -36,14 +37,17 @@
 
 #define INDEX_SPECIAL	(1<<0)	/* Recognize "min", "max", and "++end" as
 				 * valid indices */
-#define INDEX_COLON	(1<<1)	/* Also recognize a range of indices 
-				 * separated by a colon */
-#define INDEX_CHECK	(1<<2)	/* Verify that the specified index or 
-				 * range of indices are within limits */
+#define INDEX_COLON	(1<<1)	/* Also recognize a range of indices separated
+				 * by a colon */
+#define INDEX_CHECK	(1<<2)	/* Verify that the specified index or range of
+				 * indices are within limits */
 #define INDEX_ALL_FLAGS    (INDEX_SPECIAL | INDEX_COLON | INDEX_CHECK)
 
 #define SPECIAL_INDEX		-2
 
+#define FFT_NO_CONSTANT		(1<<0)
+#define FFT_BARTLETT		(1<<1)
+#define FFT_SPECTRUM		(1<<2)
 
 typedef struct {
     Blt_HashTable vectorTable;	/* Table of vectors */
@@ -54,29 +58,27 @@ typedef struct {
 } VectorInterpData;
 
 /*
- * VectorObject --
+ * Vector --
  *
- *	A vector is an array of double precision values.  It can be
- *	accessed through a Tcl command, a Tcl array variable, or C
- *	API. The storage for the array points initially to a
- *	statically allocated buffer, but to malloc-ed memory if more
- *	is necessary.
+ *	A vector is an array of double precision values.  It can be accessed
+ *	through a TCL command, a TCL array variable, or C API. The storage for
+ *	the array points initially to a statically allocated buffer, but to
+ *	malloc-ed memory if more is necessary.
  *
- *	Vectors can be shared by several clients (for example, two
- *	different graph widgets).  The data is shared. When a client
- *	wants to use a vector, it allocates a vector identifier, which
- *	identifies the client.  Clients use this ID to specify a
- *	callback routine to be invoked whenever the vector is modified
- *	or destroyed.  Whenever the vector is updated or destroyed,
- *	each client is notified of the change by their callback
- *	routine.
+ *	Vectors can be shared by several clients (for example, two different
+ *	graph widgets).  The data is shared. When a client wants to use a
+ *	vector, it allocates a vector identifier, which identifies the client.
+ *	Clients use this ID to specify a callback routine to be invoked
+ *	whenever the vector is modified or destroyed.  Whenever the vector is
+ *	updated or destroyed, each client is notified of the change by their
+ *	callback routine.
  */
 
 typedef struct {
 
     /*
-     * If you change these fields, make sure you change the definition
-     * of Blt_Vector in bltInt.h and blt.h too.
+     * If you change these fields, make sure you change the definition of
+     * Blt_Vector in bltInt.h and blt.h too.
      */
 
     double *valueArr;		/* Array of values (malloc-ed) */
@@ -94,7 +96,7 @@ typedef struct {
 
     /* The following fields are local to this module  */
 
-    char *name;			/* The namespace-qualified name of the vector.
+    const char *name;		/* The namespace-qualified name of the vector.
 				 * It points to the hash key allocated for the
 				 * entry in the vector hash table. */
 
@@ -105,31 +107,24 @@ typedef struct {
     Blt_HashEntry *hashPtr;	/* If non-NULL, pointer in a hash table to
 				 * track the vectors in use. */
 
-    Tcl_FreeProc *freeProc;	/* Address of procedure to call to
-				 * release storage for the value
-				 * array, Optionally can be one of the
-				 * following: TCL_STATIC, TCL_DYNAMIC,
-				 * or TCL_VOLATILE. */
+    Tcl_FreeProc *freeProc;	/* Address of procedure to call to release
+				 * storage for the value array, Optionally can
+				 * be one of the following: TCL_STATIC,
+				 * TCL_DYNAMIC, or TCL_VOLATILE. */
 
-    char *arrayName;		/* The name of the Tcl array variable
-				 * mapped to the vector
-				 * (malloc'ed). If NULL, indicates
-				 * that the vector isn't mapped to any
-				 * variable */
-
-    Tcl_Namespace *varNsPtr;	/* Namespace context of the Tcl variable
-				 * associated with the vector. This is
-				 * needed to reset the indices of the array
-				 * variable. */
+    const char *arrayName;	/* The name of the TCL array variable mapped
+				 * to the vector (malloc'ed). If NULL,
+				 * indicates that the vector isn't mapped to
+				 * any variable */
 
     Tcl_Namespace *nsPtr;	/* Namespace context of the vector itself. */
 
-    int offset;			/* Offset from zero of the vector's
-				 * starting index */
+    int offset;			/* Offset from zero of the vector's starting
+				 * index */
 
-    Tcl_Command cmdToken;	/* Token for vector's Tcl command. */
+    Tcl_Command cmdToken;	/* Token for vector's TCL command. */
 
-    Blt_Chain *chainPtr;	/* List of clients using this vector */
+    Blt_Chain chain;		/* List of clients using this vector */
 
     int notifyFlags;		/* Notification flags. See definitions
 				 * below */
@@ -138,13 +133,13 @@ typedef struct {
 				 * namespace, or local */
 
     int freeOnUnset;		/* For backward compatibility only: If
-				 * non-zero, free the vector when its
-				 * variable is unset. */
+				 * non-zero, free the vector when its variable
+				 * is unset. */
     int flush;
 
     int first, last;		/* Selected region of vector. This is used
 				 * mostly for the math routines */
-} VectorObject;
+} Vector;
 
 #define NOTIFY_UPDATED		((int)BLT_VECTOR_NOTIFY_UPDATE)
 #define NOTIFY_DESTROYED	((int)BLT_VECTOR_NOTIFY_DESTROY)
@@ -183,68 +178,74 @@ typedef struct {
     } \
 }
 
-extern void Blt_VectorInstallSpecialIndices 
-	_ANSI_ARGS_((Blt_HashTable *tablePtr));
+BLT_EXTERN void Blt_Vec_InstallSpecialIndices(Blt_HashTable *tablePtr);
 
-extern void Blt_VectorInstallMathFunctions 
-	_ANSI_ARGS_((Blt_HashTable *tablePtr));
+BLT_EXTERN void Blt_Vec_InstallMathFunctions(Blt_HashTable *tablePtr);
 
-extern void Blt_VectorUninstallMathFunctions 
-	_ANSI_ARGS_((Blt_HashTable *tablePtr));
+BLT_EXTERN void Blt_Vec_UninstallMathFunctions(Blt_HashTable *tablePtr);
 
-extern VectorInterpData *Blt_VectorGetInterpData 
-	_ANSI_ARGS_((Tcl_Interp *interp));
+BLT_EXTERN VectorInterpData *Blt_Vec_GetInterpData (Tcl_Interp *interp);
 
-extern VectorObject *Blt_VectorNew _ANSI_ARGS_((VectorInterpData *dataPtr));
+BLT_EXTERN double Blt_Vec_Max(Vector *vecObjPtr);
+BLT_EXTERN double Blt_Vec_Min(Vector *vecObjPtr);
 
-extern int Blt_VectorDuplicate _ANSI_ARGS_((VectorObject *destPtr, 
-	VectorObject *srcPtr));
+BLT_EXTERN Vector *Blt_Vec_New(VectorInterpData *dataPtr);
 
-extern int Blt_VectorChangeLength _ANSI_ARGS_((VectorObject *vPtr, 
-	int length));
+BLT_EXTERN int Blt_Vec_Duplicate(Vector *destPtr, Vector *srcPtr);
 
-extern VectorObject *Blt_VectorParseElement _ANSI_ARGS_((Tcl_Interp *interp, 
-	VectorInterpData *dataPtr, CONST char *start, char **endPtr, 
-	int flags));
+BLT_EXTERN int Blt_Vec_SetLength(Tcl_Interp *interp, Vector *vPtr, 
+	int length);
 
-extern void Blt_VectorFree _ANSI_ARGS_((VectorObject *vPtr));
+BLT_EXTERN int Blt_Vec_SetSize(Tcl_Interp *interp, Vector *vPtr, 
+	int size);
 
-extern int *Blt_VectorSortIndex _ANSI_ARGS_((VectorObject **vPtrPtr, 
-	int nVectors));
+BLT_EXTERN int Blt_Vec_ChangeLength(Tcl_Interp *interp, Vector *vPtr, 
+	int length);
 
-extern int Blt_VectorLookupName _ANSI_ARGS_((VectorInterpData *dataPtr, 
-	char *vecName, VectorObject **vPtrPtr));
+BLT_EXTERN Vector *Blt_Vec_ParseElement(Tcl_Interp *interp, 
+	VectorInterpData *dataPtr, const char *start, const char **endPtr, 
+	int flags);
 
-extern VectorObject *Blt_VectorCreate _ANSI_ARGS_((VectorInterpData *dataPtr, 
-	CONST char *name, CONST char *cmdName, CONST char *varName, 
-	int *newPtr));
+BLT_EXTERN void Blt_Vec_Free(Vector *vPtr);
 
-extern void Blt_VectorUpdateRange _ANSI_ARGS_((VectorObject *vPtr));
+BLT_EXTERN size_t *Blt_Vec_SortMap(Vector **vectors, int nVectors);
 
-extern void Blt_VectorUpdateClients _ANSI_ARGS_((VectorObject *vPtr));
+BLT_EXTERN int Blt_Vec_LookupName(VectorInterpData *dataPtr, 
+	const char *vecName, Vector **vPtrPtr);
 
-extern void Blt_VectorFlushCache _ANSI_ARGS_((VectorObject *vPtr));
+BLT_EXTERN Vector *Blt_Vec_Create(VectorInterpData *dataPtr, 
+	const char *name, const char *cmdName, const char *varName, 
+	int *newPtr);
 
-extern int Blt_VectorReset _ANSI_ARGS_((VectorObject *vPtr, double *dataArr,
-	int nValues, int arraySize, Tcl_FreeProc *freeProc));
+BLT_EXTERN void Blt_Vec_UpdateRange(Vector *vPtr);
 
-extern int  Blt_VectorGetIndex _ANSI_ARGS_((Tcl_Interp *interp, 
-	VectorObject *vPtr, CONST char *string, int *indexPtr, int flags,
-	Blt_VectorIndexProc **procPtrPtr));
+BLT_EXTERN void Blt_Vec_UpdateClients(Vector *vPtr);
 
-extern int  Blt_VectorGetIndexRange _ANSI_ARGS_((Tcl_Interp *interp, 
-	VectorObject *vPtr, CONST char *string, int flags, 
-	Blt_VectorIndexProc **procPtrPtr));
+BLT_EXTERN void Blt_Vec_FlushCache(Vector *vPtr);
 
-extern int Blt_VectorMapVariable _ANSI_ARGS_((Tcl_Interp *interp, 
-	VectorObject *vPtr, CONST char *name));
+BLT_EXTERN int Blt_Vec_Reset(Vector *vPtr, double *dataArr,
+	int nValues, int arraySize, Tcl_FreeProc *freeProc);
 
-#if (TCL_MAJOR_VERSION == 7) 
-extern Tcl_CmdProc Blt_VectorInstCmd;
-#else 
-extern Tcl_ObjCmdProc Blt_VectorInstCmd;
-#endif
+BLT_EXTERN int  Blt_Vec_GetIndex(Tcl_Interp *interp, Vector *vPtr, 
+	const char *string, int *indexPtr, int flags, 
+	Blt_VectorIndexProc **procPtrPtr);
 
-extern Tcl_VarTraceProc Blt_VectorVarTrace;
+BLT_EXTERN int  Blt_Vec_GetIndexRange(Tcl_Interp *interp, Vector *vPtr, 
+	const char *string, int flags, Blt_VectorIndexProc **procPtrPtr);
 
-extern Tcl_IdleProc Blt_VectorNotifyClients;
+BLT_EXTERN int Blt_Vec_MapVariable(Tcl_Interp *interp, Vector *vPtr, 
+	const char *name);
+
+BLT_EXTERN int Blt_Vec_FFT(Tcl_Interp *interp, Vector *realPtr,
+	Vector *phasesPtr, Vector *freqPtr, double delta, 
+	int flags, Vector *srcPtr);
+
+BLT_EXTERN int Blt_Vec_InverseFFT(Tcl_Interp *interp, Vector *iSrcPtr, 
+	Vector *rDestPtr, Vector *iDestPtr, Vector *srcPtr);
+
+BLT_EXTERN Tcl_ObjCmdProc Blt_Vec_InstCmd;
+
+BLT_EXTERN Tcl_VarTraceProc Blt_Vec_VarTrace;
+
+BLT_EXTERN Tcl_IdleProc Blt_Vec_NotifyClients;
+

@@ -1,73 +1,78 @@
+
 /*
  * bltBeep.c --
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2003 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.  */
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 
 #include "bltInt.h"
 
 #ifndef NO_BEEP
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_BeepCmd --
  *
- *	This procedure is invoked to process the "bell" Tcl command.
+ *	This procedure is invoked to process the "beep" command.
  *	See the user documentation for details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
-static Tcl_CmdProc BeepCmd;
+static Tcl_ObjCmdProc BeepCmd;
 
 /* ARGSUSED */
 static int
-BeepCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Main window associated with interpreter.*/
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
+BeepCmd(
+    ClientData clientData,	/* Main window associated with interpreter.*/
+    Tcl_Interp *interp,		/* Current interpreter. */
+    int objc,			/* Number of arguments. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
     int percent;
 
-    if (argc > 2) {
+    if (objc > 2) {
 	Tcl_AppendResult(interp, "wrong # args: should be \"",
-	    argv[0], " ?volumePercent?\"", (char *)NULL);
+		 Tcl_GetString(objv[0]), " ?volumePercent?\"", (char *)NULL);
 	return TCL_ERROR;
     }
-    if (argc == 1) {
-	percent = 50;		/* Default setting */
-    } else if (argc == 2) {
-	if (Tcl_GetInt(interp, argv[1], &percent) != TCL_OK) {
+    percent = 50;		/* Default setting */
+    if (objc == 2) {
+	if (Tcl_GetIntFromObj(interp, objv[1], &percent) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	if ((percent < -100) || (percent > 100)) {
-	    Tcl_AppendResult(interp, "bad volume percentage value \"",
-		argv[1], "\"", (char *)NULL);
-	    return TCL_ERROR;
+	if (percent < -100) {
+	    percent = -100;
+	} else if (percent > 100) {
+	    percent = 100;
 	}
     }
     XBell(Tk_Display(Tk_MainWindow(interp)), percent);
@@ -75,16 +80,11 @@ BeepCmd(clientData, interp, argc, argv)
 }
 
 int
-Blt_BeepInit(interp)
-    Tcl_Interp *interp;
+Blt_BeepCmdInitProc(Tcl_Interp *interp)
 {
-    static Blt_CmdSpec cmdSpec =
-    {"beep", BeepCmd,};
+    static Blt_InitCmdSpec cmdSpec = { "beep", BeepCmd, };
 
-    if (Blt_InitCmd(interp, "blt", &cmdSpec) == NULL) {
-	return TCL_ERROR;
-    }
-    return TCL_OK;
+    return Blt_InitCmd(interp, "::blt", &cmdSpec);
 }
 
 #endif /* NO_BEEP */

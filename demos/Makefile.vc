@@ -2,10 +2,10 @@
 # 	Makefile for demos 
 # ------------------------------------------------------------------------
 
-include ../win/makedefs
+include 	../vc.config
+srcdir =	../$(TOP)/demos
 
 destdir =	$(scriptdir)/demos
-srcdir =	.
 
 SHELL =		bash
 RM =		rm -rf

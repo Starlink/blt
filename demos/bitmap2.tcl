@@ -1,36 +1,12 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 
 source scripts/demo.tcl
-source scripts/stipples.tcl
 source scripts/patterns.tcl
+source scripts/stipples.tcl
 
-bitmap define hobbes { 
+blt::bitmap define hobbes { 
 #define hobbes_width 25
 #define hobbes_height 25
 static char hobbes_bits[] = {
@@ -45,7 +21,7 @@ static char hobbes_bits[] = {
     0x00, 0x00, 0x00, 0x00};
 }
 
-bitmap define gort { 
+blt::bitmap define gort { 
 #define gort_width 64
 #define gort_height 64
 static char gort_bits[] = {
@@ -94,7 +70,7 @@ static char gort_bits[] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 }
 
-bitmap define xbob {
+blt::bitmap define xbob {
 #define bob_x_hot 30
 #define bob_y_hot 37
 #define bob_width 61

@@ -1,70 +1,53 @@
+
 /*
  * blt.h --
  *
- * Copyright 1991-1998 by Bell Labs Innovations for Lucent
- * Technologies.
+ *	Copyright 1991-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_H
 #define _BLT_H
 
-#define BLT_MAJOR_VERSION 	2
-#define BLT_MINOR_VERSION 	4
-#define BLT_VERSION		"2.4"
-#define BLT_PATCH_LEVEL		"2.4z"
+#define BLT_MAJOR_VERSION 	3
+#define BLT_MINOR_VERSION 	0
+#define BLT_VERSION		"3.0"
+#define BLT_PATCH_LEVEL		"3.0a"
 #define BLT_RELEASE_SERIAL	0
 
-#include <tcl.h>
-
-#ifndef EXPORT
-#define EXPORT
-#endif
-
-#undef EXTERN
+#define BLT_STORAGE_CLASS	
 
 #ifdef __cplusplus
-#   define EXTERN extern "C" EXPORT
+#  define BLT_EXTERN BLT_STORAGE_CLASS extern "C" 
 #else
-#   define EXTERN extern EXPORT
-#endif
+#  define BLT_EXTERN BLT_STORAGE_CLASS extern 
+#endif	/* __cplusplus */
+
+#define _VERSION(a,b,c)	    (((a) << 16) + ((b) << 8) + (c))
 
 #ifndef _ANSI_ARGS_
 #   define _ANSI_ARGS_(x)       ()
 #endif
-
-#include <bltVector.h>
-#include <bltHash.h>
-
-typedef char *Blt_Uid;
-
-EXTERN Blt_Uid Blt_GetUid _ANSI_ARGS_((char *string));
-EXTERN void Blt_FreeUid _ANSI_ARGS_((Blt_Uid uid));
-EXTERN Blt_Uid Blt_FindUid _ANSI_ARGS_((char *string));
-
-#if (TCL_MAJOR_VERSION >= 8)
-EXTERN int Blt_GetArrayFromObj _ANSI_ARGS_((Tcl_Interp *interp, 
-	Tcl_Obj *objPtr, Blt_HashTable **tablePtrPtr));
-EXTERN Tcl_Obj *Blt_NewArrayObj _ANSI_ARGS_((int objc, Tcl_Obj *objv[]));
-EXTERN void Blt_RegisterArrayObj _ANSI_ARGS_((Tcl_Interp *interp));
-EXTERN int Blt_IsArrayObj _ANSI_ARGS_((Tcl_Obj *obj));
-#endif /* TCL_MAJOR_VERSION >= 8 */
 
 #endif /*_BLT_H*/

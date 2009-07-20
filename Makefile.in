@@ -6,21 +6,26 @@
 #       Source and target installation directories
 # ------------------------------------------------------------------------
 
-prefix =	@prefix@
-exec_prefix  =	@exec_prefix@
-srcdir =	@srcdir@
 bindir =	@bindir@
+datadir = 	@datadir@
+datarootdir = 	@datarootdir@
+exec_prefix  =	@exec_prefix@
 includedir =	@includedir@
 libdir =	@libdir@
+prefix =	@prefix@
+srcdir =	@srcdir@
+
 version =	@BLT_VERSION@
-scriptdir =	$(prefix)/lib/blt$(version)
+scriptdir =	$(prefix)/lib
+bltdir =	$(prefix)/lib/blt$(version)
 
 instdirs =	$(prefix) \
 		$(exec_prefix) \
 		$(bindir) \
 		$(libdir) \
 		$(includedir) \
-		$(scriptdir)
+		$(scriptdir) \
+		$(bltdir)
 
 # ------------------------------------------------------------------------
 #       Don't edit anything beyond this point
@@ -47,9 +52,6 @@ install-all:
 	(cd library; $(MAKE) install)
 	(cd man; $(MAKE) install)
 	(cd demos; $(MAKE) install)
-	$(INSTALL_DATA) $(srcdir)/README $(INSTALL_DIR)$(scriptdir)
-	$(INSTALL_DATA) $(srcdir)/PROBLEMS $(INSTALL_DIR)$(scriptdir)
-	$(INSTALL_DATA) $(srcdir)/NEWS $(INSTALL_DIR)$(scriptdir)
 
 mkdirs:
 	@for i in $(instdirs) ; do \
@@ -57,7 +59,7 @@ mkdirs:
 	    : ; \
 	  else \
             echo " mkdir $(INSTALL_ROOT)$$i" ; \
-            mkdir $(INSTALL_ROOT)$$i ; \
+	    $(INSTALL) -d $(INSTALL_ROOT)$$i ; \
           fi ; \
         done
 
@@ -72,8 +74,4 @@ GENERATED_FILES = \
 	config.status config.cache config.log Makefile 
 
 distclean: clean
-	(cd src; $(MAKE) distclean)
-	(cd library; $(MAKE) distclean)
-	(cd man; $(MAKE) distclean)
-	(cd demos; $(MAKE) distclean)
 	$(RM) $(GENERATED_FILES)

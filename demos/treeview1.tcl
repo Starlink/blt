@@ -1,29 +1,6 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 
 proc SortColumn { column } {
@@ -93,10 +70,12 @@ proc Find { tree parent dir } {
 	if { [catch { file stat $f info }] != 0 } {
 	    set node [$tree insert $parent -label $name]
 	} else {
+	    if 0 {
 	    if { $info(type) == "file" } {
-		set info(type) [list @blt::tv::normalOpenFolder $name]
+		set info(type) [list @::blt::tv::normalOpenFolder $name]
 	    } else {
-		set info(type) ""
+		set info(type) "@::blt::tv::normalOpenFolder "
+	    }
 	    }
 	    set info(mtime) [clock format $info(mtime) -format "%b %d, %Y"]
 	    set info(atime) [clock format $info(atime) -format "%b %d, %Y"]
@@ -124,33 +103,40 @@ proc GetAbsolutePath { dir } {
 
 option add *TreeView.focusOutSelectForeground white
 option add *TreeView.focusOutSelectBackground grey80
-
 #option add *TreeView.Button.activeBackground pink
-option add *TreeView.Button.activeForeground red2
-option add *TreeView.Button.background grey95
+option add *TreeView.Button.activeBackground grey90
+#option add *TreeView.Button.background grey95
 option add *TreeView.Column.background grey90
 option add *TreeView.CheckBoxStyle.activeBackground white
 if 0 {
-option add *TreeView.Column.titleFont { Helvetica 12 bold }
-option add *TreeView.text.font { Helvetica 12 }
-option add *TreeView.CheckBoxStyle.font { Courier 10 }
-option add *TreeView.ComboBoxStyle.font { Helvetica 20 }
-option add *TreeView.TextBoxStyle.font { Times 34 }
+if 1 {
+    option add *TreeView.Column.titleFont { Arial 10 }
+    option add *TreeView.text.font { Monotype.com 10 Bold } 
+    option add *TreeView.CheckBoxStyle.font Courier-10
+    option add *TreeView.ComboBoxStyle.font Helvetica-10
+    option add *TreeView.TextBoxStyle.font {Arial 10 bold }
+} else {
+    option add *TreeView.Column.titleFont { Arial 14 }
 }
-
+}
+button .b -font { Helvetica 11 bold }
 set top [GetAbsolutePath ..]
 #set top [GetAbsolutePath /home/gah]
 set trim "$top"
 
-set tree [tree create]    
-treeview .t \
+set tree [blt::tree create]    
+blt::tk::scrollbar .vs -orient vertical -command { .t yview }
+blt::tk::scrollbar .hs -orient horizontal -command { .t xview }
+
+blt::treeview .t \
     -width 0 \
     -yscrollcommand { .vs set } \
     -xscrollcommand { .hs set } \
-    -selectmode single \
-    -tree $tree
+    -selectmode multiple \
+    -separator / \
+    -tree $tree 
 
-.t column configure treeView -text "" 
+.t column configure treeView -text ""  -edit yes
 #file
 .t column insert 0 mtime atime gid 
 .t column insert end nlink mode type ctime uid ino size dev
@@ -158,17 +144,16 @@ treeview .t \
 .t column configure mtime -hide no -bg \#ffeaea -relief raised
 .t column configure size gid nlink uid ino dev -justify left -edit yes
 .t column configure size type -justify left -edit yes
-.t column configure treeView -hide no -edit no -icon blt::tv::normalOpenFolder
+.t column configure treeView -hide no -edit yes \
+	-icon ::blt::tv::normalOpenFolder
 focus .t
 
-scrollbar .vs -orient vertical -command { .t yview }
-scrollbar .hs -orient horizontal -command { .t xview }
 
-table . \
+blt::table . \
     0,0 .t  -fill both \
     0,1 .vs -fill y \
     1,0 .hs -fill x
-table configure . c1 r1 -resize none
+blt::table configure . c1 r1 -resize none
 
 set count 0
 Find $tree root $top
@@ -180,7 +165,7 @@ $tree find root -glob *.tcl -addtag "tcl_files"
 
 .t entry configure "c_files" -foreground green4
 .t entry configure "header_files" -foreground cyan4
-.t entry configure "tcl_files" -foreground red4
+.t entry configure "tcl_files" -foreground red4 
 
 .t column bind all <ButtonRelease-3> {
     %W configure -flat no
@@ -193,20 +178,22 @@ foreach column [.t column names] {
 # Create a second treeview that shares the same tree.
 if 0 {
 toplevel .top
-treeview .top.t2 -tree $tree -yscrollcommand { .top.sbar set }
+blt::treeview .top.t2 -tree $tree -yscrollcommand { .top.sbar set }
 scrollbar .top.sbar -command { .top.t2 yview }
 pack .top.t2 -side left -expand yes -fill both
 pack .top.sbar -side right -fill y
 }
 
-#.t configure -bg #ffffed
+#.t style configure text -background #F8fbF8 -selectbackground #D8fbD8 
+
 .t style checkbox check \
-    -onvalue 30 -offvalue "50" \
+    -onvalue 100 -offvalue "50" \
     -showvalue yes 
 
-.t style combobox combo \
-    -icon blt::tv::normalOpenFolder
+.t style combobox combo  \
+	-icon ::blt::tv::normalOpenFolder
 
-.t column configure uid -style combo
-.t column configure gid -style check 
+.t column configure uid -style combo 
+.t column configure gid -style check
+
 

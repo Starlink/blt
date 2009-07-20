@@ -1025,18 +1025,16 @@ Returns the current value of the element configuration option given by
 \fIoption\fR.  \fIOption\fR may be any of the options described below
 for the element \fBconfigure\fR operation.
 .TP
-\fIpathName \fBelement closest \fIx y\fR \fIvarName\fR ?\fIoption value\fR?... ?\fIelemName\fR?...
-
+\fIpathName \fBelement closest \fIx y\fR ?\fIoption value\fR?... ?\fIelemName\fR?...
 Searches for the data point closest to the window coordinates \fIx\fR
 and \fIy\fR.  By default, all elements are searched.  Hidden elements
 (see the \fB\-hide\fR option is false) are ignored.  You can limit the
 search by specifying only the elements you want to be considered. 
-\fIElemName\fR must be the name of an element that is not be hidden.
-\fIVarName\fR is the name of a Tcl array variable and will contain
-the search results: the name of the closest element, the index of
-the closest data point, and the graph coordinates of the point. Returns
-\f(CW0\fR, if no data point within the threshold distance can be found,
-otherwise \f(CW1\fR is returned.  The following
+\fIElemName\fR must be the name of an element that can not be hidden.
+It returns a key-value list containing the name of the closest element, 
+the index of the closest data point, and the graph-coordinates of the point. 
+Returns \f(CW""\fR, if no data point within the threshold distance 
+can be found. The following
 \fIoption\fR\-\fIvalue\fR pairs are available.
 .RS
 .TP
@@ -1092,6 +1090,32 @@ to \fIvalue\fR.  The following options are valid for elements.
 Specifies pen to use to draw active element.  If \fIpenName\fR is
 \f(CW""\fR, no active elements will be drawn.  The default is 
 \f(CWactiveLine\fR.
+.TP
+\fB\-areabackground \fIcolor\fR 
+Specifies the background color of the area under the curve. The
+background area color is drawn only for bitmaps (see the
+\fB\-areapattern\fR option).  If \fIcolor\fR is \f(CW""\fR, the
+background is transparent.  The default is \f(CWblack\fR.
+.TP
+\fB\-areaforeground \fIcolor\fR 
+Specifies the foreground color of the area under the curve. 
+The default is \f(CWblack\fR.
+.TP
+\fB\-areapattern \fIpattern\fR 
+Specifies how to fill the area under the curve.  \fIPattern\fR may be
+the name of a Tk bitmap, \f(CWsolid\fR, or \f(CW""\fR.  If "solid",
+then the area under the curve is drawn with the color designated by
+the \fB\-areaforeground\fR option.  If a bitmap, then the bitmap is
+stippled across the area.  Here the bitmap colors are controlled by the
+\fB\-areaforeground\fR and \fB\-areabackground\fR options.  If
+\fIpattern\fR is \f(CW""\fR, no filled area is drawn.  The default is
+\f(CW""\fR.
+.TP
+\fB\-areatile \fIimage\fR 
+Specifies the name of a Tk image to be used to tile the area under the
+curve.  This option supersedes the \fB\-areapattern\fR option.
+\fIImage\fR must be a photo image.  If \fIimage\fR is \f(CW""\fR, no
+tiling is performed.  The default is \f(CW""\fR.
 .TP
 \fB\-bindtags \fItagList\fR
 Specifies the binding tags for the element.  \fITagList\fR is a list

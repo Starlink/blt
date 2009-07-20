@@ -45,8 +45,6 @@ drag&drop \- facilities for handling drag&drop data transfers
 .br
 \fBdrag&drop active
 .br
-\fBdrag&drop errors \fR?\fIproc\fR?
-.br
 \fBdrag&drop location \fR?\fIx y\fR?
 .BE
 
@@ -178,6 +176,22 @@ communicate.  If the source has a command associated with its
 data handler, then this value is substituted in place of "%v"
 in the source handler.  Otherwise, it is substituted in place
 of "%v" in the target handler.
+.LP
+.nf
+Name:	\fBerrorCmd\fR
+Class:	\fBErrorCmd\fR
+Switch:	\fB\-errorcmd \fIproc\fR
+.fi
+.IP
+Specifies a Tcl \fIproc\fR used to handle errors encountered during
+drag&drop operations.  If a \fIproc\fR is not specified, this command
+returns the current error handler.  By default, all errors are sent
+to the usual \fBtkerror\fR command, and therefore appear in a dialog
+box to the user.  This behavior is quite useful when debugging
+communication protocols, but may not be desirable in a finished
+application.  Errors can be suppressed entirely (leaving the rejection
+symbol as the only error indicator) by specifying a null string in
+place of the \fIproc\fR name.
 .LP
 .nf
 Name:	\fBrejectBackground\fR

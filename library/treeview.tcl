@@ -12,7 +12,7 @@
 #            gah@lucent.com
 #            http://www.tcltk.com/blt
 #
-#      RCS:  $Id: treeview.tcl,v 1.25 2002/08/06 05:08:24 ghowlett Exp $
+#      RCS:  $Id: treeview.tcl,v 1.32 2009/05/07 02:35:17 ghowlett Exp $
 #
 # ----------------------------------------------------------------------
 # Copyright (c) 1998  Lucent Technologies, Inc.
@@ -46,22 +46,22 @@ namespace eval blt::tv {
     set y 0
 }
 
-image create photo blt::tv::normalCloseFolder -format gif -data {
+image create picture ::blt::tv::normalCloseFolder -data {
     R0lGODlhEAANAMIAAAAAAH9/f///////AL+/vwAA/wAAAAAAACH5BAEAAAUALAAAAAAQAA0A
     AAM8WBrM+rAEQWmIb5KxiWjNInCkV32AJHRlGQBgDA7vdN4vUa8tC78qlrCWmvRKsJTquHkp
     ZTKAsiCtWq0JADs=
 }
-image create photo blt::tv::normalOpenFolder -format gif -data {
+image create picture ::blt::tv::normalOpenFolder -data {
     R0lGODlhEAANAMIAAAAAAH9/f///////AL+/vwAA/wAAAAAAACH5BAEAAAUALAAAAAAQAA0A
     AAM1WBrM+rAEMigJ8c3Kb3OSII6kGABhp1JnaK1VGwjwKwtvHqNzzd263M3H4n2OH1QBwGw6
     nQkAOw==
 }
-image create photo blt::tv::activeCloseFolder -format gif -data {
+image create picture ::blt::tv::activeCloseFolder -data {
     R0lGODlhEAANAMIAAAAAAH9/f/////+/AL+/vwAA/wAAAAAAACH5BAEAAAUALAAAAAAQAA0A
     AAM8WBrM+rAEQWmIb5KxiWjNInCkV32AJHRlGQBgDA7vdN4vUa8tC78qlrCWmvRKsJTquHkp
     ZTKAsiCtWq0JADs=
 }
-image create photo blt::tv::activeOpenFolder -format gif -data {
+image create picture ::blt::tv::activeOpenFolder -data {
     R0lGODlhEAANAMIAAAAAAH9/f/////+/AL+/vwAA/wAAAAAAACH5BAEAAAUALAAAAAAQAA0A
     AAM1WBrM+rAEMigJ8c3Kb3OSII6kGABhp1JnaK1VGwjwKwtvHqNzzd263M3H4n2OH1QBwGw6
     nQkAOw==
@@ -104,8 +104,11 @@ proc blt::tv::Initialize { w } {
     # Button bindings
     #
     $w button bind all <ButtonRelease-1> {
-	%W see -anchor nw current
-	%W toggle current
+	set index [%W nearest %x %y blt::tv::who]
+	if { [%W index current] == $index && $blt::tv::who == "button" } {
+	    %W see -anchor nw current
+	    %W toggle current
+	}
     }
     $w button bind all <Enter> {
 	%W button highlight current
@@ -174,7 +177,7 @@ proc blt::tv::Initialize { w } {
 
     $w bind Entry <Shift-ButtonPress-1> { 
 	if { [%W cget -selectmode] == "multiple" && [%W selection present] } {
-	    if { [%W index anchor] == "" } {
+	    if { [%W index anchor] == -1 } {
 		%W selection anchor current
 	    }
 	    set index [%W index anchor]
@@ -222,7 +225,7 @@ proc blt::tv::Initialize { w } {
 
     $w bind Entry <Control-Shift-ButtonPress-1> { 
 	if { [%W cget -selectmode] == "multiple" && [%W selection present] } {
-	    if { [%W index anchor] == "" } {
+	    if { [%W index anchor] == -1 } {
 		%W selection anchor current
 	    }
 	    if { [%W selection includes anchor] } {
@@ -242,7 +245,7 @@ proc blt::tv::Initialize { w } {
 	# do nothing
     }
 
-    $w bind Entry <Shift-ButtonPress-3> { 
+    $w bind Entry <ButtonRelease-3> { 
 	blt::tv::EditColumn %W %X %Y
     }
 
@@ -280,17 +283,18 @@ proc blt::tv::Initialize { w } {
 	}
 	%W column configure $blt::tv::column -titlerelief raised
     }
-    $w bind TextBoxStyle <ButtonPress-3> { 
-	if { [%W edit -root -test %X %Y] } {
-	    break
-	}
-    }
-    $w bind TextBoxStyle <ButtonRelease-3> { 
-	if { [%W edit -root -test %X %Y] } {
-	    blt::tv::EditColumn %W %X %Y
-	    break
-	}
-    }
+#     $w bind TextBoxStyle <ButtonPress-3> { 
+# 	puts stderr "widget bind buttonpress-3 %W %X %Y"
+# 	if { [%W edit -root -test %X %Y] } {
+# 	    break
+# 	}
+#     }
+#     $w bind TextBoxStyle <ButtonRelease-3> { 
+# 	if { [%W edit -root -test %X %Y] } {
+# 	    blt::tv::EditColumn %W %X %Y
+# 	    break
+# 	}
+#     }
     $w bind CheckBoxStyle <Enter> { 
 	set column [%W column current]
 	if { [%W column cget $column -edit] } {
@@ -349,7 +353,6 @@ proc blt::tv::AutoScroll { w } {
     set y $blt::tv::y
 
     set index [$w nearest $x $y]
-
     if {$y >= [winfo height $w]} {
 	$w yview scroll 1 units
 	set neighbor down
@@ -445,7 +448,13 @@ proc blt::tv::MovePage { w where } {
 proc blt::tv::NextMatch { w key } {
     if {[string match {[ -~]} $key]} {
 	set last [$w index focus]
+	if { $last == "" } {
+	    return;			# No focus. 
+	}
 	set next [$w index next]
+	if { $next == "" } {
+	    set next $last
+	}
 	while { $next != $last } {
 	    set label [$w entry cget $next -label]
 	    set label [string index $label 0]
@@ -542,17 +551,20 @@ proc blt::tv::EditColumn { w x y } {
     $w see current
     if { [winfo exists $w.edit] } {
 	destroy $w.edit
+	return
     }
     if { ![$w edit -root -test $x $y] } {
 	return
     }
     $w edit -root $x $y
     update
-    focus $w.edit
-    $w.edit selection range 0 end
-    grab set $w.edit
-    tkwait window $w.edit
-    grab release $w.edit
+    if { [winfo exists $w.edit] } {
+	focus $w.edit
+	$w.edit selection range 0 end
+	grab set $w.edit
+	tkwait window $w.edit
+	grab release $w.edit
+    }
 }
 
 # 
@@ -698,6 +710,20 @@ bind ${className} <KeyPress-F1> {
 bind ${className} <KeyPress-F2> {
     eval %W close -r [%W entry children root] 
 }
+
+if {[string equal "x11" [tk windowingsystem]]} {
+    bind ${className} <4> {
+	%W yview scroll -5 units
+    }
+    bind ${className} <5> {
+	%W yview scroll 5 units
+    }
+} else {
+    bind ${className} <MouseWheel> {
+	%W yview scroll [expr {- (%D / 120) * 4}] units
+    }
+}
+
 
 #
 # Differences between id "current" and operation nearest.
@@ -917,12 +943,9 @@ if { [string compare $tcl_platform(platform) "windows"] != 0 } {
 }
 
 # Additional emacs-like bindings:
-bind ${className}Editor <ButtonPress-3> {
+bind ${className}Editor <ButtonRelease-3> {
     set parent [winfo parent %W]
     %W cancel
-    after idle {
-	blt::tv::EditColumn $parent %X %Y
-    }
 }
 
 bind ${className}Editor <Control-a> {

@@ -1,42 +1,43 @@
+
 /*
  * bltUtil.c --
  *
- *	This module implements utility procedures for the BLT
- *	toolkit.
+ * This module implements utility procedures for the BLT toolkit.
  *
- * Copyright 1991-1998 Lucent Technologies, Inc.
+ *	Copyright 1991-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltInt.h"
-#if defined(__STDC__)
+#include "bltOp.h"
 #include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
 #include <bltHash.h>
+#include <bltDBuffer.h>
 
 #ifndef HAVE_STRTOLOWER
 void
-strtolower(s) 
-    register char *s;
+strtolower(char *s)
 {
     while (*s != '\0') {
 	*s = tolower(UCHAR(*s));
@@ -180,7 +181,7 @@ static unsigned char caseTable[] =
 };
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * strcasecmp --
  *
@@ -193,12 +194,10 @@ static unsigned char caseTable[] =
  *	negative  - first string is less than second
  *	positive  - first string is greater than second
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-strcasecmp(s1, s2)
-    CONST char *s1;
-    CONST char *s2;
+strcasecmp(const char *s1, const char *s2)
 {
     unsigned char *s = (unsigned char *)s1;
     unsigned char *t = (unsigned char *)s2;
@@ -212,7 +211,7 @@ strcasecmp(s1, s2)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * strncasecmp --
  *
@@ -225,16 +224,13 @@ strcasecmp(s1, s2)
  *	negative  - first string is less than second
  *	positive  - first string is greater than second
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-strncasecmp(s1, s2, length)
-    CONST char *s1;
-    CONST char *s2;
-    size_t length;
+strncasecmp(const char *s1, const char *s2, size_t length)
 {
-    register unsigned char *s = (unsigned char *)s1;
-    register unsigned char *t = (unsigned char *)s2;
+    unsigned char *s = (unsigned char *)s1;
+    unsigned char *t = (unsigned char *)s2;
 
     for ( /* empty */ ; (length > 0); s++, t++, length--) {
 	if (caseTable[*s] != caseTable[*t]) {
@@ -250,7 +246,32 @@ strncasecmp(s1, s2, length)
 #endif /* !HAVE_STRCASECMP */
 
 
-#if (TCL_VERSION_NUMBER < _VERSION(8,1,0)) && (TCL_MAJOR_VERSION > 7)
+#if !HAVE_DRAND48
+#define XDR48   0x000100010001LL
+#define MNDR48  0x0005deece66dLL
+#define DODDR48 0xbLL
+
+static long long int xdr48 = XDR48;
+double 
+drand48(void)  // works only on compilers with long long int!
+{
+    xdr48 = MNDR48 * xdr48 + DODDR48; 
+    xdr48 &= 0xffffffffffffLL;
+    return xdr48 / 281474976710656.0;
+}
+
+// Random number generator initialization 
+// parameters:
+//		s - seed
+// return:
+void 
+srand48(long x0)
+{
+    xdr48 = ((unsigned long)x0<<16) + 0x330e; 
+}
+#endif /*HAVE_DRAND48*/
+
+#if (_TCL_VERSION < _VERSION(8,1,0)) 
 
 char *
 Tcl_GetString(Tcl_Obj *objPtr)
@@ -264,7 +285,7 @@ int
 Tcl_EvalObjv(Tcl_Interp *interp, int objc, Tcl_Obj **objv, int flags)
 {
     Tcl_DString dString;
-    register int i;
+    int i;
     int result;
 
     Tcl_DStringInit(&dString);
@@ -279,11 +300,11 @@ Tcl_EvalObjv(Tcl_Interp *interp, int objc, Tcl_Obj **objv, int flags)
 int 
 Tcl_WriteObj(Tcl_Channel channel, Tcl_Obj *objPtr)
 {
-    char *data;
+    char *string;
     int nBytes;
 
-    data = Tcl_GetStringFromObj(objPtr, &nBytes);
-    return Tcl_Write(channel, data, nBytes);
+    string = Tcl_GetStringFromObj(objPtr, &nBytes);
+    return Tcl_Write(channel, string, nBytes);
 }
 
 char *
@@ -316,9 +337,9 @@ Tcl_GetVar2Ex(
 #endif
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * CompareByDictionary
+ * Blt_CompareDictionary
  *
  *	This function compares two strings as if they were being used in
  *	an index or card catalog.  The case of alphabetic characters is
@@ -336,13 +357,12 @@ Tcl_GetVar2Ex(
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 #if HAVE_UTF
 int
-Blt_DictionaryCompare(left, right)
-    char *left, *right;
+Blt_DictionaryCompare(const char *left, const char *right)
 {
     Tcl_UniChar uniLeft, uniRight, uniLeftLower, uniRightLower;
     int diff, zeros;
@@ -458,8 +478,7 @@ Blt_DictionaryCompare(left, right)
 #else 
 
 int
-Blt_DictionaryCompare(left, right)
-    char *left, *right;          /* The strings to compare */
+Blt_DictionaryCompare(const char *left, const char *right) 
 {
     int diff, zeros;
     int secondaryDiff = 0;
@@ -562,11 +581,9 @@ Blt_DictionaryCompare(left, right)
 #endif
 
 #ifndef NDEBUG
+
 void
-Blt_Assert(testExpr, fileName, lineNumber)
-    char *testExpr;
-    char *fileName;
-    int lineNumber;
+Blt_Assert(const char *testExpr, const char *fileName, int lineNumber)
 {
 #ifdef WINDEBUG
     PurifyPrintf("line %d of %s: Assert \"%s\" failed\n", lineNumber,
@@ -577,17 +594,17 @@ Blt_Assert(testExpr, fileName, lineNumber)
     fflush(stderr);
     abort();
 }
-#endif
+#endif	/* NDEBUG */
 
 /*ARGSUSED*/
 void
-Blt_Panic TCL_VARARGS_DEF(char *, arg1)
+Blt_Panic TCL_VARARGS_DEF(const char *, arg1)
 {
-    va_list argList;
-    char *format;
+    const char *format;
+    va_list args;
 
-    format = TCL_VARARGS_START(char *, arg1, argList);
-    vfprintf(stderr, format, argList);
+    format = TCL_VARARGS_START(const char *, arg1, args);
+    vfprintf(stderr, format, args);
     fprintf(stderr, "\n");
     fflush(stderr);
     abort();
@@ -597,64 +614,136 @@ void
 Blt_DStringAppendElements
 TCL_VARARGS_DEF(Tcl_DString *, arg1)
 {
-    va_list argList;
     Tcl_DString *dsPtr;
-    register char *elem;
+    char *elem;
+    va_list args;
 
-    dsPtr = TCL_VARARGS_START(Tcl_DString *, arg1, argList);
-    while ((elem = va_arg(argList, char *)) != NULL) {
+    dsPtr = TCL_VARARGS_START(Tcl_DString *, arg1, args);
+    while ((elem = va_arg(args, char *)) != NULL) {
 	Tcl_DStringAppendElement(dsPtr, elem);
     }
-    va_end(argList);
+    va_end(args);
 }
+
+/*ARGSUSED*/
+#ifndef HAVE_SPRINTF_S
+int 
+sprintf_s(char *s, size_t size, const char *fmt, /*args*/ ...) 
+{
+    va_list ap;
+    int n;
+
+    va_start(ap, fmt);
+    n = vsnprintf(s, size, fmt, ap);
+    if ((n != (int)size) && (size > 0)) {
+	s[size-1] = '\0';
+    }
+    va_end(ap);
+    return n;
+}
+#endif /* HAVE_SPRINTF_S */
 
 static char stringRep[200];
 
-char *
-Blt_Itoa(value)
-    int value;
+const char *
+Blt_Itoa(int value)
 {
-    sprintf(stringRep, "%d", value);
+    sprintf_s(stringRep, 200, "%d", value);
     return stringRep;
 }
 
-char *
-Blt_Utoa(value)
-    unsigned int value;
+const char *
+Blt_Ltoa(long value)
 {
-    sprintf(stringRep, "%u", value);
+    sprintf_s(stringRep, 200, "%ld", value);
     return stringRep;
 }
 
-char *
-Blt_Dtoa(interp, value)
-    Tcl_Interp *interp;
-    double value;
+const char *
+Blt_Utoa(unsigned int value)
+{
+    sprintf_s(stringRep, 200, "%u", value);
+    return stringRep;
+}
+
+const char *
+Blt_Dtoa(Tcl_Interp *interp, double value)
 {
     Tcl_PrintDouble(interp, value, stringRep);
     return stringRep;
 }
 
-#if HAVE_UTF
-
-#undef fopen
 FILE *
-Blt_OpenUtfFile(fileName, mode)
-    char *fileName, *mode;
+Blt_OpenFile(Tcl_Interp *interp, const char *fileName, const char *mode)
 {
-    Tcl_DString dString;
     FILE *f;
+#if (_TCL_VERSION >= _VERSION(8,1,0)) 
+    Tcl_DString dString, nativeDString;
+    char *native;
 
-    fileName = Tcl_UtfToExternalDString(NULL, fileName, -1, &dString);
+    native = Tcl_TranslateFileName(interp, fileName, &nativeDString);
+    if (native == NULL) {
+	return NULL;
+    }
+    fileName = Tcl_UtfToExternalDString(NULL, native, -1, &dString);
+    if (fileName == NULL) {
+	Tcl_AppendResult(interp, "can't convert filename \"", native, 
+		 "\" to system encoding", (char *)NULL);
+	Tcl_DStringFree(&nativeDString);
+	return NULL;
+    }
     f = fopen(fileName, mode);
+#else
+    f = fopen(fileName, mode);
+#endif
+    if (f == NULL) {
+	Tcl_AppendResult(interp, "can't open \"", fileName, "\": ",
+			 Tcl_PosixError(interp), (char *)NULL);
+    }
     Tcl_DStringFree(&dString);
+    Tcl_DStringFree(&nativeDString);
     return f;
 }
 
-#endif /* HAVE_UTF */
+int
+Blt_GlobalEvalObjv(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+{
+    int i;
+    int result;
+
+    for (i = 0; i < objc; i++) {
+	Tcl_IncrRefCount(objv[i]);
+    }
+    result = Tcl_EvalObjv(interp, objc, objv, TCL_EVAL_GLOBAL);
+    for (i = 0; i < objc; i++) {
+	Tcl_DecrRefCount(objv[i]);
+    }
+    return result;
+}
+
+int
+Blt_GlobalEvalListObj(Tcl_Interp *interp, Tcl_Obj *cmdObjPtr)
+{
+    Tcl_Obj **objv;
+    int objc;
+    int i;
+    int result;
+    
+    if (Tcl_ListObjGetElements(interp, cmdObjPtr, &objc, &objv) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    for (i = 0; i < objc; i++) {
+	Tcl_IncrRefCount(objv[i]);
+    }
+    result = Tcl_EvalObjv(interp, objc, objv, TCL_EVAL_GLOBAL);
+    for (i = 0; i < objc; i++) {
+	Tcl_DecrRefCount(objv[i]);
+    }
+    return result;
+}
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_InitHexTable --
  *
@@ -672,12 +761,12 @@ Blt_OpenUtfFile(fileName, mode)
  * Results:
  *	None.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
-Blt_InitHexTable(hexTable)
-    char hexTable[];
+Blt_InitHexTable(unsigned char *hexTable)
 {
+    memset(hexTable, 0xFF, 256);
     hexTable['0'] = 0;
     hexTable['1'] = 1;
     hexTable['2'] = 2;
@@ -697,7 +786,7 @@ Blt_InitHexTable(hexTable)
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_GetPosition --
  *
@@ -709,7 +798,7 @@ Blt_InitHexTable(hexTable)
  *	  "end"		- last position in the hierarchy.
  *
  * Results:
- *	A standard Tcl result.  If "string" is a valid index, then
+ *	A standard TCL result.  If "string" is a valid index, then
  *	*indexPtr is filled with the corresponding numeric index.
  *	If "end" was selected then *indexPtr is set to -1.
  *	Otherwise an error message is left in interp->result.
@@ -717,23 +806,23 @@ Blt_InitHexTable(hexTable)
  * Side effects:
  *	None.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_GetPosition(interp, string, indexPtr)
-    Tcl_Interp *interp;		/* Interpreter to report results back
+Blt_GetPosition(
+    Tcl_Interp *interp,		/* Interpreter to report results back
 				 * to. */
-    char *string;		/* String representation of the index.
+    const char *string,		/* String representation of the index.
 				 * Can be an integer or "end" to refer
 				 * to the last index. */
-    int *indexPtr;		/* Holds the converted index. */
+    long *indexPtr)		/* Holds the converted index. */
 {
     if ((string[0] == 'e') && (strcmp(string, "end") == 0)) {
 	*indexPtr = -1;		/* Indicates last position in hierarchy. */
     } else {
-	int position;
+	long position;
 
-	if (Tcl_GetInt(interp, string, &position) != TCL_OK) {
+	if (Tcl_GetLong(interp, string, &position) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	if (position < 0) {
@@ -746,6 +835,41 @@ Blt_GetPosition(interp, string, indexPtr)
     return TCL_OK;
 }
 
+int
+Blt_GetCountFromObj(
+    Tcl_Interp *interp,
+    Tcl_Obj *objPtr,
+    int check,			/* Can be COUNT_POS, COUNT_NNEG,
+				 * or COUNT_ANY, */
+    long *valuePtr)
+{
+    long count;
+
+    if (Tcl_GetLongFromObj(interp, objPtr, &count) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    switch (check) {
+    case COUNT_NNEG:
+	if (count < 0) {
+	    Tcl_AppendResult(interp, "bad value \"", Tcl_GetString(objPtr), 
+		"\": can't be negative", (char *)NULL);
+	    return TCL_ERROR;
+	}
+	break;
+    case COUNT_POS:
+	if (count <= 0) {
+	    Tcl_AppendResult(interp, "bad value \"", Tcl_GetString(objPtr), 
+		"\": must be positive", (char *)NULL);
+	    return TCL_ERROR;
+	}
+	break;
+    case COUNT_ANY:
+	break;
+    }
+    *valuePtr = count;
+    return TCL_OK;
+}
+
 /*
  * The hash table below is used to keep track of all the Blt_Uids created
  * so far.
@@ -754,36 +878,34 @@ static Blt_HashTable uidTable;
 static int uidInitialized = 0;
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_GetUid --
  *
- *	Given a string, returns a unique identifier for the string.
- *	A reference count is maintained, so that the identifier
- *	can be freed when it is not needed any more. This can be used
- *	in many places to replace Tcl_GetUid.
+ *	Given a string, returns a unique identifier for the string.  A
+ *	reference count is maintained, so that the identifier can be freed
+ *	when it is not needed any more. This can be used in many places to
+ *	replace Tcl_GetUid.
  *
  * Results:
  *	This procedure returns a Blt_Uid corresponding to the "string"
- *	argument.  The Blt_Uid has a string value identical to string
- *	(strcmp will return 0), but it's guaranteed that any other
- *	calls to this procedure with a string equal to "string" will
- *	return exactly the same result (i.e. can compare Blt_Uid
- *	*values* directly, without having to call strcmp on what they
- *	point to).
+ *	argument.  The Blt_Uid has a string value identical to string (strcmp
+ *	will return 0), but it's guaranteed that any other calls to this
+ *	procedure with a string equal to "string" will return exactly the same
+ *	result (i.e. can compare Blt_Uid *values* directly, without having to
+ *	call strcmp on what they point to).
  *
  * Side effects:
  *	New information may be entered into the identifier table.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 Blt_Uid
-Blt_GetUid(string)
-    char *string;		/* String to convert. */
+Blt_GetUid(const char *string)	/* String to convert. */
 {
-    int isNew;
     Blt_HashEntry *hPtr;
-    int refCount;
+    int isNew;
+    size_t refCount;
     
     if (!uidInitialized) {
 	Blt_InitHashTable(&uidTable, BLT_STRING_KEYS);
@@ -793,7 +915,7 @@ Blt_GetUid(string)
     if (isNew) {
 	refCount = 0;
     } else {
-	refCount = (int)Blt_GetHashValue(hPtr);
+	refCount = (size_t)Blt_GetHashValue(hPtr);
     }
     refCount++;
     Blt_SetHashValue(hPtr, (ClientData)refCount);
@@ -801,12 +923,11 @@ Blt_GetUid(string)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_FreeUid --
  *
- *	Frees the Blt_Uid if there are no more clients using this
- *	identifier.
+ *	Frees the Blt_Uid if there are no more clients using this identifier.
  *
  * Results:
  *	None.
@@ -814,11 +935,10 @@ Blt_GetUid(string)
  * Side effects:
  *	The identifier may be deleted from the identifier table.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
-Blt_FreeUid(uid)
-    Blt_Uid uid;			/* Identifier to release. */
+Blt_FreeUid(Blt_Uid uid)	/* Identifier to release. */
 {
     Blt_HashEntry *hPtr;
 
@@ -828,14 +948,14 @@ Blt_FreeUid(uid)
     }
     hPtr = Blt_FindHashEntry(&uidTable, uid);
     if (hPtr) {
-	int refCount;
+	size_t refCount;
 
-	refCount = (int)Blt_GetHashValue(hPtr);
+	refCount = (size_t)Blt_GetHashValue(hPtr);
 	refCount--;
 	if (refCount == 0) {
 	    Blt_DeleteHashEntry(&uidTable, hPtr);
 	} else {
-	    Blt_SetHashValue(hPtr, (ClientData)refCount);
+	    Blt_SetHashValue(hPtr, refCount);
 	}
     } else {
 	fprintf(stderr, "tried to release unknown identifier \"%s\"\n", uid);
@@ -843,7 +963,7 @@ Blt_FreeUid(uid)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_FindUid --
  *
@@ -852,11 +972,10 @@ Blt_FreeUid(uid)
  * Results:
  *	A Blt_Uid for the string if one exists. Otherwise NULL.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 Blt_Uid
-Blt_FindUid(string)
-    char *string;		/* String to find. */
+Blt_FindUid(const char *string)	/* String to find. */
 {
     Blt_HashEntry *hPtr;
 
@@ -871,41 +990,41 @@ Blt_FindUid(string)
     return (Blt_Uid) Blt_GetHashKey(&uidTable, hPtr);
 }
 
+
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * BinaryOpSearch --
  *
  *      Performs a binary search on the array of command operation
- *      specifications to find a partial, anchored match for the
- *      given operation string.
+ *      specifications to find a partial, anchored match for the given
+ *      operation string.
  *
  * Results:
- *	If the string matches unambiguously the index of the specification
- *	in the array is returned.  If the string does not match, even
- *	as an abbreviation, any operation, -1 is returned.  If the string
- *	matches, but ambiguously -2 is returned.
+ *	If the string matches unambiguously the index of the specification in
+ *	the array is returned.  If the string does not match, even as an
+ *	abbreviation, any operation, -1 is returned.  If the string matches,
+ *	but ambiguously -2 is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-BinaryOpSearch(specArr, nSpecs, string)
-    Blt_OpSpec specArr[];
-    int nSpecs;
-    char *string;		/* Name of minor operation to search for */
+BinaryOpSearch(Blt_OpSpec *specs, int nSpecs, const char *string, int length)
 {
-    Blt_OpSpec *specPtr;
     char c;
-    register int high, low, median;
-    register int compare, length;
+    int high, low;
 
     low = 0;
     high = nSpecs - 1;
     c = string[0];
-    length = strlen(string);
     while (low <= high) {
+	Blt_OpSpec *specPtr;
+	int compare;
+	int median;
+	
 	median = (low + high) >> 1;
-	specPtr = specArr + median;
+	specPtr = specs + median;
 
 	/* Test the first character */
 	compare = c - specPtr->name[0];
@@ -913,7 +1032,7 @@ BinaryOpSearch(specArr, nSpecs, string)
 	    /* Now test the entire string */
 	    compare = strncmp(string, specPtr->name, length);
 	    if (compare == 0) {
-		if (length < specPtr->minChars) {
+		if ((int)length < specPtr->minChars) {
 		    return -2;	/* Ambiguous operation name */
 		}
 	    }
@@ -931,43 +1050,39 @@ BinaryOpSearch(specArr, nSpecs, string)
 
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * LinearOpSearch --
  *
  *      Performs a binary search on the array of command operation
- *      specifications to find a partial, anchored match for the
- *      given operation string.
+ *      specifications to find a partial, anchored match for the given
+ *      operation string.
  *
  * Results:
- *	If the string matches unambiguously the index of the specification
- *	in the array is returned.  If the string does not match, even
- *	as an abbreviation, any operation, -1 is returned.  If the string
- *	matches, but ambiguously -2 is returned.
+ *	If the string matches unambiguously the index of the specification in
+ *	the array is returned.  If the string does not match, even as an
+ *	abbreviation, any operation, -1 is returned.  If the string matches,
+ *	but ambiguously -2 is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-LinearOpSearch(specArr, nSpecs, string)
-    Blt_OpSpec specArr[];
-    int nSpecs;
-    char *string;		/* Name of minor operation to search for */
+LinearOpSearch(Blt_OpSpec *specs, int nSpecs, const char *string, int length)
 {
     Blt_OpSpec *specPtr;
     char c;
-    int length, nMatches, last;
-    register int i;
+    int nMatches, last;
+    int i;
 
     c = string[0];
-    length = strlen(string);
     nMatches = 0;
     last = -1;
-    for (specPtr = specArr, i = 0; i < nSpecs; i++, specPtr++) {
+    for (specPtr = specs, i = 0; i < nSpecs; i++, specPtr++) {
 	if ((c == specPtr->name[0]) && 
 	    (strncmp(string, specPtr->name, length) == 0)) {
 	    last = i;
 	    nMatches++;
-	    if (length == specPtr->minChars) {
+	    if ((int)length == specPtr->minChars) {
 		break;
 	    }
 	}
@@ -982,177 +1097,74 @@ LinearOpSearch(specArr, nSpecs, string)
 }
 
 /*
- *----------------------------------------------------------------------
- *
- * Blt_GetOp --
- *
- *      Find the command operation given a string name.  This is useful
- *      where a group of command operations have the same argument
- *      signature.
- *
- * Results:
- *      If found, a pointer to the procedure (function pointer) is
- *      returned.  Otherwise NULL is returned and an error message
- *      containing a list of the possible commands is returned in
- *      interp->result.
- *
- *----------------------------------------------------------------------
- */
-Blt_Op
-Blt_GetOp(interp, nSpecs, specArr, operPos, argc, argv, flags)
-    Tcl_Interp *interp;		/* Interpreter to report errors to */
-    int nSpecs;			/* Number of specifications in array */
-    Blt_OpSpec specArr[];	/* Op specification array */
-    int operPos;		/* Index of the operation name argument */
-    int argc;			/* Number of arguments in the argument vector.
-				 * This includes any prefixed arguments */
-    char *argv[];		/* Argument vector */
-    int flags;			/*  */
-{
-    Blt_OpSpec *specPtr;
-    char *string;
-    register int i;
-    register int n;
-
-    if (argc <= operPos) {	/* No operation argument */
-	Tcl_AppendResult(interp, "wrong # args: ", (char *)NULL);
-      usage:
-	Tcl_AppendResult(interp, "should be one of...", (char *)NULL);
-	for (n = 0; n < nSpecs; n++) {
-	    Tcl_AppendResult(interp, "\n  ", (char *)NULL);
-	    for (i = 0; i < operPos; i++) {
-		Tcl_AppendResult(interp, argv[i], " ", (char *)NULL);
-	    }
-	    specPtr = specArr + n;
-	    Tcl_AppendResult(interp, specPtr->name, " ", specPtr->usage,
-		(char *)NULL);
-	}
-	return NULL;
-    }
-    string = argv[operPos];
-    if (flags & BLT_OP_LINEAR_SEARCH) {
-	n = LinearOpSearch(specArr, nSpecs, string);
-    } else {
-	n = BinaryOpSearch(specArr, nSpecs, string);
-    }
-    if (n == -2) {
-	char c;
-	int length;
-
-	Tcl_AppendResult(interp, "ambiguous", (char *)NULL);
-	if (operPos > 2) {
-	    Tcl_AppendResult(interp, " ", argv[operPos - 1], (char *)NULL);
-	}
-	Tcl_AppendResult(interp, " operation \"", string, "\" matches:",
-	    (char *)NULL);
-
-	c = string[0];
-	length = strlen(string);
-	for (n = 0; n < nSpecs; n++) {
-	    specPtr = specArr + n;
-	    if ((c == specPtr->name[0]) &&
-		(strncmp(string, specPtr->name, length) == 0)) {
-		Tcl_AppendResult(interp, " ", specPtr->name, (char *)NULL);
-	    }
-	}
-	return NULL;
-
-    } else if (n == -1) {	/* Can't find operation, display help */
-	Tcl_AppendResult(interp, "bad", (char *)NULL);
-	if (operPos > 2) {
-	    Tcl_AppendResult(interp, " ", argv[operPos - 1], (char *)NULL);
-	}
-	Tcl_AppendResult(interp, " operation \"", string, "\": ", 
-			 (char *)NULL);
-	goto usage;
-    }
-    specPtr = specArr + n;
-    if ((argc < specPtr->minArgs) || ((specPtr->maxArgs > 0) &&
-	    (argc > specPtr->maxArgs))) {
-	Tcl_AppendResult(interp, "wrong # args: should be \"", (char *)NULL);
-	for (i = 0; i < operPos; i++) {
-	    Tcl_AppendResult(interp, argv[i], " ", (char *)NULL);
-	}
-	Tcl_AppendResult(interp, specPtr->name, " ", specPtr->usage, "\"",
-	    (char *)NULL);
-	return NULL;
-    }
-    return specPtr->proc;
-}
-
-#if (TCL_VERSION_NUMBER >= _VERSION(8,0,0)) 
-
-/*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_GetOpFromObj --
  *
- *      Find the command operation given a string name.  This is useful
- *      where a group of command operations have the same argument
- *      signature.
+ *      Find the command operation given a string name.  This is useful where
+ *      a group of command operations have the same argument signature.
  *
  * Results:
- *      If found, a pointer to the procedure (function pointer) is
- *      returned.  Otherwise NULL is returned and an error message
- *      containing a list of the possible commands is returned in
- *      interp->result.
+ *      If found, a pointer to the procedure (function pointer) is returned.
+ *      Otherwise NULL is returned and an error message containing a list of
+ *      the possible commands is returned in interp->result.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-Blt_Op
-Blt_GetOpFromObj(interp, nSpecs, specArr, operPos, objc, objv, flags)
-    Tcl_Interp *interp;		/* Interpreter to report errors to */
-    int nSpecs;			/* Number of specifications in array */
-    Blt_OpSpec specArr[];	/* Op specification array */
-    int operPos;		/* Position of operation in argument list. */
-    int objc;			/* Number of arguments in the argument vector.
+void *
+Blt_GetOpFromObj(
+    Tcl_Interp *interp,		/* Interpreter to report errors to */
+    int nSpecs,			/* Number of specifications in array */
+    Blt_OpSpec *specs,		/* Op specification array */
+    int operPos,		/* Position of operation in argument list. */
+    int objc,			/* Number of arguments in the argument vector.
 				 * This includes any prefixed arguments */
-    Tcl_Obj *CONST objv[];	/* Argument vector */
-    int flags;
+    Tcl_Obj *const *objv,	/* Argument vector */
+    int flags)
 {
     Blt_OpSpec *specPtr;
-    char *string;
-    register int i;
-    register int n;
+    const char *string;
+    int length;
+    int n;
 
     if (objc <= operPos) {	/* No operation argument */
 	Tcl_AppendResult(interp, "wrong # args: ", (char *)NULL);
       usage:
 	Tcl_AppendResult(interp, "should be one of...", (char *)NULL);
 	for (n = 0; n < nSpecs; n++) {
+	    int i;
+
 	    Tcl_AppendResult(interp, "\n  ", (char *)NULL);
 	    for (i = 0; i < operPos; i++) {
 		Tcl_AppendResult(interp, Tcl_GetString(objv[i]), " ", 
 			 (char *)NULL);
 	    }
-	    specPtr = specArr + n;
+	    specPtr = specs + n;
 	    Tcl_AppendResult(interp, specPtr->name, " ", specPtr->usage,
 		(char *)NULL);
 	}
 	return NULL;
     }
-    string = Tcl_GetString(objv[operPos]);
+    string = Tcl_GetStringFromObj(objv[operPos], &length);
     if (flags & BLT_OP_LINEAR_SEARCH) {
-	n = LinearOpSearch(specArr, nSpecs, string);
+	n = LinearOpSearch(specs, nSpecs, string, length);
     } else {
-	n = BinaryOpSearch(specArr, nSpecs, string);
+	n = BinaryOpSearch(specs, nSpecs, string, length);
     }
     if (n == -2) {
 	char c;
-	int length;
 
 	Tcl_AppendResult(interp, "ambiguous", (char *)NULL);
 	if (operPos > 2) {
 	    Tcl_AppendResult(interp, " ", Tcl_GetString(objv[operPos - 1]), 
 		(char *)NULL);
 	}
-	Tcl_AppendResult(interp, " operation \"", string, "\" matches:",
+	Tcl_AppendResult(interp, " operation \"", string, "\" matches: ",
 	    (char *)NULL);
 
 	c = string[0];
-	length = strlen(string);
 	for (n = 0; n < nSpecs; n++) {
-	    specPtr = specArr + n;
+	    specPtr = specs + n;
 	    if ((c == specPtr->name[0]) &&
 		(strncmp(string, specPtr->name, length) == 0)) {
 		Tcl_AppendResult(interp, " ", specPtr->name, (char *)NULL);
@@ -1169,9 +1181,11 @@ Blt_GetOpFromObj(interp, nSpecs, specArr, operPos, objc, objv, flags)
 	Tcl_AppendResult(interp, " operation \"", string, "\": ", (char *)NULL);
 	goto usage;
     }
-    specPtr = specArr + n;
+    specPtr = specs + n;
     if ((objc < specPtr->minArgs) || 
 	((specPtr->maxArgs > 0) && (objc > specPtr->maxArgs))) {
+	int i;
+
 	Tcl_AppendResult(interp, "wrong # args: should be \"", (char *)NULL);
 	for (i = 0; i < operPos; i++) {
 	    Tcl_AppendResult(interp, Tcl_GetString(objv[i]), " ", 
@@ -1184,153 +1198,96 @@ Blt_GetOpFromObj(interp, nSpecs, specArr, operPos, objc, objv, flags)
     return specPtr->proc;
 }
 
-#endif
-
-#include <stdio.h>
-
-/* open a file
- * calculate the CRC32 of the entire contents
- * return the CRC
- * if there is an error rdet the global variable Crcerror
- */
-
-/* ---------------------------------------------------------------- */
-
-/* this is the CRC32 lookup table
- * thanks Gary S. Brown 
- * 64 lines of 4 values for a 256 dword table (1024 bytes)
- */
-static unsigned long crcTab[256] =
-{				/* CRC polynomial 0xedb88320 */
-    0x00000000UL, 0x77073096UL, 0xee0e612cUL, 0x990951baUL,
-    0x076dc419UL, 0x706af48fUL, 0xe963a535UL, 0x9e6495a3UL,
-    0x0edb8832UL, 0x79dcb8a4UL, 0xe0d5e91eUL, 0x97d2d988UL,
-    0x09b64c2bUL, 0x7eb17cbdUL, 0xe7b82d07UL, 0x90bf1d91UL,
-    0x1db71064UL, 0x6ab020f2UL, 0xf3b97148UL, 0x84be41deUL,
-    0x1adad47dUL, 0x6ddde4ebUL, 0xf4d4b551UL, 0x83d385c7UL,
-    0x136c9856UL, 0x646ba8c0UL, 0xfd62f97aUL, 0x8a65c9ecUL,
-    0x14015c4fUL, 0x63066cd9UL, 0xfa0f3d63UL, 0x8d080df5UL,
-    0x3b6e20c8UL, 0x4c69105eUL, 0xd56041e4UL, 0xa2677172UL,
-    0x3c03e4d1UL, 0x4b04d447UL, 0xd20d85fdUL, 0xa50ab56bUL,
-    0x35b5a8faUL, 0x42b2986cUL, 0xdbbbc9d6UL, 0xacbcf940UL,
-    0x32d86ce3UL, 0x45df5c75UL, 0xdcd60dcfUL, 0xabd13d59UL,
-    0x26d930acUL, 0x51de003aUL, 0xc8d75180UL, 0xbfd06116UL,
-    0x21b4f4b5UL, 0x56b3c423UL, 0xcfba9599UL, 0xb8bda50fUL,
-    0x2802b89eUL, 0x5f058808UL, 0xc60cd9b2UL, 0xb10be924UL,
-    0x2f6f7c87UL, 0x58684c11UL, 0xc1611dabUL, 0xb6662d3dUL,
-    0x76dc4190UL, 0x01db7106UL, 0x98d220bcUL, 0xefd5102aUL,
-    0x71b18589UL, 0x06b6b51fUL, 0x9fbfe4a5UL, 0xe8b8d433UL,
-    0x7807c9a2UL, 0x0f00f934UL, 0x9609a88eUL, 0xe10e9818UL,
-    0x7f6a0dbbUL, 0x086d3d2dUL, 0x91646c97UL, 0xe6635c01UL,
-    0x6b6b51f4UL, 0x1c6c6162UL, 0x856530d8UL, 0xf262004eUL,
-    0x6c0695edUL, 0x1b01a57bUL, 0x8208f4c1UL, 0xf50fc457UL,
-    0x65b0d9c6UL, 0x12b7e950UL, 0x8bbeb8eaUL, 0xfcb9887cUL,
-    0x62dd1ddfUL, 0x15da2d49UL, 0x8cd37cf3UL, 0xfbd44c65UL,
-    0x4db26158UL, 0x3ab551ceUL, 0xa3bc0074UL, 0xd4bb30e2UL,
-    0x4adfa541UL, 0x3dd895d7UL, 0xa4d1c46dUL, 0xd3d6f4fbUL,
-    0x4369e96aUL, 0x346ed9fcUL, 0xad678846UL, 0xda60b8d0UL,
-    0x44042d73UL, 0x33031de5UL, 0xaa0a4c5fUL, 0xdd0d7cc9UL,
-    0x5005713cUL, 0x270241aaUL, 0xbe0b1010UL, 0xc90c2086UL,
-    0x5768b525UL, 0x206f85b3UL, 0xb966d409UL, 0xce61e49fUL,
-    0x5edef90eUL, 0x29d9c998UL, 0xb0d09822UL, 0xc7d7a8b4UL,
-    0x59b33d17UL, 0x2eb40d81UL, 0xb7bd5c3bUL, 0xc0ba6cadUL,
-    0xedb88320UL, 0x9abfb3b6UL, 0x03b6e20cUL, 0x74b1d29aUL,
-    0xead54739UL, 0x9dd277afUL, 0x04db2615UL, 0x73dc1683UL,
-    0xe3630b12UL, 0x94643b84UL, 0x0d6d6a3eUL, 0x7a6a5aa8UL,
-    0xe40ecf0bUL, 0x9309ff9dUL, 0x0a00ae27UL, 0x7d079eb1UL,
-    0xf00f9344UL, 0x8708a3d2UL, 0x1e01f268UL, 0x6906c2feUL,
-    0xf762575dUL, 0x806567cbUL, 0x196c3671UL, 0x6e6b06e7UL,
-    0xfed41b76UL, 0x89d32be0UL, 0x10da7a5aUL, 0x67dd4accUL,
-    0xf9b9df6fUL, 0x8ebeeff9UL, 0x17b7be43UL, 0x60b08ed5UL,
-    0xd6d6a3e8UL, 0xa1d1937eUL, 0x38d8c2c4UL, 0x4fdff252UL,
-    0xd1bb67f1UL, 0xa6bc5767UL, 0x3fb506ddUL, 0x48b2364bUL,
-    0xd80d2bdaUL, 0xaf0a1b4cUL, 0x36034af6UL, 0x41047a60UL,
-    0xdf60efc3UL, 0xa867df55UL, 0x316e8eefUL, 0x4669be79UL,
-    0xcb61b38cUL, 0xbc66831aUL, 0x256fd2a0UL, 0x5268e236UL,
-    0xcc0c7795UL, 0xbb0b4703UL, 0x220216b9UL, 0x5505262fUL,
-    0xc5ba3bbeUL, 0xb2bd0b28UL, 0x2bb45a92UL, 0x5cb36a04UL,
-    0xc2d7ffa7UL, 0xb5d0cf31UL, 0x2cd99e8bUL, 0x5bdeae1dUL,
-    0x9b64c2b0UL, 0xec63f226UL, 0x756aa39cUL, 0x026d930aUL,
-    0x9c0906a9UL, 0xeb0e363fUL, 0x72076785UL, 0x05005713UL,
-    0x95bf4a82UL, 0xe2b87a14UL, 0x7bb12baeUL, 0x0cb61b38UL,
-    0x92d28e9bUL, 0xe5d5be0dUL, 0x7cdcefb7UL, 0x0bdbdf21UL,
-    0x86d3d2d4UL, 0xf1d4e242UL, 0x68ddb3f8UL, 0x1fda836eUL,
-    0x81be16cdUL, 0xf6b9265bUL, 0x6fb077e1UL, 0x18b74777UL,
-    0x88085ae6UL, 0xff0f6a70UL, 0x66063bcaUL, 0x11010b5cUL,
-    0x8f659effUL, 0xf862ae69UL, 0x616bffd3UL, 0x166ccf45UL,
-    0xa00ae278UL, 0xd70dd2eeUL, 0x4e048354UL, 0x3903b3c2UL,
-    0xa7672661UL, 0xd06016f7UL, 0x4969474dUL, 0x3e6e77dbUL,
-    0xaed16a4aUL, 0xd9d65adcUL, 0x40df0b66UL, 0x37d83bf0UL,
-    0xa9bcae53UL, 0xdebb9ec5UL, 0x47b2cf7fUL, 0x30b5ffe9UL,
-    0xbdbdf21cUL, 0xcabac28aUL, 0x53b39330UL, 0x24b4a3a6UL,
-    0xbad03605UL, 0xcdd70693UL, 0x54de5729UL, 0x23d967bfUL,
-    0xb3667a2eUL, 0xc4614ab8UL, 0x5d681b02UL, 0x2a6f2b94UL,
-    0xb40bbe37UL, 0xc30c8ea1UL, 0x5a05df1bUL, 0x2d02ef8dUL
-}; 
-
-#define CRC32(c, b) (crcTab[((int)(c) ^ (b)) & 0xff] ^ ((c) >> 8))
-#define DO1(buf)  crc = CRC32(crc, *buf++)
-#define DO2(buf)  DO1(buf); DO1(buf)
-#define DO4(buf)  DO2(buf); DO2(buf)
-#define DO8(buf)  DO4(buf); DO4(buf)
-
-static int
-Crc32Cmd(
-   ClientData clientData,
-   Tcl_Interp *interp, 
-   int argc, char **argv)
+#if (_TCL_VERSION >= _VERSION(8,4,0)) 
+/*ARGSUSED*/
+int
+Blt_LoadLibrary(
+    Tcl_Interp *interp,
+    const char *libPath, 
+    const char *initProcName, 
+    const char *safeProcName)
 {
-    register unsigned int crc;
-    char buf[200];
-    
-    crc = 0L;
-    crc = crc ^ 0xffffffffL;
-    if (strcmp(argv[1], "-data") == 0) {
-	register char *p;
+    Tcl_FSUnloadFileProc *unLoadProcPtr = NULL;
+    Tcl_LoadHandle loadHandle;
+    Tcl_PackageInitProc *initProc, *safeProc;
+    int result;
+    Tcl_Obj *objPtr;
 
-	if (argc != 3) {
-	    Tcl_AppendResult(interp, "wrong # args: should be \"", argv[0],
-		     " ?fileName? ?-data dataString?", (char *)NULL);
-	    return TCL_ERROR;
-	}
-	for (p = argv[2]; *p != '\0'; p++) {
-	    crc = CRC32(crc, *p);
-	}
-    } else {
-	register int c;
-	FILE *f;
-	
-	if (argc != 2) {
-	    Tcl_AppendResult(interp, "wrong # args: should be \"", argv[0],
-		     " ?fileName? ?-data dataString?", (char *)NULL);
-	    return TCL_ERROR;
-	}
-	f = fopen(argv[1], "rb");
-	if (f == NULL) {
-	    Tcl_AppendResult(interp, "can't open file \"", argv[1], "\": ",
-			     Tcl_PosixError(interp), (char *)NULL);
-	    return TCL_ERROR;
-	}
-	while((c = getc(f)) != EOF) {
-	    crc = CRC32(crc, c);
-	}
-	fclose(f);
+    objPtr = Tcl_NewStringObj(libPath, -1);
+    Tcl_IncrRefCount(objPtr);
+    result = Tcl_FSLoadFile(interp, objPtr, initProcName, safeProcName, 
+	&initProc, &safeProc, &loadHandle, &unLoadProcPtr);
+    if (result != TCL_OK) {
+	goto done;
     }
-    crc = crc ^ 0xffffffffL;
-    sprintf(buf, "%x", crc);
-    Tcl_SetResult(interp, buf, TCL_VOLATILE);
+    if (initProc == NULL) {
+	Tcl_AppendResult(interp, "couldn't find procedure ", initProcName, 
+		(char *) NULL);
+	result = TCL_ERROR;
+	goto done;
+    }
+    if (Tcl_IsSafe(interp)) {
+        if (safeProc == NULL) {
+            Tcl_AppendResult(interp, 
+		"can't use package in a safe interpreter: ", "no ", 
+		safeProcName, " procedure", (char *) NULL);
+	    result = TCL_ERROR;
+            goto done;
+	}
+	result = (*safeProc)(interp);
+    } else {
+	result = (*initProc)(interp);
+    }
+ done:
+    Tcl_DecrRefCount(objPtr);
+    if (result != TCL_OK) {
+	if (unLoadProcPtr != NULL) {
+	    (*unLoadProcPtr)(loadHandle);
+	}
+	return TCL_ERROR;
+    }	
     return TCL_OK;
 }
-
+#else 
 int
-Blt_Crc32Init(interp)
-    Tcl_Interp *interp;
+Blt_LoadLibrary(
+    Tcl_Interp *interp,
+    const char *libPath, 
+    const char *initProcName, 
+    const char *safeProcName)
 {
-    static Blt_CmdSpec cmdSpec = {"crc32", Crc32Cmd,};
+    ClientData loadData;
+    Tcl_PackageInitProc *initProc, *safeProc;
+    int result;
 
-    if (Blt_InitCmd(interp, "blt", &cmdSpec) == NULL) {
+    result = TclpLoadFile(interp, libPath, initProcName, safeProcName, 
+	&initProc, &safeProc, &loadData); 
+    if (result != TCL_OK) {
 	return TCL_ERROR;
     }
+    if (initProc == NULL) {
+	Tcl_AppendResult(interp, "couldn't find procedure ", initProcName, 
+		(char *) NULL);
+	result = TCL_ERROR;
+	goto done;
+    }
+    if (Tcl_IsSafe(interp)) {
+        if (safeProc == NULL) {
+            Tcl_AppendResult(interp, 
+		"can't use package in a safe interpreter: ", "no ", 
+		safeProcName, " procedure", (char *) NULL);
+	    result = TCL_ERROR;
+            goto done;
+	}
+	result = (*safeProc)(interp);
+    } else {
+	result = (*initProc)(interp);
+    }
+ done:
+    if (result != TCL_OK) {
+	TclpUnloadFile(loadData);
+	return TCL_ERROR;
+    }	
     return TCL_OK;
 }
-
+#endif

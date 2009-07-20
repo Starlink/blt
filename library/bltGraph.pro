@@ -1,3 +1,4 @@
+
 %%BeginProlog
 %
 % PostScript prolog file of the BLT graph widget.
@@ -128,33 +129,11 @@ systemdict /ISOLatin1Encoding known not {
 /Box {
   % Stack: x y width height
   newpath
-  exch 4 2 roll moveto
-  dup 0 rlineto
-  exch 0 exch rlineto
-  neg 0 rlineto
+    exch 4 2 roll moveto
+    dup 0 rlineto
+    exch 0 exch rlineto
+    neg 0 rlineto
   closepath
-} def
-
-/SetFgColor {
-  % Stack: red green blue
-  CL 0 eq { 
-    pop pop pop 0 0 0 
-  } if
-  setrgbcolor
-  CL 1 eq { 
-    currentgray setgray 
-  } if
-} def
-
-/SetBgColor {
-  % Stack: red green blue
-  CL 0 eq { 
-    pop pop pop 1 1 1 
-  } if
-  setrgbcolor
-  CL 1 eq { 
-    currentgray setgray 
-  } if
 } def
 
 % The next two definitions are taken from "$tk_library/prolog.ps"
@@ -241,7 +220,11 @@ systemdict /ISOLatin1Encoding known not {
 
 
 /LS {	% Stack: x1 y1 x2 y2
-  newpath 4 2 roll moveto lineto stroke
+  newpath 
+    4 2 roll moveto 
+    lineto 
+  closepath
+  stroke
 } def
 
 /EndText {
@@ -289,7 +272,10 @@ systemdict /ISOLatin1Encoding known not {
     2 copy -.5 mul exch -.5 mul exch translate
     2 copy scale			% Make pixel unit scale
     newpath
-    0 0 moveto 0 1 lineto 1 1 lineto 1 0 lineto
+      0 0 moveto 
+      0 1 lineto 
+      1 1 lineto 
+      1 0 lineto
     closepath
     
     % Fill rectangle with background color
@@ -325,9 +311,15 @@ systemdict /ISOLatin1Encoding known not {
     3 -2 roll translate
     2 idiv
     dup 2 copy
-    newpath neg 0 moveto 0 lineto
+    newpath 
+      neg 0 
+      moveto 0 
+      lineto
     DrawSymbolProc
-    newpath neg 0 exch moveto 0 exch lineto
+    newpath 
+      neg 0 
+      exch moveto 0 
+      exch lineto
     DrawSymbolProc
   grestore
 } def
@@ -360,11 +352,17 @@ systemdict /ISOLatin1Encoding known not {
     %
 
     newpath
-    2 copy exch neg exch neg moveto dup neg dup lineto
-    2 copy neg exch neg lineto 2 copy exch neg lineto
-    dup dup neg lineto 2 copy neg lineto 2 copy lineto
-    dup dup lineto 2 copy exch lineto 2 copy neg exch lineto
-    dup dup neg exch lineto exch neg exch lineto
+      2 copy exch neg exch neg moveto 
+      dup neg dup lineto
+      2 copy neg exch neg lineto
+      2 copy exch neg lineto
+      dup dup neg lineto 
+      2 copy neg lineto 2 copy lineto
+      dup dup lineto 
+      2 copy exch lineto 
+      2 copy neg exch lineto
+      dup dup neg exch lineto 
+      exch neg exch lineto
     closepath
     DrawSymbolProc
   grestore
@@ -374,10 +372,11 @@ systemdict /ISOLatin1Encoding known not {
 /Ci {
   % Stack: x y symbolSize
   gsave
-    3 copy pop
-    moveto newpath
-    2 div 0 360 arc
-    closepath DrawSymbolProc
+    3 copy pop moveto 
+    newpath
+      2 div 0 360 arc
+    closepath 
+    DrawSymbolProc
   grestore
 } def
 
@@ -398,7 +397,9 @@ systemdict /ISOLatin1Encoding known not {
   gsave
     3 1 roll exch 3 -1 roll 2 div 3 copy
     newpath
-    sub exch moveto add exch lineto
+      sub exch moveto 
+      add exch lineto
+    closepath
     stroke
   grestore
 } def
@@ -419,10 +420,11 @@ systemdict /ISOLatin1Encoding known not {
     BaseRatio mul 0.5 mul		% Calculate 1/2 base
     dup 0 exch 30 cos mul		% h1 = height above center point
     neg					% b2 0 -h1
-    newpath moveto			% point 1;  b2
-    dup 30 sin 30 cos div mul		% h2 = height below center point
-    2 copy lineto			% point 2;  b2 h2
-    exch neg exch lineto		% 
+    newpath 
+      moveto				% point 1;  b2
+      dup 30 sin 30 cos div mul		% h2 = height below center point
+      2 copy lineto			% point 2;  b2 h2
+      exch neg exch lineto		% 
     closepath
     DrawSymbolProc
   grestore
@@ -466,6 +468,5 @@ gsave					% Save the graphics state
 0 setlinecap				% cap
 [] 0 setdash				% dashes
 
-/CL 0 def				% Set color level mode
 0 0 0 setrgbcolor			% color
 

@@ -1,43 +1,19 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 
 set tcl_precision 15 
 
 set graph .graph
-image create photo bgTexture -file ./images/chalk.gif
+image create picture bgTexture -file ./images/chalk.gif
 
 option add *default			normal
 option add *Button.tile			bgTexture
 
 option add *Htext.font			-*-times*-bold-r-*-*-18-*-*
-option add *Text.font			-*-times*-bold-r-*-*-18-*-*
-option add *header.font			-*-times*-medium-r-*-*-18-*-*
+option add *Text.font			"Serif 18"
+option add *header.font			"{Times New Roman} 12"
 option add *footer.font			-*-times*-medium-r-*-*-18-*-*
 option add *Graph.relief		raised
 #option add *Graph.borderWidth		2
@@ -49,10 +25,11 @@ option add *Graph.tile			bgTexture
 option add *Graph.halo			0
 
 option add *Graph.title			"s27.out"
-option add *Graph.font			-*-helvetica-bold-r-*-*-18-*
+option add *Graph.font			"Arial bold 18"
 
-option add *Axis.tickFont		-*-courier-medium-r-*-*-12-*
-option add *Axis.titleFont		-*-helvetica-bold-r-*-*-14-*
+option add *Axis.tickFont		"Courier 10"
+#option add *Axis.titleFont		-*-helvetica-bold-r-*-*-140-*
+option add *Axis.titleFont		"Arial 10 bold"
 option add *Axis.titleColor		red2
 option add *x.title			"Time"
 option add *y.title			"Signals"
@@ -76,7 +53,7 @@ option add *Grid.hide			no
 option add *Legend.ActiveRelief		sunken
 option add *Legend.Position		right
 option add *Legend.Relief		flat
-option add *Legend.font			-*-lucida-medium-r-*-*-12-*-*-*-*-*-*-*
+option add *Legend.font			{ {Times New Roman} 6 } 
 option add *Legend.Pad			0
 option add *Legend.hide			no
 
@@ -87,9 +64,9 @@ option add *zoomOutline.outline		yellow
 option add *TextMarker.Background	{}
 option add *TextMarker.Foreground	white
 
-vector create x -variable ""
+blt::vector create x -variable ""
 for { set i 1 } { $i <= 39 } { incr i } {
-    vector create "v$i" -variable ""
+    blt::vector create "v$i" -variable ""
 }
 
 x set {
@@ -2208,15 +2185,15 @@ mouse to the other corner and click again.
 regsub -all "\n" $text "" text
 .header insert end "$text\n"
 .header insert end { You can click on the }
-set im [image create photo -file ./images/qv100.t.gif]
+set im [image create picture -file ./images/qv100.t.gif]
 button .header.snap -image $im -command { MakeSnapshot }
 .header window create end -window .header.snap
-.header insert end { button to see a photo image snapshot.}
+.header insert end { button to see a picture image snapshot.}
 .header configure -state disabled
-graph $graph
+blt::graph $graph 
 
-htext .footer -text {Hit the %%
-    set im [image create photo -file ./images/stopsign.gif]
+blt::htext .footer -text {Hit the %%
+    set im [image create picture -file ./images/stopsign.gif]
     button $htext(widget).quit -image $im -command { exit }
     $htext(widget) append $htext(widget).quit 
 %% button when you've seen enough. %%
@@ -2231,50 +2208,52 @@ foreach {label yData outline color} $attributes {
 set unique 0
 
 proc Sharpen { photo } {
-    #set kernel { -1 -1 -1 -1  16 -1 -1 -1 -1 } 
-    set kernel { 0 -1 0 -1  4.9 -1 0 -1 0 }
-    winop convolve $photo $photo $kernel
+    set kernel { -1 -1 -1 -1  16 -1 -1 -1 -1 } 
+    #set kernel { 0 -1 0 -1  4.9 -1 0 -1 0 }
+    blt::winop convolve $photo $photo $kernel
 }
 
 proc MakeSnapshot {} {
     update idletasks
     global unique
     set top ".snapshot[incr unique]"
-    set im1 [image create photo]
-    set im2 [image create photo]
+    set im1 [image create picture]
     .graph snap $im1
-    blt::winop snap .graph $im2 
-    set thumb1 [image create photo -width 210 -height 150 -gamma 1.8]
-    winop resample $im1 $thumb1 sinc 
-    set thumb2 [image create photo -width 210 -height 150 -gamma 1.8]
-    winop resample $im2 $thumb2 sinc 
-    #Sharpen $thumb
+    set width 410
+    set height 293
+    set thumb1 [image create picture -width $width -height $height -gamma 2.2]
+    $thumb1 resize $im1 -filter sinc 
     image delete $im1
-    image delete $im2
+
+    set thumb2 [image create picture -window .graph -width $width \
+	-height $height -filter sinc -gamma 2.2 -aspect yes]
+
     toplevel $top
     wm title $top "Snapshot \#$unique of \"[.graph cget -title]\""
-    label $top.l1 -image $thumb1
-    label $top.l2 -image $thumb2
+    label $top.l1 -image $thumb1 
+    label $top.l2 -image $thumb2 
 
     button $top.but -text "Dismiss" -command "DestroySnapshot $top"
-    table $top 0,0 $top.l1 0,1 $top.l2
-    table $top $top.but -pady 4 
+    blt::table $top \
+	0,0 $top.l1 \
+	0,1 $top.l2 \
+        1,0 $top.but -pady 4 
     focus $top.but
 }
 
 proc DestroySnapshot { win } {
     set im [$win.l1 cget -image]
-    $im write -format ppm test.ppm
+    $im export jpg -file test.jpg
     image delete $im
     destroy $win
 }
 
-table . \
+blt::table . \
     .header 0,0 -fill x \
     .graph 1,0  -fill both \
     .footer 2,0 -fill x
 
-table configure . r0 r2 -resize none
+blt::table configure . r0 r2 -resize none
 
 Blt_ZoomStack $graph
 Blt_Crosshairs $graph
@@ -2290,3 +2269,17 @@ $graph element bind all <Leave> {
     %W legend deactivate [%W element get current]
 }
 
+set table [blt::datatable create]
+$table column extend "x"
+$table import vector "x" 1
+$table column type "x" double
+set col 1
+foreach vector [lsort -dictionary [blt::vector names ::v*]] {
+    set name [string trim $vector ::]
+    $table column extend $name
+    $table column type $name double
+    incr col
+    $table import vector $vector $col
+}
+
+$table dump -file graph4.tab

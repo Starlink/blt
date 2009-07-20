@@ -1,29 +1,7 @@
 #!../src/bltwish
 
+lappend auto_path /usr/local/blt/lib/blt3.0
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 
 # ----------------------------------------------------------------------
@@ -36,18 +14,23 @@ source scripts/demo.tcl
 #               Copyright (c) 1996  Lucent Technologies
 # ======================================================================
 
-option add *x.range 20.0
-option add *x.shiftBy 15.0
+option add *Axis.tickInterior yes
+option add *Axis.tickDefault 5
+option add *Axis.Grid yes
+option add *Axis.GridColor lightblue
+option add *Legend.Hide yes
+#option add *Axis.GridDashes 0
 option add *bufferElements no
 option add *bufferGraph yes
 option add *symbol triangle
+option add *symbol none
 option add *Axis.lineWidth 1
-option add *Axis*Rotate 90
+#option add *Axis*Rotate 90
 option add *pixels 1.25m
 #option add *PlotPad 25
 option add *Stripchart.width 6i
+option add *Stripchart.height 6i
 #option add *Smooth quadratic
-#option add *Stripchart.invertXY yes
 #option add *x.descending yes
 
 # ----------------------------------------------------------------------
@@ -83,7 +66,7 @@ label .addSource.info.maxl -text "Maximum:"
 entry .addSource.info.max
 label .addSource.info.minl -text "Minimum:"
 entry .addSource.info.min
-table .addSource.info \
+blt::table .addSource.info \
     .addSource.info.namel 0,0 -anchor e \
     .addSource.info.name 0,1 -fill x \
     .addSource.info.maxl 1,0 -anchor e \
@@ -93,7 +76,9 @@ table .addSource.info \
 
 frame .addSource.color
 pack .addSource.color -padx 8 -pady 4
-frame .addSource.color.sample -width 30 -height 30 -borderwidth 2 -relief raised
+frame .addSource.color.sample \
+    -width 30 -height 30 \
+    -borderwidth 2 -relief raised
 pack .addSource.color.sample -side top -fill both
 scale .addSource.color.r -label "Red" -orient vertical \
     -from 100 -to 0 -command source_color
@@ -136,6 +121,15 @@ button .addSource.controls.cancel -text "Cancel" -command {
 pack .addSource.controls.cancel -side left -expand yes -padx 4
 
 set useAxes y
+blt::bitmap define pattern1 { {4 4} {01 02 04 08} }
+
+blt::bitmap define hobbes { {25 25} {
+	00 00 00 00 00 00 00 00 00 c0 03 00 78 e0 07 00 fc f8 07 00 cc 07 04 00
+	0c f0 0b 00 7c 1c 06 00 38 00 00 00 e0 03 10 00 e0 41 11 00 20 40 11 00
+	e0 07 10 00 e0 c1 17 00 10 e0 2f 00 20 e0 6f 00 18 e0 2f 00 20 c6 67 00
+	18 84 2b 00 20 08 64 00 70 f0 13 00 80 01 08 00 00 fe 07 00 00 00 00 00
+	00 00 00 00 }
+}
 
 proc source_create {name color min max} {
     global sources
@@ -157,10 +151,7 @@ proc source_create {name color min max} {
     set yvname "yvector$unique"
     set wvname "wvector$unique"
     global $xvname $yvname $wvname
-#    catch { $xvname delete }
-#    catch { $yvname delete }
-#    catch { $wvname delete }
-    vector $xvname $yvname $wvname
+    blt::vector $xvname $yvname $wvname
 
     if {$xvname == "xvector1"} {
         $xvname append 0
@@ -172,16 +163,30 @@ proc source_create {name color min max} {
     $wvname append 0
     
     catch {.sc element delete $name}
-    .sc element create $name -x $xvname -y $yvname -color $color 
+
+
+    .sc element create $name \
+	-areapattern pattern1 \
+        -areaforeground $color \
+        -areabackground "" \
+	-x $xvname \
+	-y $yvname \
+	-color $color 
     if { $name != "default" } {
-	.sc axis create $name -title $name \
-	    -limitscolor $color -limitsformat "%4.4g" -titlecolor ${color}
+	.sc axis create $name \
+	    -loose no \
+	    -title $name \
+	    -grid yes \
+	    -rotate 0 \
+	    -limitscolor $color \
+	    -limitsformat "%4.4g" \
+	    -titlecolor ${color}
 	.sc element configure $name -mapy $name
 	global useAxes
 	lappend useAxes $name
 	set count 0
-if 1 {
-	set yUse {}
+if 0 {
+	set yUse $useAxes
 	set y2Use {}
 	foreach axis $useAxes {
 	    if { $count & 1 } {
@@ -196,7 +201,7 @@ if 1 {
 	.sc y2axis use $y2Use
 	.sc yaxis use $yUse
 } else {
-        .sc yaxis use $useAxes
+        .sc y2axis use $useAxes
 }
     }
     set cwin .sources.choices.rb$unique
@@ -236,7 +241,7 @@ if 1 {
     label $win.ratel -text "Sampling Rate:"
     scale $win.rate -orient horizontal -from 10 -to 1000
 
-    table $win \
+    blt::table $win \
         $win.smoothl 0,0 -anchor e \
         $win.smooth 0,1 -fill x -padx 4 \
         $win.limsl 1,0 -anchor e \
@@ -247,15 +252,15 @@ if 1 {
     if {$unique != 1} {
         button $win.del -text "Delete" -command [list source_delete $name]
         pack $win.del -anchor w
-        table $win $win.del 3,1 -anchor e -padx 4 -pady 4
+        blt::table $win $win.del 3,1 -anchor e -padx 4 -pady 4
     }
 
-    $win.rate set 100
+    $win.rate set 200
     catch {$win.smooth.[.sc element cget $name -smooth] invoke} mesg
 
     set sources($name-choice) $cwin
     set sources($name-controls) $win
-    set sources($name-stream) [after 100 [list source_event $name 100]]
+    set sources($name-stream) [after 10 [list source_event $name 10]]
     set sources($name-x) $xvname
     set sources($name-y) $yvname
     set sources($name-w) $wvname
@@ -304,7 +309,7 @@ proc source_event {name delay} {
         $wv append 0
     }
     #$wv notify now
-    if { [$xv length] > 100 } {
+    if { [$xv length] > 1000 } {
 	$xv delete 0
 	$yv delete 0
 	$wv delete 0
@@ -353,10 +358,11 @@ catch {.mbar.prefs.m.wm invoke "circle"}
 catch {.mbar.prefs.m.em invoke "cross"}
 
 # ----------------------------------------------------------------------
-stripchart .sc -title "Stripchart" 
+blt::stripchart .sc -title ""  -stackaxes yes -invert no \
+    -bufferelements no
 pack .sc -expand yes -fill both
 
-.sc xaxis configure -title "Time (s)" -autorange 2.0 -shiftby 0.5
+.sc xaxis configure -title "Time (s)" -autorange 20.0 -shiftby 0.5
 .sc yaxis configure -title "Samples"
 
 frame .sources
@@ -381,30 +387,24 @@ source_create work magenta3 0 10
 
 Blt_ZoomStack .sc
 
-.sc axis bind Y <Enter> {
-    set axis [%W axis get current]
-    set detail [%W axis get detail]
-    if { $detail == "line" } {
-	%W axis configure $axis -background grey 
-    }
+.sc axis bind all <Enter> {
+    %W axis activate [%W axis get current]
 }
-.sc axis bind Y <Leave> {
-    set axis [%W axis get current]
-    %W axis configure $axis -background ""
+.sc axis bind all <Leave> {
+    %W axis deactivate [%W axis get current]
 }
 
 .sc axis bind Y <ButtonPress-1> {
    set axis [%W axis get current] 
-#   scan [%W axis limits $axis] "%%g %%g" min max
-#   set min [expr $min + (($max - $min) * 0.1)]
-#   set max [expr $max - (($max - $min) * 0.1)]
-#   %W axis configure $axis -min $min -max $max
    %W axis configure $axis -logscale yes
 }
 
 .sc axis bind Y <ButtonPress-3> {
    set axis [%W axis get current] 
-#   %W axis configure $axis -min {} -max {}
    %W axis configure $axis -logscale no
 }
 
+after 5000 {
+  puts stderr "printing stripchart"
+  .sc postscript output sc.ps
+} 

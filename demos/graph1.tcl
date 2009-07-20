@@ -1,59 +1,42 @@
 #!../src/bltwish
 
-package require BLT
-
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
+if { [info exists env(BLT_LIBRARY)] } {
+   lappend auto_path $env(BLT_LIBRARY)
 }
+package require BLT
 
 source scripts/demo.tcl
 
-if { [winfo screenvisual .] != "staticgray" } {
-    option add *print.background yellow
-    option add *quit.background red
-    set image [image create photo -file ./images/rain.gif]
-    option add *Graph.Tile $image
-    option add *Label.Tile $image
-    option add *Frame.Tile $image
-    option add *Htext.Tile $image
-    option add *TileOffset 0
-}
+set normalBg [blt::bgpattern create texture -low grey85 -high grey88]
+set activeBg [blt::bgpattern create gradient -low grey40 -high grey95 \
+	-jitter yes -log no -opacity 80]
+set normalBg white
+set activeBg grey95
+# option add *Axis.activeBackground $activeBg
+# option add *Legend.activeBackground $activeBg
 
-set graph [graph .g]
-htext .header \
+set graph .g
+blt::graph .g \
+    -bg $normalBg \
+    -plotrelief solid \
+    -plotborderwidth 0 \
+    -relief solid \
+    -plotpadx 0 -plotpady 0 \
+    -borderwidth 0
+
+blt::htext .header \
     -text {\
 This is an example of the graph widget.  It displays two-variable data 
 with assorted line attributes and symbols.  To create a postscript file 
 "xy.ps", press the %%
-    button $htext(widget).print -text print -command {
+    blt::tk::button $htext(widget).print -text print -command {
         puts stderr [time {
-	   blt::busy hold .
-	   update
-	   .g postscript output demo1.eps 
-	   update
-	   blt::busy release .
-	   update
+	    blt::busy hold .
+	    update
+	    .g postscript output demo1.eps 
+	    update
+	    blt::busy release .
+	    update
         }]
     } 
     $htext(widget) append $htext(widget).print
@@ -61,13 +44,13 @@ with assorted line attributes and symbols.  To create a postscript file
 
 source scripts/graph1.tcl
 
-htext .footer \
+blt::htext .footer \
     -text {Hit the %%
-button $htext(widget).quit -text quit -command { exit } 
+blt::tk::button $htext(widget).quit -text quit -command { exit } 
 $htext(widget) append $htext(widget).quit 
 %% button when you've seen enough.%%
 label $htext(widget).logo -bitmap BLT
-$htext(widget) append $htext(widget).logo -padx 20
+$htext(widget) append $htext(widget).logo 
 %%}
 
 proc MultiplexView { args } { 
@@ -75,75 +58,162 @@ proc MultiplexView { args } {
     eval .g axis view y2 $args
 }
 
-scrollbar .xbar \
+blt::tk::scrollbar .xbar \
     -command { .g axis view x } \
-    -orient horizontal -relief flat \
-    -highlightthickness 0 -elementborderwidth 2 -bd 0
-scrollbar .ybar \
+    -orient horizontal \
+    -highlightthickness 0
+blt::tk::scrollbar .ybar \
     -command MultiplexView \
-    -orient vertical -relief flat  -highlightthickness 0 -elementborderwidth 2
-table . \
+    -orient vertical -highlightthickness 0
+blt::table . \
     0,0 .header -cspan 3 -fill x \
     1,0 .g  -fill both -cspan 3 -rspan 3 \
     2,3 .ybar -fill y  -padx 0 -pady 0 \
     4,1 .xbar -fill x \
     5,0 .footer -cspan 3 -fill x
 
-table configure . c3 r0 r4 r5 -resize none
+blt::table configure . c3 r0 r4 r5 -resize none
 
 .g postscript configure \
     -center yes \
     -maxpect yes \
-    -landscape no \
-    -preview yes
+    -landscape yes \
 
 .g axis configure x \
-    -scrollcommand { .xbar set } \
+    -scrollcommand { .xbar set }  \
     -scrollmax 10 \
-    -scrollmin 2 
+    -scrollmin 2  \
+    -activeforeground red3 \
+    -activebackground white \
+    -title "X ayis" \
+    -tickinterior no
 
 .g axis configure y \
-    -scrollcommand { .ybar set }
+    -scrollcommand { .ybar set } \
+    -scrollmax 1000 \
+    -activeforeground red3 \
+    -activebackground white \
+    -scrollmin -100  \
+    -rotate 90 \
+    -title "Y ayis" \
+    -tickinterior no
 
 .g axis configure y2 \
     -scrollmin 0.0 -scrollmax 1.0 \
-    -hide no \
-    -title "Y2" 
+    -hide yes \
+    -rotate -90 \
+    -title "Y2"
 
 .g legend configure \
+    -relief flat -bd 0 \
     -activerelief flat \
     -activeborderwidth 1  \
-    -position top -anchor ne
+    -position right -anchor ne -bg ""
+
+.g configure -plotpadx 0 -plotpady 0 -plotborderwidth 1 -plotrelief solid
 
 .g pen configure "activeLine" \
     -showvalues y
+.g configure -halo 50
 .g element bind all <Enter> {
+    eval %W legend deactivate [%W element names]
     %W legend activate [%W element get current]
 }
-.g configure -plotpady { 1i 0 } 
+.g configure -plotpady { 0 0 } 
+
 .g element bind all <Leave> {
     %W legend deactivate [%W element get current]
 }
 .g axis bind all <Enter> {
     set axis [%W axis get current]
-    %W axis configure $axis -background lightblue2
+    %W axis activate $axis
+    %W axis focus $axis
 }
 .g axis bind all <Leave> {
     set axis [%W axis get current]
-    %W axis configure $axis -background "" 
+    %W axis deactivate $axis
+    %W axis focus ""
 }
 .g configure -leftvariable left 
 trace variable left w "UpdateTable .g"
 proc UpdateTable { graph p1 p2 how } {
-    table configure . c0 -width [$graph extents leftmargin]
-    table configure . c2 -width [$graph extents rightmargin]
-    table configure . r1 -height [$graph extents topmargin]
-    table configure . r3 -height [$graph extents bottommargin]
+    blt::table configure . c0 -width [$graph extents leftmargin]
+    blt::table configure . c2 -width [$graph extents rightmargin]
+    blt::table configure . r1 -height [$graph extents topmargin]
+    blt::table configure . r3 -height [$graph extents bottommargin]
 }
 
-set image2 [image create photo -file images/blt98.gif]
-.g element configure line2 -areapattern @bitmaps/sharky.xbm \
+set image1 [image create picture -file bitmaps/sharky.xbm]
+set image2 [image create picture -file images/buckskin.gif]
+set bg1 [blt::bgpattern create solid -color blue -opacity 30]
+set bg2 [blt::bgpattern create solid -color green -opacity 40]
+set bg3 [blt::bgpattern create solid -color pink -opacity 40]
+.g element configure line1 -areabackground $bg1 -areaforeground blue 
+#.g element configure line2 -areabackground $bg2
+#.g element configure line3 -areabackground $bg3
+.g configure -title "Graph Title"
 
-#	-areaforeground blue -areabackground ""
-.g element configure line3 -areatile $image2
-.g configure -title [pwd]
+if { $tcl_platform(platform) == "windows" } {
+    if 0 {
+        set name [lindex [blt::printer names] 0]
+        set printer {Lexmark Optra E310}
+	blt::printer open $printer
+	blt::printer getattrs $printer attrs
+	puts $attrs(Orientation)
+	set attrs(Orientation) Landscape
+	set attrs(DocumentName) "This is my print job"
+	blt::printer setattrs $printer attrs
+	blt::printer getattrs $printer attrs
+	puts $attrs(Orientation)
+	after 5000 {
+	    $graph print2 $printer
+	    blt::printer close $printer
+	}
+    } else {
+	after 5000 {
+	    $graph print2 
+	}
+    }	
+    if 1 {
+	after 2000 {
+	    $graph snap -format emf CLIPBOARD
+	}
+    }
+}
+
+focus .g
+.g xaxis bind <Left>  { 
+    .g xaxis view scroll -1 units 
+} 
+
+.g xaxis bind <Right> { 
+    .g xaxis view scroll 1 units 
+}
+
+.g yaxis bind <Up>  { 
+    .g yaxis view scroll -1 units 
+} 
+
+.g yaxis bind <Down> { 
+    .g yaxis view scroll 1 units 
+}
+
+.g axis bind all <ButtonPress-1> { 
+    set b1(x) %x
+    set b1(y) %y
+}
+
+.g xaxis bind <B1-Motion> { 
+    set dist [expr %x - $b1(x)]
+    .g xaxis view scroll $dist pixels
+    set b1(x) %x
+}
+
+.g yaxis bind <B1-Motion> { 
+    set dist [expr %y - $b1(y)]
+    .g yaxis view scroll $dist pixels
+    set b1(y) %y
+}
+
+blt::LegendSelections .g
+.g legend configure -selectmode multiple

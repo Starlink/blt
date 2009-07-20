@@ -161,12 +161,11 @@ SHLIB_TCL_ONLY_LIBS =	$(COMMON_LIBS) $(EXTRA_LIBS)
 N_OBJS       =	bltTed.obj
 V3_OBJS       =	bltTri.obj bltGrMt.obj 
 
-TK_OBJS       =	tkButton.obj tkFrame.obj tkScrollbar.obj 
+TK_OBJS       =	tkButton.obj tkFrame.obj bltScrollbar.obj 
 
 GRAPH_OBJS =	bltGrAxis.obj \
 		bltGrBar.obj \
 		bltGrElem.obj \
-		bltGrGrid.obj \
 		bltGrHairs.obj \
 		bltGrLegd.obj \
 		bltGrLine.obj \
@@ -193,7 +192,6 @@ TCL_ONLY_OBJS =	bltAlloc.obj \
 		bltUtil.obj \
 		bltVecCmd.obj \
 		bltVecMath.obj \
-		bltVecObjCmd.obj \
 		bltVector.obj \
 		bltWatch.obj  \
 		bltWinPipe.obj \
@@ -213,10 +211,9 @@ OBJS =		$(GRAPH_OBJS) \
 		bltConfig.obj \
 		bltContainer.obj \
 		bltDragdrop.obj \
-		bltHierbox.obj \
 		bltHtext.obj \
 		bltImage.obj \
-		bltWinImage.obj \
+		bltOldConfig.obj \
 		bltPs.obj \
 		bltTable.obj \
 		bltTabnotebook.obj \
@@ -225,13 +222,13 @@ OBJS =		$(GRAPH_OBJS) \
 		bltTile.obj \
 		bltTreeView.obj \
 		bltTreeViewCmd.obj \
-		bltTreeViewEdit.obj \
 		bltTreeViewColumn.obj \
+		bltTreeViewEdit.obj \
 		bltTreeViewStyle.obj \
 		bltWinDraw.obj \
+		bltWinImage.obj \
 		bltWinPrnt.obj \
 		bltWindow.obj \
-		bltObjConfig.obj \
 		bltWinop.obj \
 		$(TK_OBJS) $(N_OBJS) 
 

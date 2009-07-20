@@ -1,31 +1,15 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
+
+set image [image create picture -file images/tan_paper.gif] 
+#set normalBg [blt::bgpattern create tile -image $image]
+set normalBg [blt::bgpattern create texture -high grey95 -low grey90]
+set activeBg [blt::bgpattern create texture -high red1 -low red2]
+#set normalBg grey80
+#set normalBg grey80
+#set activeBg grey70
 
 #
 # Script to test the "busy" command.
@@ -39,7 +23,7 @@ option add *Button.padY 	2
 option add *Scale.relief 	sunken
 #option add *Scale.orient	horizontal
 option add *Entry.relief 	sunken
-option add *Frame.borderWidth 	2
+option add *borderWidth 	1
 
 set visual [winfo screenvisual .] 
 if { $visual == "staticgray"  || $visual == "grayscale" } {
@@ -49,15 +33,12 @@ if { $visual == "staticgray"  || $visual == "grayscale" } {
     set bitmapBg white
     option add *f1.background 		white
 } else {
-    set activeBg red
-    set normalBg springgreen
+#    set activeBg red
     set bitmapFg blue
     set bitmapBg green
     option add *Button.background       khaki2
     option add *Button.activeBackground khaki1
     option add *Frame.background        khaki2
-    option add *f2.tile		textureBg
-#    option add *Button.tile		textureBg
 
     option add *releaseButton.background 		limegreen
     option add *releaseButton.activeBackground 	springgreen
@@ -90,9 +71,6 @@ proc KeepRaised { w } {
     bindtags $w keepRaised
 }
 
-set file ./images/chalk.gif
-image create photo textureBg -file $file
-
 #
 # This never gets used; it's reset by the Animate proc. It's 
 # here to just demonstrate how to set busy window options via
@@ -111,17 +89,18 @@ set numWin 0
 # the busy window.  The bottom frame will contain buttons to 
 # control the testing.
 #
-frame .f1
-frame .f2
+
+blt::tk::frame .f1 -bg $normalBg
+blt::tk::frame .f2 -bg $normalBg
 
 #
 # Create some widgets to test the busy window and its cursor
 #
 label .buttonLabel
-button .testButton -command { 
+    blt::tk::button .testButton -command { 
     puts stdout "Not busy." 
 }
-button .quitButton -command { exit }
+blt::tk::button .quitButton -command { exit }
 entry .entry 
 scale .scale
 text .text -width 20 -height 4
@@ -129,28 +108,28 @@ text .text -width 20 -height 4
 #
 # The following buttons sit in the lower frame to control the demo
 #
-button .newButton -command {
+blt::tk::button .newButton -command {
     global numWin
     incr numWin
     set name button#${numWin}
-    button .f1.$name -text "$name" \
+    blt::tk::button .f1.$name -text "$name" \
 	-command [list .f1 configure -bg blue]
-    table .f1 \
+    blt::table .f1 \
 	.f1.$name $numWin+3,0 -padx 10 -pady 10
 }
 
-button .holdButton -command {
-    if { [busy isbusy .f1] == "" } {
+blt::tk::button .holdButton -command {
+    if { [blt::busy isbusy .f1] == "" } {
         global activeBg
 	.f1 configure -bg $activeBg
     }
-    busy .f1 
+    blt::busy .f1 
     focus -force . 
 }
 
-button .releaseButton -command {
-    if { [busy isbusy .f1] == ".f1" } {
-        busy release .f1
+blt::tk::button .releaseButton -command {
+    if { [blt::busy isbusy .f1] == ".f1" } {
+        blt::busy release .f1
     }
     global normalBg
     .f1 configure -bg $normalBg
@@ -159,36 +138,36 @@ button .releaseButton -command {
 #
 # Notice that the widgets packed in .f1 and .f2 are not their children
 #
-table .f1 \
+blt::table .f1 \
     0,0		.testButton \
     1,0		.scale		-fill y \
     0,1		.entry		-fill x \
     1,1		.text		-fill both \
     2,0		.quitButton	-cspan 2
 
-table .f2 \
+blt::table .f2 \
     0,0		.holdButton \
     0,1		.releaseButton  \
     0,2		.newButton
 
-table configure .f1 \
+blt::table configure .f1 \
     .testButton .scale .entry .quitButton -padx 10 -pady 10
-table configure .f2 \
+blt::table configure .f2 \
     .newButton .holdButton .releaseButton -padx 10 -pady 4 -reqwidth 1.i
 
-table configure .f1 r0 r2 -resize none
-table configure .f2 r* -resize none
+blt::table configure .f1 r0 r2 -resize none
+blt::table configure .f2 r* -resize none
 
 #
 # Finally, realize and map the top level window
 #
-table . \
+blt::table . \
     0,0		.f1		-fill both \
     1,0		.f2		-fill both
 
-table configure . r1 -resize none
+blt::table configure . r1 -resize none
 
-table configure .f1 c1 -weight 2.0
+blt::table configure .f1 c1 -weight 2.0
 
 # Initialize a list of bitmap file names which make up the animated 
 # fish cursor. The bitmap mask files have a "m" appended to them.
@@ -208,7 +187,7 @@ proc StartAnimation { widget count } {
     global bitmapList
     set prefix bitmaps/fish/[lindex $bitmapList $count]
     set cursor [list @${prefix}.xbm ${prefix}m.xbm blue green ]
-    busy configure $widget -cursor $cursor
+    blt::busy configure $widget -cursor $cursor
 
     incr count
     set limit [llength $bitmapList]
@@ -252,3 +231,9 @@ wm min . 0 0
 raise .
 KeepRaised .
 
+bind .f1 <Enter> { puts stderr "Entering %W" }
+bind .f1 <Leave> { puts stderr "Leaving %W" }
+bind .f1 <B1-Leave> { puts stderr "B1 Leaving %W" }
+bind .f1 <B1-Enter> { puts stderr "B1 Entering %W" }
+
+bind .f1 <Motion> { puts stderr "Motion %W" }

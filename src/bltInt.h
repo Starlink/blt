@@ -2,131 +2,149 @@
 /*
  * bltInt.h --
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_INT_H
 #define _BLT_INT_H
 
+#undef SIZEOF_LONG
+#include "config.h"
+#include "blt.h"
+
+#undef  BLT_STORAGE_CLASS
+#define BLT_STORAGE_CLASS	DLLEXPORT
+
+#define _VERSION(a,b,c)	    (((a) << 16) + ((b) << 8) + (c))
+
+#define _TCL_VERSION _VERSION(TCL_MAJOR_VERSION, TCL_MINOR_VERSION, TCL_RELEASE_SERIAL)
+#define _TK_VERSION _VERSION(TK_MAJOR_VERSION, TK_MINOR_VERSION, TK_RELEASE_SERIAL)
+
+#ifndef __WIN32__
+#   if defined(_WIN32) || defined(WIN32) || defined(__MINGW32__) || defined(__BORLANDC__)
+#	define __WIN32__
+#	ifndef WIN32
+#	    define WIN32
+#	endif
+#   endif
+#endif
+
+#ifdef _MSC_VER
+#  define _CRT_SECURE_NO_DEPRECATE
+#  define _CRT_NONSTDC_NO_DEPRECATE
+#endif
+
 #ifdef WIN32
-#define STRICT
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#undef STRICT
-#undef WIN32_LEAN_AND_MEAN
-#include <windowsx.h>
+#  define STRICT
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#  undef STRICT
+#  undef WIN32_LEAN_AND_MEAN
+#  include <windowsx.h>
 #endif /* WIN32 */
 
-#define USE_NON_CONST
 #include <tcl.h>
+
+#ifdef USE_TCL_STUBS
+#  include "tclIntDecls.h"
+#  ifdef WIN32
+#    include "tclIntPlatDecls.h"
+#  endif
+#endif	/* USE_TCL_STUBS */
+
 #define USE_COMPOSITELESS_PHOTO_PUT_BLOCK 
 #include <tk.h>
 
-#define _VERSION(a,b,c)	    (((a) << 16) + ((b) << 8) + (c))
-#define TCL_VERSION_NUMBER _VERSION(TCL_MAJOR_VERSION, TCL_MINOR_VERSION, TCL_RELEASE_SERIAL)
-#define TK_VERSION_NUMBER _VERSION(TK_MAJOR_VERSION, TK_MINOR_VERSION, TK_RELEASE_SERIAL)
-
-#include "bltTkInt.h"
+#ifdef USE_TK_STUBS
+#  include "tkIntDecls.h"
+#  ifdef WIN32
+#    include "tkPlatDecls.h"
+#    include "tkIntXlibDecls.h"
+#  endif
+#endif	/* USE_TK_STUBS */
 
 #include <stdio.h>
-#include <assert.h>
-
-#if defined(WIN32) && !defined(__GNUC__)
-#include "bltWinConfig.h"
-#else 
-#include "bltConfig.h"
-#endif
 
 #ifdef WIN32 
-#ifndef EXPORT
-#if defined(_MSC_VER) || defined(__BORLANDC__)
-#define EXPORT __declspec(dllexport)
-#else
-#define EXPORT
-#endif /* _MSC_VER || __BORLANDC__ */
-#endif /* EXPORT */
+#  ifndef __GNUC__
+#    ifdef O_NONBLOCK
+#      define O_NONBLOCK	1
+#    endif
+#  endif /* __GNUC__ */
 
-/* Misc. definitions */
-#define	NO_CUTBUFFER	1
-#define NO_TILESCROLLBAR	1
-#define NO_DND		1
-
-#ifndef __GNUC__
-#ifdef O_NONBLOCK
-#define O_NONBLOCK	1
-#endif
-#endif /* __GNUC__ */
 #endif /* WIN32 */
 
-#include "blt.h"
-#include "bltNsUtil.h"
-
 #ifdef HAVE_STDLIB_H
-#include <stdlib.h>
+#  include <stdlib.h>
 #endif /* HAVE_STDLIB_H */
 
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif /* HAVE_STRING_H */
+#ifdef HAVE_STDDEF_H
+#  include <stddef.h>
+#endif /* HAVE_STDDEF_H */
 
 #ifdef HAVE_ERRNO_H
-#include <errno.h>
+#  include <errno.h>
 #endif /* HAVE_ERRNO_H */
 
 #ifdef HAVE_CTYPE_H
-#include <ctype.h>
+#  include <ctype.h>
 #endif /* HAVE_CTYPE_H */
 
 #ifdef HAVE_MEMORY_H
-#include <memory.h>
+#  include <memory.h>
 #endif /* HAVE_MEMORY_H */
 
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#  include <unistd.h>
 #endif /* HAVE_UNISTD_H */
 
 #ifdef HAVE_LIMITS_H
-#include <limits.h>
+#  include <limits.h>
 #endif
 
 #include "bltMath.h"
+#include "bltString.h"
 
 #undef INLINE
+
 #ifdef __GNUC__
-#define INLINE inline
+#  define INLINE __inline__
 #else
-#define INLINE
+#  define INLINE
 #endif
-#undef EXPORT
-#define EXPORT
+
+#if defined(__GNUC__) && defined(HAVE_X86) && defined(__OPTIMIZE__)
+#  define HAVE_X86_ASM
+#endif
 
 #undef VARARGS
 #ifdef __cplusplus
-#define ANYARGS (...)
-#define VARARGS(first)  (first, ...)
-#define VARARGS2(first, second)  (first, second, ...)
+#  define ANYARGS (...)
+#  define VARARGS(first)  (first, ...)
+#  define VARARGS2(first, second)  (first, second, ...)
 #else
-#define ANYARGS ()
-#define VARARGS(first) ()
-#define VARARGS2(first, second) ()
+#  define ANYARGS ()
+#  define VARARGS(first) ()
+#  define VARARGS2(first, second) ()
 #endif /* __cplusplus */
 
 #undef MIN
@@ -151,154 +169,42 @@
  */
 #define UCHAR(c) ((unsigned char) (c))
 
-#undef panic
-#define panic(mesg)	Blt_Panic("%s:%d %s", __FILE__, __LINE__, (mesg))
+#define BLT_ANCHOR_TOP		(TK_ANCHOR_CENTER+1)
+#define BLT_ANCHOR_BOTTOM	(TK_ANCHOR_CENTER+2)
+#define BLT_ANCHOR_LEFT		(TK_ANCHOR_CENTER+3)
+#define BLT_ANCHOR_RIGHT	(TK_ANCHOR_CENTER+4)
 
 /*
- * Since the Tcl/Tk distribution doesn't perform any asserts, dynamic
- * loading can fail to find the __assert function.  As a workaround,
- * we'll include our own.
- */
-#undef	assert
-#ifdef	NDEBUG
-#define	assert(EX) ((void)0)
-#else
-extern void Blt_Assert _ANSI_ARGS_((char *expr, char *file, int line));
-#ifdef __STDC__
-#define	assert(EX) (void)((EX) || (Blt_Assert(#EX, __FILE__, __LINE__), 0))
-#else
-#define	assert(EX) (void)((EX) || (Blt_Assert("EX", __FILE__, __LINE__), 0))
-#endif /* __STDC__ */
-
-#endif /* NDEBUG */
-
-#if (TCL_MAJOR_VERSION >= 8)
-extern Tcl_Obj *bltEmptyStringObjPtr;
-#endif /* TCL_MAJOR_VERSION >= 8 */
-
-/*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Blt_CmdSpec --
+ * Blt_InitCmdSpec --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    char *name;			/* Name of command */
-    Tcl_CmdProc *cmdProc;
-    Tcl_CmdDeleteProc *cmdDeleteProc;
-    ClientData clientData;
-} Blt_CmdSpec;
-
-#if (TCL_MAJOR_VERSION >= 8)
-/*
- * ----------------------------------------------------------------------
- *
- * Blt_CmdSpec --
- *
- * ----------------------------------------------------------------------
- */
-typedef struct {
-    char *name;			/* Name of command */
+    const char *name;			/* Name of command */
     Tcl_ObjCmdProc *cmdProc;
     Tcl_CmdDeleteProc *cmdDeleteProc;
     ClientData clientData;
-} Blt_ObjCmdSpec;
+} Blt_InitCmdSpec;
 
-#endif /* TCL_MAJOR_VERSION >= 8 */
+BLT_EXTERN int Blt_DictionaryCompare (const char *s1, const char *s2);
 
-/*
- * ----------------------------------------------------------------------
- *
- * Blt_Op --
- *
- * 	Generic function prototype of CmdOptions.
- *
- * ----------------------------------------------------------------------
- */
-typedef int (*Blt_Op) _ANSI_ARGS_(ANYARGS);
-
-/*
- * ----------------------------------------------------------------------
- *
- * Blt_OpSpec --
- *
- * 	Structure to specify a set of operations for a Tcl command.
- *      This is passed to the Blt_GetOp procedure to look
- *      for a function pointer associated with the operation name.
- *
- * ----------------------------------------------------------------------
- */
-typedef struct {
-    char *name;			/* Name of operation */
-    int minChars;		/* Minimum # characters to disambiguate */
-    Blt_Op proc;
-    int minArgs;		/* Minimum # args required */
-    int maxArgs;		/* Maximum # args required */
-    char *usage;		/* Usage message */
-
-} Blt_OpSpec;
-
-typedef enum {
-    BLT_OP_ARG0,		/* Op is the first argument. */
-    BLT_OP_ARG1,		/* Op is the second argument. */
-    BLT_OP_ARG2,		/* Op is the third argument. */
-    BLT_OP_ARG3,		/* Op is the fourth argument. */
-    BLT_OP_ARG4			/* Op is the fifth argument. */
-
-} Blt_OpIndex;
-
-#define BLT_OP_LINEAR_SEARCH	1
-#define BLT_OP_BINARY_SEARCH	0
-
-extern Blt_Op Blt_GetOp _ANSI_ARGS_((Tcl_Interp *interp, int nSpecs, 
-	Blt_OpSpec *specArr, int operPos, int argc, char **argv, int flags));
-
-#if (TCL_VERSION_NUMBER >= _VERSION(8,0,0)) 
-extern Blt_Op Blt_GetOpFromObj _ANSI_ARGS_((Tcl_Interp *interp,
-	int nSpecs, Blt_OpSpec *specArr, int operPos, int objc, 
-	Tcl_Obj *CONST *objv, int flags));
-#endif
-
-/*
- * ----------------------------------------------------------------------
- *
- *	Assume we need to declare free if there's no stdlib.h or malloc.h
- *
- * ----------------------------------------------------------------------
- */
-#if !defined(HAVE_STDLIB_H) && !defined(HAVE_MALLOC_H)
-extern void free _ANSI_ARGS_((void *));
-#endif
-
-#define free(x)		abc123(x)
-
-extern int Blt_DictionaryCompare _ANSI_ARGS_((char *s1, char *s2));
-
-EXTERN void Blt_Panic _ANSI_ARGS_(TCL_VARARGS(char *, args));
-
-
-extern void Blt_Draw3DRectangle _ANSI_ARGS_((Tk_Window tkwin, Drawable drawable,
+BLT_EXTERN void Blt_Draw3DRectangle(Tk_Window tkwin, Drawable drawable,
 	Tk_3DBorder border, int x, int y, int width, int height, 
-	int borderWidth, int relief));
-extern void Blt_Fill3DRectangle _ANSI_ARGS_((Tk_Window tkwin, Drawable drawable,
+	int borderWidth, int relief);
+BLT_EXTERN void Blt_Fill3DRectangle(Tk_Window tkwin, Drawable drawable,
 	Tk_3DBorder border, int x, int y, int width, int height, 
-	int borderWidth, int relief));
-
-#ifdef notdef
-#define Blt_Fill3DRectangle	Tk_Fill3DRectangle
-#define Blt_Draw3DRectangle	Tk_Draw3DRectangle
-#endif
+	int borderWidth, int relief);
 
 /* ---------------------------------------------------------------- */
 
-
-#define PIXELS_NONNEGATIVE	0
-#define PIXELS_POSITIVE		1
+#define PIXELS_NNEG		0
+#define PIXELS_POS		1
 #define PIXELS_ANY		2
 
-#define COUNT_NONNEGATIVE	0
-#define COUNT_POSITIVE		1
+#define COUNT_NNEG		0
+#define COUNT_POS		1
 #define COUNT_ANY		2
 
 #define BLT_SCROLL_MODE_CANVAS	(1<<0)
@@ -314,6 +220,8 @@ extern void Blt_Fill3DRectangle _ANSI_ARGS_((Tk_Window tkwin, Drawable drawable,
 #define RGB_GREEN		"#00ff00"
 #define RGB_GREY		"#b0b0b0"
 #define RGB_GREY15		"#262626"
+#define RGB_GREY35		"#595959"
+#define RGB_GREY40		"#666666"
 #define RGB_GREY50		"#7f7f7f"
 #define RGB_GREY64		"#a3a3a3"
 #define RGB_GREY70		"#b3b3b3"
@@ -322,8 +230,10 @@ extern void Blt_Fill3DRectangle _ANSI_ARGS_((Tk_Window tkwin, Drawable drawable,
 #define RGB_GREY82		"#d1d1d1"
 #define RGB_GREY85		"#d9d9d9"
 #define RGB_GREY90		"#e5e5e5"
+#define RGB_GREY93		"#ececec"
 #define RGB_GREY95		"#f2f2f2"
 #define RGB_LIGHTBLUE0		"#e4f7ff"
+#define RGB_LIGHTBLUE00		"#D9F5FF"
 #define RGB_LIGHTBLUE1		"#bfefff"
 #define RGB_LIGHTBLUE2		"#b2dfee"
 #define RGB_LIGHTSKYBLUE1	"#b0e2ff"
@@ -334,27 +244,29 @@ extern void Blt_Fill3DRectangle _ANSI_ARGS_((Tk_Window tkwin, Drawable drawable,
 #define RGB_RED			"#ff0000"
 #define RGB_WHITE		"#ffffff"
 #define RGB_YELLOW		"#ffff00"
+#define RGB_SKYBLUE4		"#4a708b"
 
 #ifdef OLD_TK_COLORS
 #define STD_NORMAL_BACKGROUND	RGB_BISQUE1
 #define STD_ACTIVE_BACKGROUND	RGB_BISQUE2
 #define STD_SELECT_BACKGROUND	RGB_LIGHTBLUE1
-#define STD_DISABLE_FOREGROUND	RGB_GREY64
 #else
 #define STD_NORMAL_BACKGROUND	RGB_GREY85
-#define STD_ACTIVE_BACKGROUND	RGB_GREY64
-#define STD_SELECT_BACKGROUND	RGB_LIGHTBLUE1
-#define STD_DISABLE_FOREGROUND	RGB_GREY64
+#define STD_ACTIVE_BACKGROUND	RGB_GREY90
+#define STD_SELECT_BACKGROUND	RGB_LIGHTBLUE00
 #endif /* OLD_TK_COLORS */
 
 #define STD_ACTIVE_BG_MONO	RGB_BLACK
 #define STD_ACTIVE_FOREGROUND	RGB_BLACK
 #define STD_ACTIVE_FG_MONO	RGB_WHITE
 #define STD_BORDERWIDTH 	"2"
-#define STD_FONT		"*-Helvetica-Medium-R-Normal-*-12-120-*"
-#define STD_FONT_HUGE		"*-Helvetica-Medium-R-Normal-*-18-180-*"
-#define STD_FONT_LARGE		"*-Helvetica-Medium-R-Normal-*-14-140-*"
-#define STD_FONT_SMALL		"*-Helvetica-Medium-R-Normal-*-10-100-*"
+#define STD_FONT_HUGE		"{Sans Serif} 18"
+#define STD_FONT_LARGE		"{Sans Serif} 14"
+#define STD_FONT_MEDIUM		"{Sans Serif} 12"
+#define STD_FONT_NORMAL		"{Sans Serif} 11"
+#define STD_FONT_SMALL		"{Sans Serif} 9"
+#define	STD_FONT_NUMBERS	"Math 9"
+#define STD_FONT		STD_FONT_NORMAL
 #define STD_INDICATOR_COLOR	RGB_MAROON
 #define STD_NORMAL_BG_MONO	RGB_WHITE
 #define STD_NORMAL_FOREGROUND	RGB_BLACK
@@ -363,218 +275,133 @@ extern void Blt_Fill3DRectangle _ANSI_ARGS_((Tk_Window tkwin, Drawable drawable,
 #define STD_SELECT_BORDERWIDTH	"2"
 #define STD_SELECT_FOREGROUND	RGB_BLACK
 #define STD_SELECT_FG_MONO	RGB_WHITE
-#define STD_SHADOW_COLOR	RGB_GREY64
 #define STD_SHADOW_MONO		RGB_BLACK
+#define STD_SELECT_FONT_HUGE	"{Sans Serif} 18 Bold"
+#define STD_SELECT_FONT_LARGE	"{Sans Serif} 14 Bold"
+#define STD_SELECT_FONT_MEDIUM	"{Sans Serif} 12 Bold"
+#define STD_SELECT_FONT_NORMAL	"{Sans Serif} 11 Bold"
+#define STD_SELECT_FONT_SMALL	"{Sans Serif} 9 Bold"
+#define STD_SELECT_FONT		STD_SELECT_FONT_NORMAL
+#define STD_DISABLED_FOREGROUND	RGB_GREY70
+#define STD_DISABLED_BACKGROUND	RGB_GREY90
 
 #define LineWidth(w)	(((w) > 1) ? (w) : 0)
 
+typedef char *Blt_Uid;
+
+BLT_EXTERN Blt_Uid Blt_GetUid(const char *string);
+BLT_EXTERN void Blt_FreeUid(Blt_Uid uid);
+BLT_EXTERN Blt_Uid Blt_FindUid(const char *string);
+
 #ifdef TCL_UTF_MAX
-#define HAVE_UTF	1
-extern FILE *Blt_OpenUtfFile _ANSI_ARGS_((char *fileName, char *mode));
-#define fopen(f,m)	Blt_OpenUtfFile((f),(m));
+#  define HAVE_UTF	1
 #else
-#define HAVE_UTF	0
+#  define HAVE_UTF	0
 #endif /* TCL_UTF_MAX */
 
+#include <bltAlloc.h>
+
 typedef char *DestroyData;
-
 
 #ifndef TK_RELIEF_SOLID
-#define TK_RELIEF_SOLID		TK_RELIEF_FLAT
+#  define TK_RELIEF_SOLID		TK_RELIEF_FLAT
 #endif
 
-/*
- * Tcl/Tk Backward compatibility section.
- */
-#if (TCL_MAJOR_VERSION > 7)
 
-#define NO_FLAGS			0
-#define Blt_FindPhoto(interp, name)	Tk_FindPhoto(interp, name)
-
-#else
-
-#define Tcl_GetStringResult(interp)	((interp)->result)
-#define Blt_FindPhoto(interp, name)	Tk_FindPhoto(name)
-
-#define Tcl_DeleteCommandFromToken(interp, token) \
-	Tcl_DeleteCommand(interp, Tcl_GetCommandName(interp, token))
+typedef int (QSortCompareProc) (const void *, const void *);
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * The definitions below provide foreward compatibility for
- * functions and types related to event handling that used to
- * be in Tk but have moved to Tcl.
- *
- *--------------------------------------------------------------
- */
-
-#define Tcl_IdleProc		Tk_IdleProc
-#define Tcl_FileProc		Tk_FileProc
-#define Tcl_TimerProc		Tk_TimerProc
-#define Tcl_TimerToken		Tk_TimerToken
-
-#define Tcl_BackgroundError	Tk_BackgroundError
-#define Tcl_CancelIdleCall	Tk_CancelIdleCall
-
-#define Tcl_CreateTimerHandler	Tk_CreateTimerHandler
-#define Tcl_DeleteTimerHandler	Tk_DeleteTimerHandler
-#define Tcl_DoOneEvent		Tk_DoOneEvent
-#define Tcl_DoWhenIdle		Tk_DoWhenIdle
-#define Tcl_Sleep		Tk_Sleep
-
-/* Additional stuff that has moved to Tcl: */
-
-#define Tcl_AfterCmd		Tk_AfterCmd
-#define Tcl_EventuallyFree	Tk_EventuallyFree
-#define Tcl_FreeProc		Tk_FreeProc
-#define Tcl_Preserve		Tk_Preserve
-#define Tcl_Release		Tk_Release
-
-#endif /* TCL_MAJOR_VERSION > 7 */
-
-typedef int (QSortCompareProc) _ANSI_ARGS_((const void *, const void *));
-
-
-/*
- * ----------------------------------------------------------------------
- *
- * Blt_Pad --
- *
- * 	Specifies vertical and horizontal padding.
- *
- *	Padding can be specified on a per side basis.  The fields
- *	side1 and side2 refer to the opposite sides, either
- *	horizontally or vertically.
- *
- *		side1	side2
- *              -----   -----
- *          x | left    right
- *	    y | top     bottom
- *
- * ----------------------------------------------------------------------
- */
-typedef struct {
-    short int side1, side2;
-} Blt_Pad;
-
-#define padLeft  	padX.side1
-#define padRight  	padX.side2
-#define padTop		padY.side1
-#define padBottom	padY.side2
-#define PADDING(x)	((x).side1 + (x).side2)
-
-/*
- * ----------------------------------------------------------------------
- *
- * The following enumerated values are used as bit flags.
- *	FILL_NONE		Neither coordinate plane is specified 
- *	FILL_X			Horizontal plane.
- *	FILL_Y			Vertical plane.
- *	FILL_BOTH		Both vertical and horizontal planes.
- *
- * ----------------------------------------------------------------------
- */
-#define FILL_NONE	0
-#define FILL_X		1
-#define FILL_Y		2
-#define FILL_BOTH	3
-
-/*
- * ----------------------------------------------------------------------
- *
- * Blt_Dashes --
- *
- * 	List of dash values (maximum 11 based upon PostScript limit).
- *
- * ----------------------------------------------------------------------
- */
-typedef struct {
-    unsigned char values[12];
-    int offset;
-} Blt_Dashes;
-
-#define LineIsDashed(d) ((d).values[0] != 0)
-
-extern void Blt_SetDashes _ANSI_ARGS_((Display *display, GC gc,
-	Blt_Dashes *dashesPtr));
-extern Blt_Dashes *Blt_GetDashes _ANSI_ARGS_((GC gc));
-
-/*
- * -------------------------------------------------------------------
- *
- * Point2D --
+ * Point2 --
  *
  *	2-D coordinate.
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
     double x, y;
-} Point2D;
+} Point2d;
+
+typedef struct {
+    float x, y;
+} Point2f;
+
+typedef struct {
+    int x, y;
+} Point2i;
+
+typedef struct {
+    size_t nValues; 
+    void *values;
+} Array;
 
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Point3D --
  *
  *	3-D coordinate.
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
     double x, y, z;
 } Point3D;
 
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Segment2D --
+ * Segment2 --
  *
  *	2-D line segment.
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    Point2D p, q;		/* The two end points of the segment. */
-} Segment2D;
+    Point2f p, q;		/* The two end points of the segment. */
+} Segment2f;
+
+typedef struct {
+    Point2d p, q;		/* The two end points of the segment. */
+} Segment2d;
 
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Dim2D --
  *
  *	2-D dimension.
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
     short int width, height;
 } Dim2D;
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Region2D --
+ * Region2d --
  *
  *      2-D region.  Used to copy parts of images.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    int left, right, top, bottom;
-} Region2D;
-
-#define RegionWidth(r)		((r)->right - (r)->left + 1)
-#define RegionHeight(r)		((r)->bottom - (r)->top + 1)
+    float left, right, top, bottom;
+} Region2f;
 
 typedef struct {
     double left, right, top, bottom;
-} Extents2D;
+} Region2d;
 
 typedef struct {
     double left, right, top, bottom, front, back;
-} Extents3D;
+} Region3D;
+
+#define RegionWidth(r)		((r)->right - (r)->left + 1)
+#define RegionHeight(r)		((r)->bottom - (r)->top + 1)
 
 #define PointInRegion(e,x,y) \
 	(((x) <= (e)->right) && ((x) >= (e)->left) && \
@@ -584,14 +411,13 @@ typedef struct {
 	(((x0) <= (int)((r)->x + (r)->width - 1)) && ((x0) >= (int)(r)->x) && \
 	 ((y0) <= (int)((r)->y + (r)->height - 1)) && ((y0) >= (int)(r)->y))
 
-
-/* -------------------------------------------------------------------
+/*-------------------------------------------------------------------------------
  *
  * ColorPair --
  *
  *	Holds a pair of foreground, background colors.
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
     XColor *fgColor, *bgColor;
@@ -601,14 +427,10 @@ typedef struct {
 #define COLOR_DEFAULT		(XColor *)1
 #define COLOR_ALLOW_DEFAULTS	1
 
-extern int Blt_GetColorPair _ANSI_ARGS_((Tcl_Interp *interp, Tk_Window tkwin,
-	char *fgColor, char *bgColor, ColorPair *pairPtr, int colorFlag));
-extern void Blt_FreeColorPair _ANSI_ARGS_((ColorPair *pairPtr));
+BLT_EXTERN int Blt_GetColorPair (Tcl_Interp *interp, Tk_Window tkwin, 
+	char *fgColor, char *bgColor, ColorPair *pairPtr, int colorFlag);
 
-#define STATE_NORMAL	0
-#define STATE_ACTIVE	(1<<0)
-#define STATE_DISABLED	(1<<1)
-#define STATE_EMPHASIS	(1<<2)
+BLT_EXTERN void Blt_FreeColorPair (ColorPair *pairPtr);
 
 
 #define ARROW_LEFT		(0)
@@ -619,341 +441,447 @@ extern void Blt_FreeColorPair _ANSI_ARGS_((ColorPair *pairPtr));
 #define STD_ARROW_HEIGHT	3
 #define STD_ARROW_WIDTH		((2 * (ARROW_OFFSET - 1)) + 1)
 
-#include "bltText.h"
-
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * 	X11/Xosdefs.h requires XNOSTDHDRS be set for some systems.
- *	This is a guess.  If I can't find STDC headers or unistd.h,
- *	assume that this is non-POSIX and non-STDC environment.
- *	(needed for Encore Umax 3.4 ?)
+ * 	X11/Xosdefs.h requires XNOSTDHDRS be set for some systems.  This is a
+ * 	guess.  If I can't find STDC headers or unistd.h, assume that this is
+ * 	non-POSIX and non-STDC environment.  (needed for Encore Umax 3.4 ?)
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 #if !defined(STDC_HEADERS) && !defined(HAVE_UNISTD_H)
-#define XNOSTDHDRS 	1
+#  define XNOSTDHDRS 	1
 #endif
 
-extern char *Blt_Itoa _ANSI_ARGS_((int value));
-extern char *Blt_Utoa _ANSI_ARGS_((unsigned int value));
-extern char *Blt_Dtoa _ANSI_ARGS_((Tcl_Interp *interp, double value));
-extern Tcl_Command Blt_InitCmd _ANSI_ARGS_((Tcl_Interp *interp,
-	char *namespace, Blt_CmdSpec *specPtr));
+BLT_EXTERN FILE *Blt_OpenFile(Tcl_Interp *interp, const char *fileName, 
+	const char *mode);
 
-#if (TCL_VERSION_NUMBER >= _VERSION(8,0,0)) 
-extern Tcl_Command Blt_InitObjCmd _ANSI_ARGS_((Tcl_Interp *interp,
-	char *namespace, Blt_ObjCmdSpec *specPtr));
-#if (TCL_VERSION_NUMBER < _VERSION(8,1,0))
-extern char *Tcl_GetString _ANSI_ARGS_((Tcl_Obj *objPtr));
-extern int Tcl_EvalObjv _ANSI_ARGS_((Tcl_Interp *interp, int objc, 
-	Tcl_Obj **objv, int flags));
-extern int Tcl_WriteObj _ANSI_ARGS_((Tcl_Channel channel, Tcl_Obj *objPtr));
-extern char *Tcl_SetVar2Ex _ANSI_ARGS_((Tcl_Interp *interp, char *part1, 
-	char *part2, Tcl_Obj *objPtr, int flags));
-extern Tcl_Obj *Tcl_GetVar2Ex _ANSI_ARGS_((Tcl_Interp *interp, char *part1, 
-	char *part2, int flags));
-#endif /* TCL_VERSION_NUMBER < 8.2.0 */
-#endif /* TCL_VERSION_NUMBER >= 8.0.0 */
+BLT_EXTERN int Blt_ExprDoubleFromObj (Tcl_Interp *interp, Tcl_Obj *objPtr, 
+	double *valuePtr);
 
+BLT_EXTERN int Blt_ExprIntFromObj (Tcl_Interp *interp, Tcl_Obj *objPtr, 
+	int *valuePtr);
 
-extern int Blt_InitCmds _ANSI_ARGS_((Tcl_Interp *interp, char *namespace,
-	Blt_CmdSpec *specPtr, int nCmds));
+BLT_EXTERN const char *Blt_Itoa(int value);
 
-extern int Blt_NaturalSpline _ANSI_ARGS_((Point2D *origPts, int nOrigPts, 
-	Point2D *intpPts, int nIntpPts));
+BLT_EXTERN const char *Blt_Ltoa(long value);
 
-extern int Blt_QuadraticSpline _ANSI_ARGS_((Point2D *origPts, int nOrigPts,
-	Point2D *intpPts, int nIntpPts));
+BLT_EXTERN const char *Blt_Utoa(unsigned int value);
 
-extern int Blt_SimplifyLine _ANSI_ARGS_((Point2D *origPts, int low, int high,
-	 double tolerance, int indices[]));
+BLT_EXTERN const char *Blt_Dtoa(Tcl_Interp *interp, double value);
 
-extern int Blt_NaturalParametricSpline _ANSI_ARGS_((Point2D *origPts, 
-	int nOrigPts, Extents2D *extsPtr, int isClosed, Point2D *intpPts, 
-	int nIntpPts));
+BLT_EXTERN unsigned char *Blt_Base64_Decode(Tcl_Interp *interp, 
+	const char *string, size_t *lengthPtr);
 
-extern int Blt_CatromParametricSpline _ANSI_ARGS_((Point2D *origPts, 
-	int nOrigPts, Point2D *intpPts, int nIntpPts));
+BLT_EXTERN char *Blt_Base64_Encode(Tcl_Interp *interp, unsigned char *buffer,
+	size_t bufsize);
 
-extern int Blt_StringToFlag _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, Tk_Window tkwin, char *string, char *widgRec,
-	int flags));
-extern char *Blt_FlagToString _ANSI_ARGS_((ClientData clientData,
-	Tk_Window tkwin, char *string, int offset, Tcl_FreeProc **freeProc));
+BLT_EXTERN int Blt_IsBase64(const char *buf, size_t length);
 
-extern void Blt_InitHexTable _ANSI_ARGS_((char *table));
+BLT_EXTERN int Blt_InitCmd (Tcl_Interp *interp, const char *namespace, 
+	Blt_InitCmdSpec *specPtr);
 
-extern GC Blt_GetPrivateGC _ANSI_ARGS_((Tk_Window tkwin, unsigned long gcMask,
-	XGCValues *valuePtr));
+BLT_EXTERN int Blt_InitCmds (Tcl_Interp *interp, const char *namespace, 
+	Blt_InitCmdSpec *specPtr, int nCmds);
 
-extern GC Blt_GetPrivateGCFromDrawable _ANSI_ARGS_((Display *display,
-	Drawable drawable, unsigned long gcMask, XGCValues *valuePtr));
-
-extern void Blt_FreePrivateGC _ANSI_ARGS_((Display *display, GC gc));
-
-extern Tk_Window Blt_FindChild _ANSI_ARGS_((Tk_Window parent, char *name));
-
-extern Tk_Window Blt_FirstChild _ANSI_ARGS_((Tk_Window parent));
-
-extern Tk_Window Blt_NextChild _ANSI_ARGS_((Tk_Window tkwin));
-
-extern void Blt_RelinkWindow _ANSI_ARGS_((Tk_Window tkwin, Tk_Window newParent,
-	int x, int y));
-
-extern Tk_Window Blt_Toplevel _ANSI_ARGS_((Tk_Window tkwin));
-
-extern int Blt_GetPixels _ANSI_ARGS_((Tcl_Interp *interp, Tk_Window tkwin,
-	char *string, int check, int *valuePtr));
-extern int Blt_GetPosition _ANSI_ARGS_((Tcl_Interp *interp, char *string,
-	int *indexPtr));
-extern int Blt_GetCount _ANSI_ARGS_((Tcl_Interp *interp, char *string,
-	int check, int *valuePtr));
-
-extern char *Blt_NameOfFill _ANSI_ARGS_((int fill));
-
-extern int Blt_GetXY _ANSI_ARGS_((Tcl_Interp *interp, Tk_Window tkwin,
-	char *string, int *x, int *y));
-
-extern Point2D Blt_GetProjection _ANSI_ARGS_((int x, int y, Point2D *p, 
-	Point2D *q));
-
-extern void Blt_DrawArrow _ANSI_ARGS_((Display *display, Drawable drawable,
-	GC gc, int x, int y, int arrowHeight, int orientation));
-
-extern Tk_OptionParseProc Blt_StringToEnum;
-extern Tk_OptionPrintProc Blt_EnumToString;
-
-extern int Blt_ConfigModified _ANSI_ARGS_(TCL_VARARGS(Tk_ConfigSpec *, specs));
-
-extern void Blt_DStringAppendElements _ANSI_ARGS_(TCL_VARARGS(Tcl_DString *, args));
-
-extern void Blt_MakeTransparentWindowExist _ANSI_ARGS_((Tk_Window tkwin,
-	Window parent, int isBusy));
-
-extern Window Blt_GetParent _ANSI_ARGS_((Display *display, Window tkwin));
-
-extern void Blt_GetBoundingBox _ANSI_ARGS_((int width, int height,
-	double theta, double *widthPtr, double *heightPtr, Point2D *points));
-
-extern void Blt_InitEpsCanvasItem _ANSI_ARGS_((Tcl_Interp *interp));
-
-extern void Blt_TranslateAnchor _ANSI_ARGS_((int x, int y, int width,
-	int height, Tk_Anchor anchor, int *transXPtr, int *transYPtr));
-
-extern Point2D Blt_TranslatePoint _ANSI_ARGS_((Point2D *pointPtr, int width,
-	int height, Tk_Anchor anchor));
-
-extern int Blt_ConfigureWidgetComponent _ANSI_ARGS_((Tcl_Interp *interp,
-	Tk_Window tkwin, char *name, char *class, Tk_ConfigSpec *specs,
-	int argc, char **argv, char *widgRec, int flags));
-
-extern void Blt_HSV _ANSI_ARGS_((XColor *colorPtr, double *huePtr,
-	double *valPtr, double *satPtr));
-
-extern void Blt_RGB _ANSI_ARGS_((double hue, double sat, double val,
-	XColor *colorPtr));
-
-extern int Blt_ParseFlag _ANSI_ARGS_((ClientData, Tcl_Interp *, Tk_Window,
-	char *, char *, int));
-extern char *Blt_FlagPrint _ANSI_ARGS_((ClientData, Tk_Window, char *, int,
-	Tcl_FreeProc **));
-
-extern int Blt_MaxRequestSize _ANSI_ARGS_((Display *display, 
-	unsigned int elemSize));
-
-extern Window Blt_GetRealWindowId _ANSI_ARGS_((Tk_Window tkwin));
-extern int Blt_RootX _ANSI_ARGS_((Tk_Window tkwin));
-extern int Blt_RootY _ANSI_ARGS_((Tk_Window tkwin));
-extern void Blt_RootCoordinates _ANSI_ARGS_((Tk_Window tkwin, int x, int y,
-    int *rootXPtr, int *rootYPtr));
-extern void Blt_MapToplevel _ANSI_ARGS_((Tk_Window tkwin));
-extern void Blt_UnmapToplevel _ANSI_ARGS_((Tk_Window tkwin));
-extern void Blt_RaiseToplevel _ANSI_ARGS_((Tk_Window tkwin));
-extern void Blt_LowerToplevel _ANSI_ARGS_((Tk_Window tkwin));
-extern void Blt_ResizeToplevel _ANSI_ARGS_((Tk_Window tkwin, 
-	int width, int height));
-extern void Blt_MoveToplevel _ANSI_ARGS_((Tk_Window tkwin, int x, int y));
-extern void Blt_MoveResizeToplevel _ANSI_ARGS_((Tk_Window tkwin, 
-	int x, int y, int width, int height));
-extern ClientData Blt_GetWindowInstanceData _ANSI_ARGS_((Tk_Window tkwin));
-
-extern void Blt_SetWindowInstanceData _ANSI_ARGS_((Tk_Window tkwin,
-	ClientData instanceData));
-
-extern void Blt_DeleteWindowInstanceData _ANSI_ARGS_((Tk_Window tkwin));
-
-extern int Blt_AdjustViewport _ANSI_ARGS_((int offset, int worldSize,
-	int windowSize, int scrollUnits, int scrollMode));
-
-extern int Blt_GetScrollInfo _ANSI_ARGS_((Tcl_Interp *interp, int argc,
-	char **argv, int *offsetPtr, int worldSize, int windowSize,
-	int scrollUnits, int scrollMode));
-
-#if (TK_MAJOR_VERSION >= 8) 
-extern int Blt_GetScrollInfoFromObj _ANSI_ARGS_((Tcl_Interp *interp, int objc,
-	Tcl_Obj *CONST *objv, int *offsetPtr, int worldSize, int windowSize,
-	int scrollUnits, int scrollMode));
-#endif
-
-extern void Blt_UpdateScrollbar _ANSI_ARGS_((Tcl_Interp *interp,
-	char *scrollCmd, double firstFract, double lastFract));
-
-extern int Blt_ReparentWindow _ANSI_ARGS_((Display *display, Window window,
-	Window newParent, int x, int y));
-
-#if defined(HAVE_JPEGLIB_H) || defined(HAVE_IJL_H)
-#define HAVE_JPEG 1
-extern int Blt_JPEGToPhoto _ANSI_ARGS_((Tcl_Interp *interp, char *fileName,
-	Tk_PhotoHandle photo));
-#endif /* HAVE_JPEGLIB_H || HAVE_IJL_H */
-
-#define Blt_SetBooleanResult(i, b) \
-	Tcl_SetResult((i), (b) ? "1" : "0", TCL_STATIC)
-
-/*
- * Define this if you want to be able to tile to the main window "."
- * This will cause a conflict with Tk if you try to compile and link
- * statically.
- */
-#undef TILE_MAINWINDOW
-
+BLT_EXTERN int Blt_GlobalEvalObjv(Tcl_Interp *interp, int objc, 
+	Tcl_Obj *const *objv);
 #ifdef WIN32
-#if (TCL_MAJOR_VERSION == 8)  && (TCL_MINOR_VERSION == 0)
+
+typedef struct {
+    DWORD pid;
+    HANDLE hProcess;
+} ProcessId;
+
 #else
-#define NO_DDE		1
-#endif
-#else 
-#define NO_DDE		1
-#define NO_PRINTER	1
-#endif /* WIN32 */
-
-#if (TCL_MAJOR_VERSION == 7) 
-#define NO_TREE		1
-#define NO_ARRAY	1
-#define NO_TREEVIEW	1
+typedef pid_t ProcessId;
 #endif
 
-/* #define NO_TED */
+BLT_EXTERN int Blt_CreatePipeline(Tcl_Interp *interp, int objc, 
+	Tcl_Obj *const *objv, ProcessId **pidArrayPtr, int *stdinPipePtr,
+	int *stdoutPipePtr, int *stderrPipePtr);
 
-#ifndef NO_BEEP
-extern Tcl_AppInitProc Blt_BeepInit;
-#endif
-#ifndef NO_BGEXEC
-extern Tcl_AppInitProc Blt_BgexecInit;
-#endif
-#ifndef NO_BITMAP
-extern Tcl_AppInitProc Blt_BitmapInit;
-#endif
-#ifndef NO_BUSY
-extern Tcl_AppInitProc Blt_BusyInit;
-#endif
-#ifndef NO_CONTAINER
-extern Tcl_AppInitProc Blt_ContainerInit;
-#endif
-#ifndef NO_CRC32
-extern Tcl_AppInitProc Blt_Crc32Init;
-#endif
-#ifndef NO_CUTBUFFER
-extern Tcl_AppInitProc Blt_CutbufferInit;
-#endif
-#ifndef NO_DEBUG
-extern Tcl_AppInitProc Blt_DebugInit;
-#endif
-#ifndef NO_DRAGDROP
-extern Tcl_AppInitProc Blt_DragDropInit;
-#endif
-#ifndef NO_DND
-extern Tcl_AppInitProc Blt_DndInit;
-#endif
-#ifndef NO_GRAPH
-extern Tcl_AppInitProc Blt_GraphInit;
-#endif
-#ifndef NO_HIERBOX
-extern Tcl_AppInitProc Blt_HierboxInit;
-#endif
-#ifndef NO_HIERTABLE
-extern Tcl_AppInitProc Blt_HiertableInit;
-#endif
-#ifndef NO_HTEXT
-extern Tcl_AppInitProc Blt_HtextInit;
-#endif
-#ifdef WIN32
-#ifndef NO_PRINTER
-extern Tcl_AppInitProc Blt_PrinterInit;
-#endif
-#endif
-#ifndef NO_TABLE
-extern Tcl_AppInitProc Blt_TableInit;
-#endif
-#ifndef NO_VECTOR
-extern Tcl_AppInitProc Blt_VectorInit;
-#endif
-#ifndef NO_WINOP
-extern Tcl_AppInitProc Blt_WinopInit;
-#endif
-#ifndef NO_WATCH
-extern Tcl_AppInitProc Blt_WatchInit;
-#endif
-#ifndef NO_SPLINE
-extern Tcl_AppInitProc Blt_SplineInit;
-#endif
-#ifndef NO_TABSET
-extern Tcl_AppInitProc Blt_TabsetInit;
-#endif
-#ifndef NO_TABNOTEBOOK
-extern Tcl_AppInitProc Blt_TabnotebookInit;
-#endif
-#ifndef NO_TREE
-extern Tcl_AppInitProc Blt_TreeInit;
-#endif
-#ifndef NO_TREEVIEW
-extern Tcl_AppInitProc Blt_TreeViewInit;
-#endif
-#ifndef NO_TILEFRAME
-extern Tcl_AppInitProc Blt_FrameInit;
-#endif
-#ifndef NO_TILEBUTTON
-extern Tcl_AppInitProc Blt_ButtonInit;
-#endif
-#ifndef NO_TILESCROLLBAR
-extern Tcl_AppInitProc Blt_ScrollbarInit;
-#endif
+BLT_EXTERN void Blt_GetLineExtents(size_t nPoints, Point2d *points, 
+	Region2d *r);
 
-#if (BLT_MAJOR_VERSION == 3)
-#ifndef NO_MOUNTAIN
-extern Tcl_AppInitProc Blt_MountainInit;
-#endif
-#endif
-#ifndef NO_TED
-extern Tcl_AppInitProc Blt_TedInit;
-#endif
+BLT_EXTERN int Blt_LineRectClip(Region2d *regionPtr, Point2d *p, Point2d *q);
 
-#ifndef NO_DDE
-extern Tcl_AppInitProc Blt_DdeInit;
-#endif
+#if (_TCL_VERSION < _VERSION(8,1,0))
+BLT_EXTERN const char *Tcl_GetString (Tcl_Obj *objPtr);
 
-typedef void *(Blt_MallocProc) _ANSI_ARGS_((size_t size));
-typedef void *(Blt_CallocProc) _ANSI_ARGS_((int nElem, size_t size));
-typedef void *(Blt_ReallocProc) _ANSI_ARGS_((void *ptr, size_t size));
-typedef void (Blt_FreeProc) _ANSI_ARGS_((void *ptr));
+BLT_EXTERN int Tcl_EvalObjv (Tcl_Interp *interp, int objc, Tcl_Obj **objv, 
+	int flags);
 
-EXTERN Blt_MallocProc *Blt_MallocProcPtr;
-EXTERN Blt_FreeProc *Blt_FreeProcPtr;
-EXTERN Blt_ReallocProc *Blt_ReallocProcPtr;
+BLT_EXTERN int Tcl_WriteObj (Tcl_Channel channel, Tcl_Obj *objPtr);
 
-#define Blt_Malloc(size)	(*Blt_MallocProcPtr)(size)
-#define Blt_Free		(*Blt_FreeProcPtr)
-#define Blt_Realloc(ptr, size)  (*Blt_ReallocProcPtr)(ptr, size)
+BLT_EXTERN char *Tcl_SetVar2Ex (Tcl_Interp *interp, const char *part1, 
+	const char *part2, Tcl_Obj *objPtr, int flags);
 
-EXTERN char *Blt_Strdup _ANSI_ARGS_((CONST char *ptr));
-EXTERN void *Blt_Calloc _ANSI_ARGS_((unsigned int nElem, size_t size));
+BLT_EXTERN Tcl_Obj *Tcl_GetVar2Ex (Tcl_Interp *interp, const char *part1, 
+	const char *part2, int flags);
+#endif /* _TCL_VERSION < 8.1.0 */
 
-#ifdef WIN32
-#include "bltWin.h"
-#endif
+BLT_EXTERN int Blt_NaturalSpline (Point2d *origPts, int nOrigPts, Point2d *intpPts,
+	int nIntpPts);
+
+BLT_EXTERN int Blt_QuadraticSpline (Point2d *origPts, int nOrigPts, 
+	Point2d *intpPts, int nIntpPts);
+
+BLT_EXTERN int Blt_SimplifyLine (Point2d *origPts, int low, int high, 
+	double tolerance, int *indices);
+
+BLT_EXTERN int Blt_NaturalParametricSpline (Point2d *origPts, int nOrigPts, 
+	Region2d *extsPtr, int isClosed, Point2d *intpPts, int nIntpPts);
+
+BLT_EXTERN int Blt_CatromParametricSpline (Point2d *origPts, int nOrigPts, 
+	Point2d *intpPts, int nIntpPts);
+
+BLT_EXTERN int Blt_StringToFlag (ClientData clientData, Tcl_Interp *interp, 
+	Tk_Window tkwin, char *string, char *widgRec, int flags);
+
+BLT_EXTERN char *Blt_FlagToString (ClientData clientData, Tk_Window tkwin, 
+	char *string, int offset, Tcl_FreeProc **freeProc);
+
+BLT_EXTERN void Blt_InitHexTable (unsigned char *table);
+
+BLT_EXTERN GC Blt_GetPrivateGC(Tk_Window tkwin, unsigned long gcMask,
+	XGCValues *valuePtr);
+
+BLT_EXTERN GC Blt_GetPrivateGCFromDrawable(Display *display, Drawable drawable, 
+	unsigned long gcMask, XGCValues *valuePtr);
+
+BLT_EXTERN void Blt_FreePrivateGC(Display *display, GC gc);
+
+BLT_EXTERN int Blt_GetWindowFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, 
+	Window *windowPtr);
+
+BLT_EXTERN Window Blt_GetParentWindow(Display *display, Window window);
+
+BLT_EXTERN Tk_Window Blt_FindChild(Tk_Window parent, char *name);
+
+BLT_EXTERN Tk_Window Blt_FirstChild(Tk_Window parent);
+
+BLT_EXTERN Tk_Window Blt_NextChild(Tk_Window tkwin);
+
+BLT_EXTERN void Blt_RelinkWindow (Tk_Window tkwin, Tk_Window newParent, int x, 
+	int y);
+
+BLT_EXTERN Tk_Window Blt_Toplevel(Tk_Window tkwin);
+
+BLT_EXTERN int Blt_GetPixels(Tcl_Interp *interp, Tk_Window tkwin, 
+	const char *string, int check, int *valuePtr);
+
+BLT_EXTERN int Blt_GetPosition(Tcl_Interp *interp, const char *string, 
+	long *valuePtr);
+
+BLT_EXTERN int Blt_GetCount(Tcl_Interp *interp, const char *string, int check, 
+	long *valuePtr);
+
+BLT_EXTERN int Blt_GetCountFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, 
+	int check, long *valuePtr);
+
+BLT_EXTERN const char *Blt_NameOfFill (int fill);
+
+BLT_EXTERN int Blt_GetXY (Tcl_Interp *interp, Tk_Window tkwin, 
+	const char *string, int *xPtr, int *yPtr);
+
+BLT_EXTERN Point2d Blt_GetProjection (int x, int y, Point2d *p, Point2d *q);
+
+BLT_EXTERN void Blt_DrawArrowOld (Display *display, Drawable drawable, GC gc, 
+	int x, int y, int arrowWidth, int arrowHeight, int orientation);
+
+BLT_EXTERN void Blt_DrawArrow (Display *display, Drawable drawable, GC gc, 
+	int x, int y, int w, int h, int borderWidth, int orientation);
+
+BLT_EXTERN int Blt_OldConfigModified TCL_VARARGS(Tk_ConfigSpec *, specs);
+
+BLT_EXTERN void Blt_DStringAppendElements TCL_VARARGS(Tcl_DString *, args);
+
+BLT_EXTERN void Blt_MakeTransparentWindowExist (Tk_Window tkwin, Window parent, 
+	int isBusy);
+
+BLT_EXTERN Window Blt_GetParent (Display *display, Window tkwin);
+
+BLT_EXTERN void Blt_GetBoundingBox (int width, int height, float angle, 
+	double *widthPtr, double *heightPtr, Point2d *points);
+
+BLT_EXTERN void Blt_InitEpsCanvasItem (Tcl_Interp *interp);
+
+BLT_EXTERN void Blt_TranslateAnchor (int x, int y, int width, int height, 
+	Tk_Anchor anchor, int *transXPtr, int *transYPtr);
+
+BLT_EXTERN Point2d Blt_AnchorPoint (double x, double y, double width, 
+	double height, Tk_Anchor anchor);
+
+BLT_EXTERN void Blt_HSV (XColor *colorPtr, double *huePtr, double *valPtr, 
+	double *satPtr);
+
+BLT_EXTERN void Blt_RGB (double hue, double sat, double val, XColor *colorPtr);
+
+BLT_EXTERN int Blt_ParseFlag (ClientData, Tcl_Interp *, Tk_Window, char *, 
+	char *, int);
+BLT_EXTERN char *Blt_FlagPrint (ClientData, Tk_Window, char *, int, 
+	Tcl_FreeProc **);
+
+BLT_EXTERN long Blt_MaxRequestSize (Display *display, size_t elemSize);
+
+BLT_EXTERN Window Blt_GetWindowId (Tk_Window tkwin);
+
+BLT_EXTERN int Blt_RootX (Tk_Window tkwin);
+
+BLT_EXTERN int Blt_RootY (Tk_Window tkwin);
+
+BLT_EXTERN void Blt_RootCoordinates (Tk_Window tkwin, int x, int y, 
+	int *rootXPtr, int *rootYPtr);
+
+BLT_EXTERN void Blt_MapToplevelWindow(Tk_Window tkwin);
+
+BLT_EXTERN void Blt_UnmapToplevelWindow(Tk_Window tkwin);
+
+BLT_EXTERN void Blt_RaiseToplevelWindow(Tk_Window tkwin);
+
+BLT_EXTERN void Blt_LowerToplevelWindow(Tk_Window tkwin);
+
+BLT_EXTERN void Blt_ResizeToplevelWindow(Tk_Window tkwin, int w, int h);
+
+BLT_EXTERN void Blt_MoveToplevelWindow(Tk_Window tkwin, int x, int y);
+
+BLT_EXTERN void Blt_MoveResizeToplevelWindow(Tk_Window tkwin, int x, int y, 
+	int w, int h);
+
+BLT_EXTERN int Blt_GetWindowRegion(Display *display, Window window, int *xPtr,
+	int *yPtr, int *widthPtr, int *heightPtr);
+
+BLT_EXTERN ClientData Blt_GetWindowInstanceData (Tk_Window tkwin);
+
+BLT_EXTERN void Blt_SetWindowInstanceData (Tk_Window tkwin, 
+	ClientData instanceData);
+
+BLT_EXTERN void Blt_DeleteWindowInstanceData (Tk_Window tkwin);
+
+BLT_EXTERN int Blt_AdjustViewport (int offset, int worldSize, int windowSize, 
+	int scrollUnits, int scrollMode);
+
+BLT_EXTERN int Blt_GetScrollInfoFromObj (Tcl_Interp *interp, int objc, 
+	Tcl_Obj *const *objv, int *offsetPtr, int worldSize, int windowSize,
+	int scrollUnits, int scrollMode);
+
+BLT_EXTERN void Blt_UpdateScrollbar (Tcl_Interp *interp, 
+	Tcl_Obj *scrollCmdObjPtr, double firstFract, double lastFract);
+
+BLT_EXTERN int Blt_ReparentWindow (Display *display, Window window, 
+	Window newParent, int x, int y);
+
+BLT_EXTERN int Blt_LoadLibrary(Tcl_Interp *interp, const char *libPath, 
+	const char *initProcName, const char *safeProcName);
+
+extern void Blt_RegisterPictureImageType(Tcl_Interp *interp);
+extern int  Blt_CpuFeatures(Tcl_Interp *interp, int *featuresPtr);
+extern void Blt_RegisterEpsCanvasItem(void);
+
+typedef struct {
+    Drawable id;
+    unsigned short int width, height;
+    int depth;
+    Colormap colormap;
+    Visual *visual;
+} Blt_DrawableAttributes;
+
+BLT_EXTERN Blt_DrawableAttributes *Blt_GetDrawableAttribs(Display *display,
+	Drawable drawable);
+
+BLT_EXTERN void Blt_SetDrawableAttribs(Display *display, Drawable drawable,
+	int width, int height, int depth, Colormap colormap, Visual *visual);
+
+BLT_EXTERN void Blt_SetDrawableAttribsFromWindow(Tk_Window tkwin, 
+	Drawable drawable);
+
+BLT_EXTERN void Blt_FreeDrawableAttribs(Display *display, Drawable drawable);
+
+BLT_EXTERN GC Blt_GetBitmapGC(Tk_Window tkwin);
+
+#define Tk_RootWindow(tkwin)	\
+	RootWindow(Tk_Display(tkwin),Tk_ScreenNumber(tkwin))
 
 #ifndef WIN32
-#define PurifyPrintf  printf
+#  define PurifyPrintf  printf
 #endif /* WIN32 */
+
+#include "bltConfig.h"
+
+/*
+ * Define this if you want to be able to tile to the main window "."  This
+ * will cause a conflict with Tk if you try to compile and link statically.
+ */
+#undef TK_MAINWINDOW
+
+#ifdef WIN32
+#  define	NO_CUTBUFFER	1
+#  define	NO_DND		1  
+#else
+#  define	NO_DDE		1
+#  define	NO_PRINTER	1
+#  ifdef MACOSX
+#    define	NO_BUSY		1
+#    define	NO_CONTAINER	1
+#  endif  
+#endif /* WIN32 */
+
+#ifndef NO_BASE64
+BLT_EXTERN Tcl_AppInitProc Blt_Base64CmdInitProc;
+#endif
+#ifndef NO_BEEP
+BLT_EXTERN Tcl_AppInitProc Blt_BeepCmdInitProc;
+#endif
+#ifndef NO_BGEXEC
+BLT_EXTERN Tcl_AppInitProc Blt_BgexecCmdInitProc;
+#endif
+#ifndef NO_BITMAP
+BLT_EXTERN Tcl_AppInitProc Blt_BitmapCmdInitProc;
+#endif
+#ifndef NO_BUSY
+BLT_EXTERN Tcl_AppInitProc Blt_BusyCmdInitProc;
+#endif
+#ifndef NO_CONTAINER
+BLT_EXTERN Tcl_AppInitProc Blt_ContainerCmdInitProc;
+#endif
+#ifndef NO_CRC32
+BLT_EXTERN Tcl_AppInitProc Blt_Crc32CmdInitProc;
+#endif
+#ifndef NO_CVS
+BLT_EXTERN Tcl_AppInitProc Blt_CsvCmdInitProc;
+#endif
+#ifndef NO_CUTBUFFER
+BLT_EXTERN Tcl_AppInitProc Blt_CutbufferCmdInitProc;
+#endif
+#ifndef NO_DEBUG
+BLT_EXTERN Tcl_AppInitProc Blt_DebugCmdInitProc;
+#endif
+#ifndef NO_DRAGDROP
+BLT_EXTERN Tcl_AppInitProc Blt_DragDropCmdInitProc;
+#endif
+#ifndef NO_DND
+BLT_EXTERN Tcl_AppInitProc Blt_DndCmdInitProc;
+#endif
+#ifndef NO_GRAPH
+BLT_EXTERN Tcl_AppInitProc Blt_GraphCmdInitProc;
+#endif
+#ifndef NO_HIERBOX
+BLT_EXTERN Tcl_AppInitProc Blt_HierboxCmdInitProc;
+#endif
+#ifndef NO_HIERTABLE
+BLT_EXTERN Tcl_AppInitProc Blt_HiertableCmdInitProc;
+#endif
+#ifndef NO_HTEXT
+BLT_EXTERN Tcl_AppInitProc Blt_HtextCmdInitProc;
+#endif
+#ifdef WIN32
+#  ifndef NO_PRINTER
+BLT_EXTERN Tcl_AppInitProc Blt_PrinterCmdInitProc;
+#  endif
+#endif
+#ifndef NO_PICTURE
+BLT_EXTERN Tcl_AppInitProc Blt_PictureCmdInitProc;
+#endif
+#ifndef NO_TABLE
+BLT_EXTERN Tcl_AppInitProc Blt_TableCmdInitProc;
+#endif
+#ifndef NO_VECTOR
+BLT_EXTERN Tcl_AppInitProc Blt_VectorCmdInitProc;
+#endif
+#ifndef NO_WINOP
+BLT_EXTERN Tcl_AppInitProc Blt_WinopCmdInitProc;
+#endif
+#ifndef NO_WATCH
+BLT_EXTERN Tcl_AppInitProc Blt_WatchCmdInitProc;
+#endif
+#ifndef NO_SPLINE
+BLT_EXTERN Tcl_AppInitProc Blt_SplineCmdInitProc;
+#endif
+#ifndef NO_TABSET
+BLT_EXTERN Tcl_AppInitProc Blt_TabsetCmdInitProc;
+#endif
+#ifndef NO_DATATABLE
+BLT_EXTERN Tcl_AppInitProc Blt_DataTableCmdInitProc;
+#endif
+#ifndef NO_TREE
+BLT_EXTERN Tcl_AppInitProc Blt_TreeCmdInitProc;
+#endif
+#ifndef NO_TREEVIEW
+BLT_EXTERN Tcl_AppInitProc Blt_TreeViewCmdInitProc;
+#endif
+#ifndef NO_TKFRAME
+BLT_EXTERN Tcl_AppInitProc Blt_FrameCmdInitProc;
+#endif
+#ifndef NO_TKBUTTON
+BLT_EXTERN Tcl_AppInitProc Blt_ButtonCmdInitProc;
+#endif
+#ifndef NO_SCROLLSET
+BLT_EXTERN Tcl_AppInitProc Blt_ScrollsetCmdInitProc;
+#endif
+#ifndef NO_PANESET
+BLT_EXTERN Tcl_AppInitProc Blt_PanesetCmdInitProc;
+#endif
+#ifndef NO_TKSCROLLBAR
+BLT_EXTERN Tcl_AppInitProc Blt_ScrollbarCmdInitProc;
+#endif
+BLT_EXTERN Tcl_AppInitProc Blt_BgPatternCmdInitProc;
+
+#if (BLT_MAJOR_VERSION == 3)
+#  ifndef NO_MOUNTAIN
+BLT_EXTERN Tcl_AppInitProc Blt_MountainCmdInitProc;
+#  endif
+#endif
+#ifndef NO_TED
+BLT_EXTERN Tcl_AppInitProc Blt_TedCmdInitProc;
+#endif
+
+BLT_EXTERN Tcl_AppInitProc Blt_ComboInitProc;
+BLT_EXTERN Tcl_AppInitProc Blt_ComboButtonInitProc;
+BLT_EXTERN Tcl_AppInitProc Blt_ComboEntryInitProc;
+BLT_EXTERN Tcl_AppInitProc Blt_ComboMenuInitProc;
+BLT_EXTERN Tcl_AppInitProc Blt_ComboTreeInitProc;
+
+BLT_EXTERN Tcl_AppInitProc Blt_SendEventCmdInitProc;
+
+#ifndef NO_DDE
+BLT_EXTERN Tcl_AppInitProc Blt_DdeCmdInitProc;
+#endif
+
+
+#define Tcl_GetLong(i,s,p)	TclGetLong(i,s,p)
+
+#ifndef USE_TCL_STUBS
+BLT_EXTERN int TclGetLong(Tcl_Interp *interp, const char *s, long *longPtr);
+#endif
+
+#ifndef HAVE_SPRINTF_S
+BLT_EXTERN int sprintf_s(char *s, size_t size, const char *fmt, /*args*/ ...);
+#endif	/* HAVE_SPRINTF_S */
+
+
+#undef panic
+#define panic(mesg)	Blt_Panic("%s:%d %s", __FILE__, __LINE__, (mesg))
+BLT_EXTERN void Blt_Panic TCL_VARARGS(const char *, args);
+
+#ifdef WIN32
+#  include "bltWin.h"
+#else 
+
+#ifdef MACOSX
+#  include "bltMacOSX.h"
+#endif /* MACOSX */
+
+#endif /* WIN32 */
+
+BLT_EXTERN Tcl_Obj *Blt_EmptyStringObj(void);
+BLT_EXTERN double Blt_NaN(void);
+
+BLT_EXTERN void Blt_ScreenDPI(Tk_Window tkwin, unsigned int *xPtr, 
+	unsigned int *yPtr);
+
+#include <bltAlloc.h>
+#include <bltAssert.h>
+
 #endif /*_BLT_INT_H*/

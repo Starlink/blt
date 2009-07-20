@@ -1,43 +1,48 @@
+
 /*
  * bltWatch.c --
  *
- * 	This module implements watch procedure callbacks for Tcl
- *	commands and procedures.
+ * This module implements watch procedure callbacks for TCL commands
+ * and procedures.
  *
- * Copyright 1994-1998 Lucent Technologies, Inc.
+ *	Copyright 1994-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
  *
- * The "watch" command was created by George Howlett.
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltInt.h"
+#include "bltOp.h"
 #include <bltHash.h>
 #include "bltSwitch.h"
 
 #define UNKNOWN_RETURN_CODE	5
-static char *codeNames[] =
+static const char *codeNames[] =
 {
     "OK", "ERROR", "RETURN", "BREAK", "CONTINUE"
 };
 
-#define WATCH_MAX_LEVEL	10000	/* Maximum depth of Tcl traces. */
+#define WATCH_THREAD_KEY "BLT Watch Command Data"
+#define WATCH_MAX_LEVEL	10000	/* Maximum depth of TCL traces. */
 
 enum WatchStates {
     WATCH_STATE_DONT_CARE = -1,	/* Select watch regardless of state */
@@ -47,7 +52,7 @@ enum WatchStates {
 
 typedef struct {
     Tcl_Interp *interp;		/* Interpreter associated with the watch */
-    Blt_Uid nameId;		/* Watch identifier */
+    char *name;			/* Watch identifier */
 
     /* User-configurable fields */
     enum WatchStates state;	/* Current state of watch: either
@@ -70,43 +75,98 @@ typedef struct {
     int level;			/* Current level of traced command. */
     char *cmdPtr;		/* Command string before substitutions.
 				 * Points to a original command buffer. */
-    char *args;			/* Tcl list of the command after
+    char *args;			/* TCL list of the command after
 				 * substitutions. List is malloc-ed by
 				 * Tcl_Merge. Must be freed in handler
 				 * procs */
 } Watch;
 
 typedef struct {
-    Blt_Uid nameId;		/* Name identifier of the watch */
-    Tcl_Interp *interp;		/* Interpreter associated with the
-				 * watch */
-} WatchKey;
-
-static Blt_HashTable watchTable;
-static int refCount = 0;
+    Blt_HashTable watchTable;	/* Hash table of trees keyed by address. */
+    Tcl_Interp *interp;
+} WatchCmdInterpData;
 
 static Blt_SwitchSpec switchSpecs[] = 
 {
-    {BLT_SWITCH_LIST, "-precmd", Blt_Offset(Watch, preCmd), 0},
-    {BLT_SWITCH_LIST, "-postcmd", Blt_Offset(Watch, postCmd), 0},
-    {BLT_SWITCH_BOOLEAN, "-active", Blt_Offset(Watch, state), 0},
-    {BLT_SWITCH_INT_NONNEGATIVE, "-maxlevel", Blt_Offset(Watch, maxLevel), 0},
-    {BLT_SWITCH_END, NULL, 0, 0}
+    {BLT_SWITCH_LIST, "-precmd", "command",
+	Blt_Offset(Watch, preCmd), 0},
+    {BLT_SWITCH_LIST, "-postcmd", "command",
+	Blt_Offset(Watch, postCmd), 0},
+    {BLT_SWITCH_BOOLEAN, "-active", "bool",
+	Blt_Offset(Watch, state), 0},
+    {BLT_SWITCH_INT_NNEG, "-maxlevel", "number",
+	Blt_Offset(Watch, maxLevel), 0},
+    {BLT_SWITCH_END}
 };
 
 static Tcl_CmdTraceProc PreCmdProc;
 static Tcl_AsyncProc PostCmdProc;
-static Tcl_CmdProc WatchCmd;
-static Tcl_CmdDeleteProc WatchDeleteCmd;
+static Tcl_ObjCmdProc WatchCmd;
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
+ *
+ * TreeInterpDeleteProc --
+ *
+ *	This is called when the interpreter hosting the "tree" command
+ *	is deleted.
+ *
+ * Results:
+ *	None.
+ *
+ * Side effects:
+ *	Removes the hash table managing all tree names.
+ *
+ *---------------------------------------------------------------------------
+ */
+/* ARGSUSED */
+static void
+WatchInterpDeleteProc(
+    ClientData clientData,	/* Interpreter-specific data. */
+    Tcl_Interp *interp)
+{
+    WatchCmdInterpData *dataPtr = clientData;
+
+    /* All tree instances should already have been destroyed when
+     * their respective TCL commands were deleted. */
+    Blt_DeleteHashTable(&dataPtr->watchTable);
+    Tcl_DeleteAssocData(interp, WATCH_THREAD_KEY);
+    Blt_Free(dataPtr);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * GetWatchCmdInterpData --
+ *
+ *---------------------------------------------------------------------------
+ */
+static WatchCmdInterpData *
+GetWatchCmdInterpData(Tcl_Interp *interp)
+{
+    WatchCmdInterpData *dataPtr;
+    Tcl_InterpDeleteProc *proc;
+
+    dataPtr = (WatchCmdInterpData *)
+	Tcl_GetAssocData(interp, WATCH_THREAD_KEY, &proc);
+    if (dataPtr == NULL) {
+	dataPtr = Blt_AssertMalloc(sizeof(WatchCmdInterpData));
+	dataPtr->interp = interp;
+	Tcl_SetAssocData(interp, WATCH_THREAD_KEY, WatchInterpDeleteProc,
+		 dataPtr);
+	Blt_InitHashTable(&dataPtr->watchTable, BLT_ONE_WORD_KEYS);
+    }
+    return dataPtr;
+}
+
+/*
+ *---------------------------------------------------------------------------
  *
  * PreCmdProc --
  *
  *	Procedure callback for Tcl_Trace. Gets called before the
  * 	command is executed, but after substitutions have occurred.
- *	If a watch procedure is active, it evals a Tcl command.
+ *	If a watch procedure is active, it evals a TCL command.
  *	Activates the "precmd" callback, if one exists.
  *
  *	Stashes some information for the "pre" callback: command
@@ -126,20 +186,19 @@ static Tcl_CmdDeleteProc WatchDeleteCmd;
  *	A Tcl_AsyncHandler may be triggered, if a "post" procedure is
  *	defined.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static void
-PreCmdProc(clientData, interp, level, command, cmdProc, cmdClientData,
-    argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Not used. */
-    int level;			/* Current level */
-    char *command;		/* Command before substitution */
-    Tcl_CmdProc *cmdProc;	/* Not used. */
-    ClientData cmdClientData;	/* Not used. */
-    int argc;
-    char **argv;		/* Command after parsing, but before
+PreCmdProc(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,		/* Not used. */
+    int level,			/* Current level */
+    char *command,		/* Command before substitution */
+    Tcl_CmdProc *cmdProc,	/* Not used. */
+    ClientData cmdClientData,	/* Not used. */
+    int argc,
+    const char **argv)		/* Command after parsing, but before
 				 * evaluation */
 {
     Watch *watchPtr = clientData;
@@ -163,14 +222,14 @@ PreCmdProc(clientData, interp, level, command, cmdProc, cmdClientData,
 	Tcl_DString buffer;
 	char string[200];
 	int status;
-	register char **p;
+	char **p;
 
 	/* Create the "pre" command procedure call */
 	Tcl_DStringInit(&buffer);
 	for (p = watchPtr->preCmd; *p != NULL; p++) {
 	    Tcl_DStringAppendElement(&buffer, *p);
 	}
-	sprintf(string, "%d", watchPtr->level);
+	sprintf_s(string, 200, "%d", watchPtr->level);
 	Tcl_DStringAppendElement(&buffer, string);
 	Tcl_DStringAppendElement(&buffer, watchPtr->cmdPtr);
 	Tcl_DStringAppendElement(&buffer, watchPtr->args);
@@ -192,7 +251,7 @@ PreCmdProc(clientData, interp, level, command, cmdProc, cmdClientData,
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * PostCmdProc --
  *
@@ -215,14 +274,11 @@ PreCmdProc(clientData, interp, level, command, cmdProc, cmdClientData,
  * Side Effects:
  *	Memory for argument list is released.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-PostCmdProc(clientData, interp, code)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Not used. */
-    int code;			/* Completion code of command */
+PostCmdProc(ClientData clientData, Tcl_Interp *interp, int code)
 {
     Watch *watchPtr = clientData;
 
@@ -233,47 +289,43 @@ PostCmdProc(clientData, interp, code)
 	int status;
 	Tcl_DString buffer;
 	char string[200];
-	char *results;
-	register char **p;
-	char *retCode;
+	const char *results;
+	char **p;
+	const char *retCode;
 	char *errorCode, *errorInfo;
 	errorInfo = errorCode = NULL;
 
 	results = "NO INTERPRETER AVAILABLE";
 
 	/*
-	 * ----------------------------------------------------
-	 *
 	 * Save the state of the interpreter.
-	 *
-	 * ----------------------------------------------------
 	 */
 	if (interp != NULL) {
 	    errorInfo = (char *)Tcl_GetVar2(interp, "errorInfo", (char *)NULL,
 		TCL_GLOBAL_ONLY);
 	    if (errorInfo != NULL) {
-		errorInfo = Blt_Strdup(errorInfo);
+		errorInfo = Blt_AssertStrdup(errorInfo);
 	    }
 	    errorCode = (char *)Tcl_GetVar2(interp, "errorCode", (char *)NULL,
 		TCL_GLOBAL_ONLY);
 	    if (errorCode != NULL) {
-		errorCode = Blt_Strdup(errorCode);
+		errorCode = Blt_AssertStrdup(errorCode);
 	    }
-	    results = Blt_Strdup(Tcl_GetStringResult(interp));
+	    results = Blt_AssertStrdup(Tcl_GetStringResult(interp));
 	}
 	/* Create the "post" command procedure call */
 	Tcl_DStringInit(&buffer);
 	for (p = watchPtr->postCmd; *p != NULL; p++) {
 	    Tcl_DStringAppendElement(&buffer, *p);
 	}
-	sprintf(string, "%d", watchPtr->level);
+	sprintf_s(string, 200, "%d", watchPtr->level);
 	Tcl_DStringAppendElement(&buffer, string);
 	Tcl_DStringAppendElement(&buffer, watchPtr->cmdPtr);
 	Tcl_DStringAppendElement(&buffer, watchPtr->args);
 	if (code < UNKNOWN_RETURN_CODE) {
 	    retCode = codeNames[code];
 	} else {
-	    sprintf(string, "%d", code);
+	    sprintf_s(string, 200, "%d", code);
 	    retCode = string;
 	}
 	Tcl_DStringAppendElement(&buffer, retCode);
@@ -292,11 +344,7 @@ PostCmdProc(clientData, interp, code)
 		Tcl_GetStringResult(watchPtr->interp));
 	}
 	/*
-	 * ----------------------------------------------------
-	 *
 	 * Restore the state of the interpreter.
-	 *
-	 * ----------------------------------------------------
 	 */
 	if (interp != NULL) {
 	    if (errorInfo != NULL) {
@@ -309,21 +357,20 @@ PostCmdProc(clientData, interp, code)
 		    TCL_GLOBAL_ONLY);
 		Blt_Free(errorCode);
 	    }
-	    Tcl_SetResult(interp, results, TCL_DYNAMIC);
+	    Tcl_SetStringObj(Tcl_GetObjResult(interp), results, -1);
 	}
     }
     return code;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * NewWatch --
  *
- *	Creates a new watch. Uses the nameId and interpreter
- *	address to create a unique hash key.  The new watch is
- *	registered into the "watchTable" hash table. Also creates a
- *	Tcl_AsyncHandler for triggering "post" events.
+ *	Creates a new watch. The new watch is registered into the
+ *	"watchTable" hash table. Also creates a Tcl_AsyncHandler for
+ *	triggering "post" events.
  *
  * Results:
  *	If memory for the watch could be allocated, a pointer to
@@ -334,17 +381,12 @@ PostCmdProc(clientData, interp, code)
  *	A new Tcl_AsyncHandler is created. A new hash table entry
  *	is created. Memory the watch structure is allocated.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Watch *
-NewWatch(interp, name)
-    Tcl_Interp *interp;
-    char *name;
+NewWatch(Tcl_Interp *interp, const char *name)
 {
     Watch *watchPtr;
-    WatchKey key;
-    Blt_HashEntry *hPtr;
-    int dummy;
 
     watchPtr = Blt_Calloc(1, sizeof(Watch));
     if (watchPtr == NULL) {
@@ -353,18 +395,14 @@ NewWatch(interp, name)
     }
     watchPtr->state = WATCH_STATE_ACTIVE;
     watchPtr->maxLevel = WATCH_MAX_LEVEL;
-    watchPtr->nameId = Blt_GetUid(name);
+    watchPtr->name = Blt_AssertStrdup(name);
     watchPtr->interp = interp;
     watchPtr->asyncHandle = Tcl_AsyncCreate(PostCmdProc, watchPtr);
-    key.interp = interp;
-    key.nameId = watchPtr->nameId;
-    hPtr = Blt_CreateHashEntry(&watchTable, (char *)&key, &dummy);
-    Blt_SetHashValue(hPtr, watchPtr);
     return watchPtr;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DestroyWatch --
  *
@@ -382,13 +420,11 @@ NewWatch(interp, name)
  * Side Effects:
  *	Everything associated with the watch is freed.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DestroyWatch(watchPtr)
-    Watch *watchPtr;
+DestroyWatch(WatchCmdInterpData *dataPtr, Watch *watchPtr)
 {
-    WatchKey key;
     Blt_HashEntry *hPtr;
 
     Tcl_AsyncDelete(watchPtr->asyncHandle);
@@ -404,18 +440,18 @@ DestroyWatch(watchPtr)
     if (watchPtr->args != NULL) {
 	Blt_Free(watchPtr->args);
     }
-    key.interp = watchPtr->interp;
-    key.nameId = watchPtr->nameId;
-    hPtr = Blt_FindHashEntry(&watchTable, (char *)&key);
-    Blt_DeleteHashEntry(&watchTable, hPtr);
-    Blt_FreeUid(key.nameId);
+    hPtr = Blt_FindHashEntry(&dataPtr->watchTable, (char *)watchPtr->name);
+    Blt_DeleteHashEntry(&dataPtr->watchTable, hPtr);
+    if (watchPtr->name != NULL) {
+	Blt_Free(watchPtr->name);
+    }
     Blt_Free(watchPtr);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * NameToWatch --
+ * GetWatchFromObj --
  *
  *	Searches for the watch represented by the watch name and its
  *	associated interpreter in its directory.
@@ -425,34 +461,33 @@ DestroyWatch(watchPtr)
  *	otherwise NULL. If requested, interp-result will be filled
  *	with an error message.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-static Watch *
-NameToWatch(interp, name, flags)
-    Tcl_Interp *interp;
-    char *name;
-    int flags;
+static int
+GetWatchFromObj(
+    WatchCmdInterpData *dataPtr,
+    Tcl_Interp *interp,
+    Tcl_Obj *objPtr,
+    Watch **watchPtrPtr)
 {
-    WatchKey key;
     Blt_HashEntry *hPtr;
+    char *string;
 
-    key.interp = interp;
-    key.nameId = Blt_FindUid(name);
-    if (key.nameId != NULL) {
-	hPtr = Blt_FindHashEntry(&watchTable, (char *)&key);
-	if (hPtr != NULL) {
-	    return (Watch *) Blt_GetHashValue(hPtr);
+    string = Tcl_GetString(objPtr);
+    hPtr = Blt_FindHashEntry(&dataPtr->watchTable, (char *)string);
+    if (hPtr == NULL) {
+	if (interp != NULL) {
+	    Tcl_AppendResult(interp, "can't find any watch named \"", 
+			     string, "\"", (char *)NULL);
 	}
+	return TCL_ERROR;
     }
-    if (flags & TCL_LEAVE_ERR_MSG) {
-	Tcl_AppendResult(interp, "can't find any watch named \"", name, "\"",
-	    (char *)NULL);
-    }
-    return NULL;
+    *watchPtrPtr = Blt_GetHashValue(hPtr);
+    return TCL_OK;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ListWatches --
  *
@@ -461,34 +496,36 @@ NameToWatch(interp, name, flags)
  *	setting "state" to something other than WATCH_STATE_DONT_CARE.
  *
  * Results:
- *	A standard Tcl result.  Interp->result will contain a list
+ *	A standard TCL result.  Interp->result will contain a list
  *	of all watches matches the state criteria.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ListWatches(interp, state)
-    Tcl_Interp *interp;
-    enum WatchStates state;	/* Active flag */
+ListWatches(WatchCmdInterpData *dataPtr, Tcl_Interp *interp, 
+	    enum WatchStates state)
 {
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
-    register Watch *watchPtr;
+    Tcl_Obj *listObjPtr;
 
-    for (hPtr = Blt_FirstHashEntry(&watchTable, &cursor);
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    for (hPtr = Blt_FirstHashEntry(&dataPtr->watchTable, &cursor);
 	hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	watchPtr = (Watch *)Blt_GetHashValue(hPtr);
-	if (watchPtr->interp == interp) {
-	    if ((state == WATCH_STATE_DONT_CARE) ||
-		(state == watchPtr->state)) {
-		Tcl_AppendElement(interp, (char *)watchPtr->nameId);
-	    }
+	Watch *watchPtr;
+
+	watchPtr = Blt_GetHashValue(hPtr);
+	if ((state == WATCH_STATE_DONT_CARE) ||
+	    (state == watchPtr->state)) {
+	    Tcl_ListObjAppendElement(interp, listObjPtr, 
+			     Tcl_NewStringObj(watchPtr->name, -1));
 	}
     }
+    Tcl_SetObjResult(interp, listObjPtr);
     return TCL_OK;
 }
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ConfigWatch --
  *
@@ -500,17 +537,13 @@ ListWatches(interp, state)
  *	otherwise NULL. If requested, interp-result will be filled
  *	with an error message.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigWatch(watchPtr, interp, argc, argv)
-    Watch *watchPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char *argv[];
+ConfigWatch(Watch *watchPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
-    if (Blt_ProcessSwitches(interp, switchSpecs, argc, argv, (char *)watchPtr,
-	 0) < 0) {
+    if (Blt_ParseSwitches(interp, switchSpecs, objc, objv, watchPtr, 
+	BLT_SWITCH_DEFAULTS) < 0) {
 	return TCL_ERROR;
     }
     /*
@@ -526,104 +559,103 @@ ConfigWatch(watchPtr, interp, argc, argv)
     }
     return TCL_OK;
 }
-
-/* Tcl interface routines */
+
+/* TCL interface routines */
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * CreateOp --
  *
  *	Creates a new watch and processes any extra switches.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side Effects:
  *	A new watch is created.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-CreateOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+CreateOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+	 Tcl_Obj *const *objv)
 {
-    register Watch *watchPtr;
+    WatchCmdInterpData *dataPtr = clientData;
+    Watch *watchPtr;
+    int isNew;
+    char *string;
+    Blt_HashEntry *hPtr;
 
-    watchPtr = NameToWatch(interp, argv[2], 0);
-    if (watchPtr != NULL) {
-	Tcl_AppendResult(interp, "a watch \"", argv[2], "\" already exists",
-	    (char *)NULL);
+    string = Tcl_GetString(objv[2]);
+    hPtr = Blt_CreateHashEntry(&dataPtr->watchTable, string, &isNew);
+    if (!isNew) {
+	Tcl_AppendResult(interp, "a watch \"", string, "\" already exists", 
+			 (char *)NULL);
 	return TCL_ERROR;
     }
-    watchPtr = NewWatch(interp, argv[2]);
+    watchPtr = NewWatch(interp, string);
     if (watchPtr == NULL) {
 	return TCL_ERROR;	/* Can't create new watch */
     }
-    return ConfigWatch(watchPtr, interp, argc - 3, argv + 3);
+    Blt_SetHashValue(hPtr, watchPtr);
+    return ConfigWatch(watchPtr, interp, objc - 3, objv + 3);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DeleteOp --
  *
  *	Deletes the watch.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-DeleteOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+DeleteOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+	 Tcl_Obj *const *objv)
 {
-    register Watch *watchPtr;
+    Watch *watchPtr;
+    WatchCmdInterpData *dataPtr = clientData;
 
-    watchPtr = NameToWatch(interp, argv[2], TCL_LEAVE_ERR_MSG);
-    if (watchPtr == NULL) {
+    if (GetWatchFromObj(dataPtr, interp, objv[2], &watchPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    DestroyWatch(watchPtr);
+    DestroyWatch(dataPtr, watchPtr);
     return TCL_OK;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ActivateOp --
  *
  *	Activate/deactivates the named watch.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-ActivateOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+	   Tcl_Obj *const *objv)
 {
-    register Watch *watchPtr;
+    WatchCmdInterpData *dataPtr = clientData;
+    Watch *watchPtr;
     enum WatchStates state;
+    char *string;
 
-    state = (argv[1][0] == 'a') ? WATCH_STATE_ACTIVE : WATCH_STATE_IDLE;
-    watchPtr = NameToWatch(interp, argv[2], TCL_LEAVE_ERR_MSG);
-    if (watchPtr == NULL) {
+    if (GetWatchFromObj(dataPtr, interp, objv[2], &watchPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
+    string = Tcl_GetString(objv[1]);
+    state = (string[0] == 'a') ? WATCH_STATE_ACTIVE : WATCH_STATE_IDLE;
     if (state != watchPtr->state) {
 	if (watchPtr->trace == (Tcl_Trace) 0) {
 	    watchPtr->trace = Tcl_CreateTrace(interp, watchPtr->maxLevel,
@@ -638,48 +670,49 @@ ActivateOp(clientData, interp, argc, argv)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * NamesOp --
  *
  *	Returns the names of all watches in the interpreter.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-NamesOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+NamesOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+	Tcl_Obj *const *objv)
 {
+    WatchCmdInterpData *dataPtr = clientData;
     enum WatchStates state;
 
     state = WATCH_STATE_DONT_CARE;
-    if (argc == 3) {
+    if (objc == 3) {
 	char c;
-	c = argv[2][0];
-	if ((c == 'a') && (strcmp(argv[2], "active") == 0)) {
+	char *string;
+
+	string = Tcl_GetString(objv[2]);
+	c = string[0];
+	if ((c == 'a') && (strcmp(string, "active") == 0)) {
 	    state = WATCH_STATE_ACTIVE;
-	} else if ((c == 'i') && (strcmp(argv[2], "idle") == 0)) {
+	} else if ((c == 'i') && (strcmp(string, "idle") == 0)) {
 	    state = WATCH_STATE_IDLE;
-	} else if ((c == 'i') && (strcmp(argv[2], "ignore") == 0)) {
+	} else if ((c == 'i') && (strcmp(string, "ignore") == 0)) {
 	    state = WATCH_STATE_DONT_CARE;
 	} else {
-	    Tcl_AppendResult(interp, "bad state \"", argv[2], "\" should be \
+	    Tcl_AppendResult(interp, "bad state \"", string, "\" should be \
 \"active\", \"idle\", or \"ignore\"", (char *)NULL);
 	    return TCL_ERROR;
 	}
     }
-    return ListWatches(interp, state);
+    return ListWatches(dataPtr, interp, state);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ConfigureOp --
  *
@@ -688,27 +721,24 @@ NamesOp(clientData, interp, argc, argv)
  * Results:
  *	The string representation of the limits is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-ConfigureOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+ConfigureOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+	    Tcl_Obj *const *objv)
 {
-    register Watch *watchPtr;
+    WatchCmdInterpData *dataPtr = clientData;
+    Watch *watchPtr;
 
-    watchPtr = NameToWatch(interp, argv[2], TCL_LEAVE_ERR_MSG);
-    if (watchPtr == NULL) {
+    if (GetWatchFromObj(dataPtr, interp, objv[2], &watchPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    return ConfigWatch(watchPtr, interp, argc - 3, argv + 3);
+    return ConfigWatch(watchPtr, interp, objc - 3, objv + 3);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * InfoOp --
  *
@@ -717,22 +747,18 @@ ConfigureOp(clientData, interp, argc, argv)
  * Results:
  *	The string representation of the limits is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-InfoOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+InfoOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+       Tcl_Obj *const *objv)
 {
-    register Watch *watchPtr;
-    char string[200];
-    register char **p;
+    WatchCmdInterpData *dataPtr = clientData;
+    Watch *watchPtr;
+    char **p;
 
-    watchPtr = NameToWatch(interp, argv[2], TCL_LEAVE_ERR_MSG);
-    if (watchPtr == NULL) {
+    if (GetWatchFromObj(dataPtr, interp, objv[2], &watchPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (watchPtr->preCmd != NULL) {
@@ -747,82 +773,68 @@ InfoOp(clientData, interp, argc, argv)
 	    Tcl_AppendResult(interp, " ", *p, (char *)NULL);
 	}
     }
-    sprintf(string, "%d", watchPtr->maxLevel);
-    Tcl_AppendResult(interp, "-maxlevel ", string, " ", (char *)NULL);
-    Tcl_AppendResult(interp, "-active ",
-	(watchPtr->state == WATCH_STATE_ACTIVE)
+    Tcl_AppendResult(interp, "-maxlevel ", Blt_Itoa(watchPtr->maxLevel), " ", 
+		     (char *)NULL);
+    Tcl_AppendResult(interp, "-active ", (watchPtr->state == WATCH_STATE_ACTIVE)
 	? "true" : "false", " ", (char *)NULL);
     return TCL_OK;
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * WatchCmd --
  *
- *	This procedure is invoked to process the Tcl "blt_watch"
+ *	This procedure is invoked to process the TCL "blt_watch"
  *	command. See the user documentation for details on what
  *	it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static Blt_OpSpec watchOps[] =
 {
-    {"activate", 1, (Blt_Op)ActivateOp, 3, 3, "watchName",},
-    {"configure", 2, (Blt_Op)ConfigureOp, 3, 0,
+    {"activate", 1, ActivateOp, 3, 3, "watchName",},
+    {"configure", 2, ConfigureOp, 3, 0,
 	"watchName ?options...?"},
-    {"create", 2, (Blt_Op)CreateOp, 3, 0, "watchName ?switches?",},
-    {"deactivate", 3, (Blt_Op)ActivateOp, 3, 3, "watchName",},
-    {"delete", 3, (Blt_Op)DeleteOp, 3, 3, "watchName",},
-    {"info", 1, (Blt_Op)InfoOp, 3, 3, "watchName",},
-    {"names", 1, (Blt_Op)NamesOp, 2, 3, "?state?",},
+    {"create", 2, CreateOp, 3, 0, "watchName ?switches?",},
+    {"deactivate", 3, ActivateOp, 3, 3, "watchName",},
+    {"delete", 3, DeleteOp, 3, 3, "watchName",},
+    {"info", 1, InfoOp, 3, 3, "watchName",},
+    {"names", 1, NamesOp, 2, 3, "?state?",},
 };
 static int nWatchOps = sizeof(watchOps) / sizeof(Blt_OpSpec);
 
 /*ARGSUSED*/
 static int
-WatchCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+WatchCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
+	 Tcl_Obj *const *objv)
 {
-    Blt_Op proc;
+    Tcl_ObjCmdProc *proc;
     int result;
 
-    proc = Blt_GetOp(interp, nWatchOps, watchOps, BLT_OP_ARG1, argc, argv, 0);
+    proc = Blt_GetOpFromObj(interp, nWatchOps, watchOps, BLT_OP_ARG1, 
+	objc, objv, 0);
     if (proc == NULL) {
 	return TCL_ERROR;
     }
-    result = (*proc) (clientData, interp, argc, argv);
+    result = (*proc) (clientData, interp, objc, objv);
     return result;
 }
 
-/* ARGSUSED */
-static void
-WatchDeleteCmd(clientData)
-    ClientData clientData;	/* Not Used. */
-{
-    refCount--;
-    if (refCount == 0) {
-	Blt_DeleteHashTable(&watchTable);
-    }
-}
-
 /* Public initialization routine */
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Blt_WatchInit --
+ * Blt_WatchCmdInitProc --
  *
- *	This procedure is invoked to initialize the Tcl command
+ *	This procedure is invoked to initialize the TCL command
  *	"blt_watch".
  *
  * Results:
@@ -832,22 +844,13 @@ WatchDeleteCmd(clientData)
  *	Creates the new command and adds a new entry into a
  *	global	Tcl associative array.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_WatchInit(interp)
-    Tcl_Interp *interp;
+Blt_WatchCmdInitProc(Tcl_Interp *interp)
 {
-    static Blt_CmdSpec cmdSpec =
-    {"watch", WatchCmd, WatchDeleteCmd};
+    static Blt_InitCmdSpec cmdSpec = {"watch", WatchCmd, NULL};
 
-    if (refCount == 0) {
-	Blt_InitHashTable(&watchTable, sizeof(WatchKey) / sizeof(int));
-    }
-    refCount++;
-
-    if (Blt_InitCmd(interp, "blt", &cmdSpec) == NULL) {
-	return TCL_ERROR;
-    }
-    return TCL_OK;
+    cmdSpec.clientData = GetWatchCmdInterpData(interp);
+    return Blt_InitCmd(interp, "::blt", &cmdSpec);
 }

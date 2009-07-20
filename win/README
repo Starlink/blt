@@ -114,54 +114,6 @@ necessary to build and install BLT from the source code.
       4) The turbo debugger is a pain.
 
 
-Building BLT with Microsoft VC++, Cygwin Make, and VC++ compiled
-Tcl/Tk libraries.
-===================================================================
-
-1. Install the Tcl/Tk sources.  They should reside in the
-   same directory tree as the BLT sources.  
-
-      	______________|______________
-     	|          |       |        |
-      blt2.4   tcl8.3.4  tk8.3.4   jpeg-6b
-
-   
-2. Build and install the Tcl and Tk libraries.
-
-   cd tcl8.3.4/win
-   nmake -f Makefile.vc 
-   nmake -f Makefile.vc install
-   cd ../../tk8.3.4/win
-   nmake -f Makefile.vc
-   nmake -f Makefile.vc install
-
-3. In the BLT directory, edit ./win/makedefs. Set the following
-   macros.
-
-
-     v1	= 8.3			Tcl/Tk version.
-     v2	= 83			Version number without dots.
-     v3	= 8.3.4			Suffix of Tcl/Tk directories 
-
-     prefix = C:/Program\ Files/Tcl
-				Location of installed Tcl/Tk files.
-     TOOLS32 = C:/Program\ Files/Microsoft\ Visual\ Studio/VC90
-				Location of MS C compiler and tools.
-     HAVE_JPEG = 0		
-
-4. Compile and install.
-   
-   make -f Makefile.vc
-   make -f Makefile.vc install
-   
-5. Add the location of BLT24.dll to your PATH variable and test
-   BLT
-	
-   cd demos
-   export PATH=/cygdrive/c/Program\ Files/Tcl/bin:$PATH
-
-   bltwish.exe graph1.tcl
-   
 Building BLT with Microsoft VC++, nmake, and VC++ compiled Tcl/Tk
 libraries.
 ====================================================================
@@ -259,7 +211,7 @@ libraries.
 
 2. Compile and install BLT.
    
-   ./configure --disable-cygwin --with-scriptdir=/usr/share --prefix=/usr
+   ./configure --with-scriptdir=/usr/share --prefix=/usr
    make 
    make install
 

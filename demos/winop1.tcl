@@ -1,38 +1,25 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 
-if { [ file exists ./images/sample.gif] } {
-    set src [image create photo -file ./images/sample.gif]  
+#set imgfile ./images/sample.gif
+set imgfile ./images/blt98.gif
+set imgfile ~/dstrange.xpm
+set imgfile ~/8.jpg
+set imgfile ~/250px-KittyPryde+Wolverine4.jpg
+set imgfile ~/thunderbird.png
+set imgfile ~/testfile.png
+if { [llength $argv] > 0 } {
+    set imgfile [lindex $argv 0]
+}
+if { [ file exists $imgfile] } {
+    set src [image create picture -file $imgfile]  
 } else {
     puts stderr "no image file"
     exit 0
 }
-
+set name [file root [file tail $imgfile]]
 set width [image width $src]
 set height [image height $src]
 
@@ -42,17 +29,25 @@ label .l0 -image $src
 label .header0 -text "$width x $height"
 label .footer0 -text "100%"
 . configure -bg white
-
-for { set i 2 } { $i <= 10 } { incr i } {
-    set iw [expr $width / $i]
-    set ih [expr $height / $i]
-    set r [format %6g [expr 100.0 / $i]]
-    image create photo r$i -width $iw -height $ih
-    winop resample $src r$i sinc
+#$src quantize $src 150
+set type gif
+set i 0
+foreach scale { 0.8 0.6666666 0.5 0.4 0.3333333 0.3 0.25 0.2 0.15 0.1 } {
+    incr i
+    set iw [expr int($width * $scale)]
+    set ih [expr int($height * $scale)]
+    set r [format %6g [expr 100.0 * $scale]]
+    image create picture r$i -width $iw -height $ih
+    #puts stderr before=[r$i info]
+    r$i resize $src -filter sinc
+    #puts stderr after=[r$i info]
+    r$i export $type -file ${name}-${scale}.$type 
+#triangle 
+#box
     label .header$i -text "$iw x $ih"
     label .footer$i -text "$r%"
     label .l$i -image r$i
-    table . \
+    blt::table . \
 	0,$i .header$i \
 	1,$i .l$i \
 	2,$i .footer$i

@@ -2,27 +2,42 @@
 /*
  * bltWinPipe.c --
  *
- *	Lifted from tclPipe.c and tclWinPipe.c in the Tcl
- *	distribution, this is the first step toward freedom from the
- *	tyranny of the former Tcl_CreatePipeline API.
+ * This modules replacements for the former Tcl_CreatePipeline API
+ * under Windows.  This file contains the generic portion of the
+ * command channel driver as well as various utility routines used in
+ * managing subprocesses.
  *
- *	This file contains the generic portion of the command channel
- *	driver as well as various utility routines used in managing
- *	subprocesses.
+ *	Copyright 1998-2004 George A Howlett.
  *
- *	[It's not clear why we needed a whole new API for I/O. Channels
- *	are one of the few losing propositions in Tcl. While it's easy
- *	to see that one needs to handle the different platform I/O
- *	semantics in a coherent fashion, it's usually better to pick
- *	an API from one of platforms (hopefully a mature, well-known model)
- *	and crowbar the other platforms to follow that.  At least then
- *	you're working from a known set of sematics. With Tcl Channels,
- *	no one's an expert and the interface is incomplete.]
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Copyright (c) 1997 by Sun Microsystems, Inc.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
  *
- * See the file "license.terms" for information on usage and redistribution
- * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * Parts taken from tclPipe.c and tclWinPipe.c in the TCL distribution.
+ *
+ *	Copyright (c) 1997 by Sun Microsystems, Inc.
+ *
+ *	See the file "license.terms" for information on usage and
+ *	redistribution of this file, and for a DISCLAIMER OF ALL
+ *	WARRANTIES.
  *
  */
 
@@ -43,17 +58,16 @@
 #define ASYNC_DEBUG 0
 #define KILL_DEBUG 0
 
-typedef struct {
-    DWORD pid;
-    HANDLE hProcess;
-} Process;
-
 /*
  * The following type identifies the various types of applications that
  * run under windows.  There is special case code for the various types.
  */
 typedef enum ApplicationTypes {
-    APPL_NONE, APPL_DOS, APPL_WIN3X, APPL_WIN32, APPL_INTERP
+    APPL_NONE, 
+    APPL_DOS, 
+    APPL_WIN3X, 
+    APPL_WIN32, 
+    APPL_INTERP
 } ApplicationType;
 
 #ifndef IMAGE_OS2_SIGNATURE
@@ -77,7 +91,7 @@ typedef struct {
     HANDLE parent;		/* Handle of main thread. */
     DWORD parentId;		/* Main thread ID. */
     HWND hWindow;		/* Notifier window in main thread. Used to
-				 * goose the Tcl notifier system indicating
+				 * goose the TCL notifier system indicating
 				 * that an event has occurred that it
 				 * needs to process. */
     HANDLE idleEvent;		/* Signals that the pipe is idle (no one
@@ -108,7 +122,7 @@ typedef struct {
 } PipeEvent;
 
 static int initialized = 0;
-static Blt_Chain pipeChain;
+static struct _Blt_Chain pipeChain;
 static CRITICAL_SECTION pipeCriticalSection;
 
 static DWORD WINAPI PipeWriterThread(void *clientData);
@@ -116,38 +130,42 @@ static DWORD WINAPI PipeReaderThread(void *clientData);
 
 static Tcl_FreeProc DestroyPipe;
 
-extern void Blt_MapPid(HANDLE hProcess, DWORD pid);
-extern HINSTANCE TclWinGetTclInstance(void);
-extern void TclWinConvertError(DWORD lastError);
+BLT_EXTERN void Blt_MapPid(HANDLE hProcess, DWORD pid);
+
+#ifndef USE_TCL_STUBS
+BLT_EXTERN HINSTANCE TclWinGetTclInstance(void);
+BLT_EXTERN void TclWinConvertError(DWORD lastError);
+#endif
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * NotifierWindowProc --
  *
- *	This procedure is called to "goose" the Tcl notifier layer to
- *	service pending events.  The notifier layer is built upon the
- *	Windows message system.  It may need to be awakened if it's
- *	blocked waiting on messages, since synthetic events (i.e.
- *	data available on a pipe) won't do that.  There may be events
- *	pending in the Tcl queue, but the Windows message system knows
- *	nothing about Tcl events and won't unblock until the next
- *	message arrives (whenever that may be).
+ *	This procedure is called to goose the TCL notifier layer when
+ *	service pending events.  The notifier is built upon the
+ *	Windows message system.  The Windows event loop may need to be
+ *	awakened if it's blocked waiting on messages.  Our psuedo
+ *	pipes (e.g.  data available on a pipe) won't do that.  While
+ *	there may be events pending in the TCL queue, Windows knows
+ *	nothing about TCL events and won't unblock until the next
+ *	Windows message arrives.
  *
- *	This callback is triggered by messages posted to the notifier
- *	window (we set up earlier) from the reader/writer pipe
- *	threads.  It's purpose is to 1) unblock Windows (posting the
- *	message does that) and 2) call Tcl_ServiceAll from the main
- *	thread.  It has to be called from the main thread, not
- *	directly from the pipe threads.
+ *	This routine sits in the main thread and is triggered by
+ *	messages posted to a notifier window (we set it up earlier)
+ *	from the reader/writer pipe threads.  It's purpose is two
+ *	fold.
+ *
+ *      1) unblock Windows (posting the message does that) and 
+ *      2) call Tcl_ServiceAll from the main thread.
  *
  * Results:
  *	A standard Windows result.
  *
  * Side effects:
- *	Services any pending Tcl events.
+ *	Services any pending TCL events.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static LRESULT CALLBACK
 NotifierWindowProc(
@@ -176,7 +194,7 @@ WakeupNotifier(HWND hWindow)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * GetNotifierWindow --
  *
@@ -188,7 +206,7 @@ WakeupNotifier(HWND hWindow)
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static HWND
@@ -222,7 +240,7 @@ GetNotifierWindow(void)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * PeekOnPipe --
  *
@@ -242,7 +260,7 @@ GetNotifierWindow(void)
  *		to EAGAIN.
  *        >0    Number of bytes of data in the buffer.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
 PeekOnPipe(
@@ -295,7 +313,7 @@ PeekOnPipe(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * PipeEventProc --
  *
@@ -312,7 +330,7 @@ PeekOnPipe(
  * Side effects:
  *	Whatever the pipe handler callback does.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
 PipeEventProc(Tcl_Event * eventPtr, int flags)
@@ -336,7 +354,7 @@ PipeEventProc(Tcl_Event * eventPtr, int flags)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * SetupHandlers --
  *
@@ -349,14 +367,14 @@ PipeEventProc(Tcl_Event * eventPtr, int flags)
  * Side effects:
  *	Adjusts the block time if needed.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-void
+static void
 SetupHandlers(ClientData clientData, int flags)
 {
-    Blt_Chain *chainPtr = (Blt_Chain *) clientData;
-    register PipeHandler *pipePtr;
-    Blt_ChainLink *linkPtr;
+    Blt_Chain chain = clientData;
+    PipeHandler *pipePtr;
+    Blt_ChainLink link;
     int dontBlock, nBytes;
     Tcl_Time blockTime;
 
@@ -372,9 +390,9 @@ SetupHandlers(ClientData clientData, int flags)
 #if QUEUE_DEBUG
     PurifyPrintf("SetupHandlers: before loop\n");
 #endif
-    for (linkPtr = Blt_ChainFirstLink(chainPtr); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	pipePtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(chain); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	pipePtr = Blt_Chain_GetValue(link);
 	if (pipePtr->flags & PIPE_DELETED) {
 	    continue;		/* Ignore pipes pending to be freed. */
 	}
@@ -396,9 +414,9 @@ SetupHandlers(ClientData clientData, int flags)
 	Tcl_SetMaxBlockTime(&blockTime);
     }
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * CheckHandlers --
  *
@@ -411,14 +429,14 @@ SetupHandlers(ClientData clientData, int flags)
  * Side effects:
  *	May queue an event.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
 CheckHandlers(ClientData clientData, int flags)
 {
-    Blt_Chain *chainPtr = (Blt_Chain *) clientData;
+    Blt_Chain chain = clientData;
     PipeHandler *pipePtr;
-    Blt_ChainLink *linkPtr;
+    Blt_ChainLink link;
     int queueEvent, nBytes;
 
     if ((flags & TCL_FILE_EVENTS) == 0) {
@@ -426,9 +444,9 @@ CheckHandlers(ClientData clientData, int flags)
     }
     /* Queue events for any ready pipes that aren't already queued.  */
 
-    for (linkPtr = Blt_ChainFirstLink(chainPtr); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	pipePtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(chain); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	pipePtr = Blt_Chain_GetValue(link);
 	if (pipePtr->flags & (PIPE_PENDING | PIPE_DELETED)) {
 	    continue;		/* If this pipe already is scheduled to
 				 * service an event, wait for it to handle
@@ -453,8 +471,7 @@ CheckHandlers(ClientData clientData, int flags)
 	    PipeEvent *eventPtr;
 
 	    pipePtr->flags |= PIPE_PENDING;
-	    eventPtr = Blt_Malloc(sizeof(PipeEvent));
-	    assert(eventPtr);
+	    eventPtr = Blt_AssertMalloc(sizeof(PipeEvent));
 	    eventPtr->header.proc = PipeEventProc;
 	    eventPtr->pipePtr = pipePtr;
 	    Tcl_QueueEvent((Tcl_Event *) eventPtr, TCL_QUEUE_TAIL);
@@ -469,9 +486,7 @@ CreatePipeHandler(HANDLE hFile, int flags)
     PipeHandler *pipePtr;
     LPTHREAD_START_ROUTINE threadProc;
 
-    pipePtr = Blt_Calloc(1, sizeof(PipeHandler));
-    assert(pipePtr);
-
+    pipePtr = Blt_AssertCalloc(1, sizeof(PipeHandler));
     pipePtr->hPipe = hFile;
     pipePtr->flags = flags;
     pipePtr->parentId = GetCurrentThreadId();
@@ -490,7 +505,7 @@ CreatePipeHandler(HANDLE hFile, int flags)
 
     if (flags & TCL_READABLE) {
 	threadProc = (LPTHREAD_START_ROUTINE) PipeReaderThread;
-	pipePtr->buffer = Blt_Calloc(1, PIPE_BUFSIZ);
+	pipePtr->buffer = Blt_AssertCalloc(1, PIPE_BUFSIZ);
 	pipePtr->size = PIPE_BUFSIZ;
     } else {
 	threadProc = (LPTHREAD_START_ROUTINE) PipeWriterThread;
@@ -543,7 +558,7 @@ DeletePipeHandler(PipeHandler * pipePtr)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * PipeInit --
  *
@@ -555,7 +570,7 @@ DeletePipeHandler(PipeHandler * pipePtr)
  * Side effects:
  *	Creates a new event source.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
 PipeInit(void)
@@ -570,11 +585,11 @@ static PipeHandler *
 GetPipeHandler(HANDLE hPipe)
 {
     PipeHandler *pipePtr;
-    Blt_ChainLink *linkPtr;
+    Blt_ChainLink link;
 
-    for (linkPtr = Blt_ChainFirstLink(&pipeChain); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	pipePtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(&pipeChain); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	pipePtr = Blt_Chain_GetValue(link);
 	if ((pipePtr->hPipe == hPipe) && !(pipePtr->flags & PIPE_DELETED)){
 	    return pipePtr;
 	}
@@ -582,8 +597,9 @@ GetPipeHandler(HANDLE hPipe)
     return NULL;
 }
 
+#ifdef notdef
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_PipeTeardown --
  *
@@ -595,12 +611,12 @@ GetPipeHandler(HANDLE hPipe)
  * Side effects:
  *	Creates a new event source.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
 Blt_PipeTeardown(void)
 {
-    Blt_ChainLink *linkPtr;
+    Blt_ChainLink link;
     PipeHandler *pipePtr;
 
     if (!initialized) {
@@ -608,9 +624,9 @@ Blt_PipeTeardown(void)
     }
     initialized = FALSE;
     EnterCriticalSection(&pipeCriticalSection);
-    for (linkPtr = Blt_ChainFirstLink(&pipeChain); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	pipePtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(&pipeChain); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	pipePtr = Blt_Chain_GetValue(link);
 	if ((pipePtr != NULL) && !(pipePtr->flags & PIPE_DELETED)) {
 	    DeletePipeHandler(pipePtr);
 	}
@@ -618,14 +634,15 @@ Blt_PipeTeardown(void)
     DestroyWindow(GetNotifierWindow());
     UnregisterClassA("PipeNotifier", TclWinGetTclInstance());
 
-    Blt_ChainReset(&pipeChain);
+    Blt_Chain_Reset(&pipeChain);
     LeaveCriticalSection(&pipeCriticalSection);
     Tcl_DeleteEventSource(SetupHandlers, CheckHandlers, &pipeChain);
     DeleteCriticalSection(&pipeCriticalSection);
 }
+#endif
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * PipeReaderThread --
  *
@@ -639,7 +656,7 @@ Blt_PipeTeardown(void)
  *	Signals the main thread when input become available.  May
  *	cause the main thread to wake up by posting a message.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static DWORD WINAPI
 PipeReaderThread(void *clientData)
@@ -712,7 +729,7 @@ PipeReaderThread(void *clientData)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * PipeWriterThread --
  *
@@ -726,14 +743,14 @@ PipeReaderThread(void *clientData)
  *	Signals the main thread when an output operation is completed.
  *	May cause the main thread to wake up by posting a message.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static DWORD WINAPI
 PipeWriterThread(void *clientData)
 {
     PipeHandler *pipePtr = (PipeHandler *) clientData;
     DWORD count, bytesLeft;
-    register char *ptr;
+    char *ptr;
 
     for (;;) {
 	if (pipePtr->flags & PIPE_DELETED) {
@@ -772,7 +789,7 @@ PipeWriterThread(void *clientData)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * TempFileName --
  *
@@ -789,7 +806,7 @@ PipeWriterThread(void *clientData)
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static int
@@ -803,9 +820,9 @@ TempFileName(char *name)	/* (out) Buffer to hold name of
     /* Bail out and use the current working directory. */
     return GetTempFileName(".", "TCL", 0, name);
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * OpenRedirectFile --
  *
@@ -817,7 +834,7 @@ TempFileName(char *name)	/* (out) Buffer to hold name of
  * Side effects:
  *	May cause a file to be created on the file system.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static HANDLE
 OpenRedirectFile(
@@ -866,7 +883,7 @@ OpenRedirectFile(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * CreateTempFile --
  *
@@ -880,7 +897,7 @@ OpenRedirectFile(
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static HANDLE
 CreateTempFile(const char *data) /* String to write into temp file, or
@@ -946,7 +963,7 @@ CreateTempFile(const char *data) /* String to write into temp file, or
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * HasConsole --
  *
@@ -959,7 +976,7 @@ CreateTempFile(const char *data) /* String to write into temp file, or
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static BOOL
 HasConsole(void)
@@ -1007,8 +1024,8 @@ GetApplicationType(const char *file, char *cmdPrefix)
     PurifyPrintf("magic number is %x\n", imageDosHeader.e_magic);
 #endif
     if (imageDosHeader.e_magic == 0x2123) {	/* #! */
-	register char *p;
-	register unsigned int i;
+	char *p;
+	unsigned int i;
 
 	offset = SetFilePointer(hFile, 2, NULL, FILE_BEGIN);
 	if (offset == (DWORD) - 1) {
@@ -1091,7 +1108,7 @@ GetApplicationType(const char *file, char *cmdPrefix)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * GetFullPath --
  *
@@ -1113,7 +1130,7 @@ GetApplicationType(const char *file, char *cmdPrefix)
  *
  * Side Effects:
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
 GetFullPath(
@@ -1128,9 +1145,10 @@ GetFullPath(
     DWORD attr;
     int length;
     char cmd[MAX_PATH + 5];
-    register char **p;
+    const char **p;
+    char *ext;
 
-    static char *dosExts[] =
+    static const char *dosExts[] =
     {
 	"", ".com", ".exe", ".bat", NULL
     };
@@ -1140,9 +1158,10 @@ GetFullPath(
     length = strlen(program);
     strcpy(cmd, program);
     cmdPrefix[0] = '\0';
+    ext = cmd + length;
     for (p = dosExts; *p != NULL; p++) {
-	cmd[length] = '\0';	/* Reset to original program name. */
-	strcat(cmd, *p);	/* Append the DOS extension to the
+	*ext = '\0';		/* Reset to original program name. */
+	strcpy(ext, *p);	/* Append the DOS extension to the
 				 * program name. */
 
 	if (!SearchPath(
@@ -1172,7 +1191,7 @@ GetFullPath(
 	 * Can't find the program.  Check if it's an internal shell command
 	 * like "copy" or "dir" and let cmd.exe deal with it.
 	 */
-	static char *shellCmds[] =
+	static const char *shellCmds[] =
 	{
 	    "copy", "del", "dir", "echo", "edit", "erase", "label",
 	    "md", "rd", "ren", "start", "time", "type", "ver", "vol", NULL
@@ -1203,11 +1222,11 @@ GetFullPath(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ConcatCmdArgs --
  *
- *	Concatonates command line arguments parsed from Tcl into a
+ *	Concatonates command line arguments parsed from TCL into a
  *	single string.  If an argument contain spaces, it is grouped
  *	with surrounding double quotes. Must also escape any quotes we
  *	find.
@@ -1216,20 +1235,21 @@ GetFullPath(
  *	Returns a malloc-ed string containing the concatonated command
  *	line.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static char *
 ConcatCmdArgs(
+    Tcl_Interp *interp,
     int argc, 
     char **argv, 
     Tcl_DString *resultPtr)
 {
     BOOL needQuote;
-    register const char *s;
-    register char *cp;
+    const char *s;
+    char *cp;
     char *string;		/* Will contain the new command line */
-    register int count;
-    register int i;
+    int count;
+    int i;
 
     /*
      * Pass 1.	Compute how much space we need for an array to hold the entire
@@ -1243,7 +1263,7 @@ ConcatCmdArgs(
 	}
 	for (s = argv[i]; *s != '\0'; s++) {
 	    if (*s == '"') {
-		register const char *bp;
+		const char *bp;
 
 		count++;	/* +1 Backslash needed to escape quote */
 		for (bp = s - 1; (*bp == '\\') && (bp >= argv[i]); bp--) {
@@ -1260,9 +1280,7 @@ ConcatCmdArgs(
 	count++;		/* +1 Space separating arguments */
     }
 
-    string = Blt_Malloc(count + 1);
-    assert(string);
-
+    string = Blt_AssertMalloc(count + 1);
     /*
      * Pass 2.	Copy the arguments, quoting arguments with embedded spaces and
      *		escaping all other quotes in the string.
@@ -1284,7 +1302,7 @@ ConcatCmdArgs(
 	}
 	for (s = argv[i]; *s; s++) {
 	    if (*s == '"') {
-		register const char *bp;
+		const char *bp;
 
 		for (bp = s - 1; (*bp == '\\') && (bp >= argv[i]); bp--) {
 		    *cp++ = '\\';
@@ -1300,13 +1318,27 @@ ConcatCmdArgs(
     }
     *cp = '\0';
     assert((cp - string) == count);
+
+#if (_TCL_VERSION >= _VERSION(8,1,0)) 
+    {
+	Tcl_DString dString;
+	Tcl_Encoding encoding;
+
+	/* Convert to external encoding */
+	encoding = Tcl_GetEncoding(interp, NULL);
+	Tcl_UtfToExternalDString(encoding, string, count, &dString);
+	Tcl_DStringAppend(resultPtr, Tcl_DStringValue(&dString), -1);
+	Tcl_DStringFree(&dString);
+    }
+#else
     Tcl_DStringAppend(resultPtr, string, count);
+#endif 
     Blt_Free(string);
     return Tcl_DStringValue(resultPtr);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * StartProcess --
  *
@@ -1327,7 +1359,7 @@ ConcatCmdArgs(
  * Side effects:
  *	A process is created.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
 StartProcess(
@@ -1550,7 +1582,7 @@ StartProcess(
     }
     argv[0] = progPath;
 
-    command = ConcatCmdArgs(argc, argv, &dString);
+    command = ConcatCmdArgs(interp, argc, argv, &dString);
 #if KILL_DEBUG
     PurifyPrintf("command is %s\n", command);
 #endif
@@ -1633,7 +1665,7 @@ StartProcess(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * FileForRedirect --
  *
@@ -1650,7 +1682,7 @@ StartProcess(
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static HANDLE
 FileForRedirect(
@@ -1746,9 +1778,9 @@ FileForRedirect(
 	"\" as last word in command", (char *)NULL);
     return INVALID_HANDLE_VALUE;
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_CreatePipeline --
  *
@@ -1773,16 +1805,16 @@ FileForRedirect(
  * Side effects:
  *	Processes and pipes are created.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
 Blt_CreatePipeline(
     Tcl_Interp *interp,		/* Interpreter to use for error reporting. */
-    int argc,			/* Number of entries in argv. */
-    char **argv,		/* Array of strings describing commands in
+    int objc,			/* Number of entries in objv. */
+    Tcl_Obj *const *objv,	/* Array of strings describing commands in
 				 * pipeline plus I/O redirection with <,
-				 * <<,  >, etc.  Argv[argc] must be NULL. */
-    Process **procArrPtr,	/* *procArrPtr gets filled in with
+				 * <<,  >, etc.  Objv[objc] must be NULL. */
+    ProcessId **pidsPtr,	/* *pidsPtr gets filled in with
 				 * address of array of pids for processes
 				 * in pipeline (first pid is first process
 				 * in pipeline). */
@@ -1810,12 +1842,12 @@ Blt_CreatePipeline(
 				 * then the file will still be created
 				 * but it will never get any data. */
 {
-    Process *procArr = NULL;	/* Points to malloc-ed array holding all
+    ProcessId *pids = NULL;	/* Points to malloc-ed array holding all
 				 * the handles of child processes. */
     int nPids;			/* Actual number of processes that exist
-				 * at *procArr right now. */
+				 * at *pids right now. */
     int cmdCount;		/* Count of number of distinct commands
-				 * found in argc/argv. */
+				 * found in objc/argv. */
     char *inputLiteral = NULL;	/* If non-null, then this points to a
 				 * string containing input data (specified
 				 * via <<) to be piped to the first process
@@ -1844,6 +1876,7 @@ Blt_CreatePipeline(
     Tcl_DString dString;
     HANDLE hPipe;
     HANDLE thisInput, thisOutput, thisError;
+    char **argv;
 
     if (inPipePtr != NULL) {
 	*inPipePtr = -1;
@@ -1875,9 +1908,16 @@ Blt_CreatePipeline(
      * entire pipe may appear at the very end of the argument list.
      */
 
+    /* Convert all the Tcl_Objs to strings. */
+    argv = Blt_AssertMalloc((objc + 1) *  sizeof(char *));
+    for (i = 0; i < objc; i++) {
+	argv[i] = Tcl_GetString(objv[i]);
+    }
+    argv[i] = NULL;
+
     lastBar = -1;
     cmdCount = 1;
-    for (i = 0; i < argc; i++) {
+    for (i = 0; i < objc; i++) {
 	skip = 0;
 	p = argv[i];
 	switch (*p++) {
@@ -1886,7 +1926,7 @@ Blt_CreatePipeline(
 		p++;
 	    }
 	    if (*p == '\0') {
-		if ((i == (lastBar + 1)) || (i == (argc - 1))) {
+		if ((i == (lastBar + 1)) || (i == (objc - 1))) {
 		    Tcl_AppendResult(interp, 
 				     "illegal use of | or |& in command",
 				     (char *)NULL);
@@ -1982,10 +2022,10 @@ Blt_CreatePipeline(
 	}
 
 	if (skip != 0) {
-	    for (j = i + skip; j < argc; j++) {
+	    for (j = i + skip; j < objc; j++) {
 		argv[j - skip] = argv[j];
 	    }
-	    argc -= skip;
+	    objc -= skip;
 	    i -= 1;
 	}
     }
@@ -2065,25 +2105,23 @@ Blt_CreatePipeline(
     }
 
     /*
-     * Scan through the argc array, creating a process for each
+     * Scan through the objc array, creating a process for each
      * group of arguments between the "|" characters.
      */
 
     Tcl_ReapDetachedProcs();
-    procArr = Blt_Malloc((unsigned)((cmdCount + 1) * sizeof(Process)));
-    assert(procArr);
+    pids = Blt_AssertMalloc((unsigned)((cmdCount + 1) * sizeof(ProcessId)));
     thisInput = hStdin;
-    if (argc == 0) {
+    if (objc == 0) {
 	Tcl_AppendResult(interp, "invalid null command", (char *)NULL);
 	goto error;
     }
-#ifdef notdef
+
     lastArg = 0;		/* Suppress compiler warning */
-#endif
-    for (i = 0; i < argc; i = lastArg + 1) {
+    for (i = 0; i < objc; i = lastArg + 1) {
 	BOOL joinThisError;
 	HANDLE hProcess;
-
+	DWORD dw_pid;
 	/* Convert the program name into native form. */
 	argv[i] = Tcl_TranslateFileName(interp, argv[i], &dString);
 	if (argv[i] == NULL) {
@@ -2091,7 +2129,7 @@ Blt_CreatePipeline(
 	}
 	/* Find the end of the current segment of the pipeline. */
 	joinThisError = FALSE;
-	for (lastArg = i; lastArg < argc; lastArg++) {
+	for (lastArg = i; lastArg < objc; lastArg++) {
 	    if (argv[lastArg][0] == '|') {
 		if (argv[lastArg][1] == '\0') {
 		    break;
@@ -2113,7 +2151,7 @@ Blt_CreatePipeline(
 	 * Otherwise create an intermediate pipe.  hPipe will become the
 	 * input for the next segment of the pipe.
 	 */
-	if (lastArg == argc) {
+	if (lastArg == objc) {
 	    thisOutput = hStdout;
 	} else {
 	    if (CreatePipe(&hPipe, &thisOutput, NULL, 0) == 0) {
@@ -2130,13 +2168,14 @@ Blt_CreatePipeline(
 	}
 
 	if (StartProcess(interp, lastArg - i, argv + i, thisInput, thisOutput,
-		thisError, &hProcess, (DWORD *)&pid) != TCL_OK) {
+		thisError, &hProcess, &dw_pid) != TCL_OK) {
 	    goto error;
 	}
+	pid = (int)dw_pid;
 	Tcl_DStringFree(&dString);
 
-	procArr[nPids].hProcess = hProcess;
-	procArr[nPids].pid = pid;
+	pids[nPids].hProcess = hProcess;
+	pids[nPids].pid = pid;
 	nPids++;
 
 	/*
@@ -2156,7 +2195,7 @@ Blt_CreatePipeline(
 	thisOutput = INVALID_HANDLE_VALUE;
     }
 
-    *procArrPtr = (Process *)procArr;
+    *pidsPtr = pids;
 
     if (inPipePtr != NULL) {
 	*inPipePtr = (int)hInPipe;
@@ -2181,6 +2220,9 @@ Blt_CreatePipeline(
     }
     if (closeStderr) {
 	CloseHandle(hStderr);
+    }
+    if (argv != NULL) {
+	Blt_Free(argv);
     }
     return nPids;
 
@@ -2208,22 +2250,22 @@ Blt_CreatePipeline(
     if (hErrPipe != INVALID_HANDLE_VALUE) {
 	CloseHandle(hErrPipe);
     }
-    if (procArr != NULL) {
+    if (pids != NULL) {
 	for (i = 0; i < nPids; i++) {
-	    if (procArr[i].hProcess != INVALID_HANDLE_VALUE) {
+	    if (pids[i].hProcess != INVALID_HANDLE_VALUE) {
 		/* It's Ok to use Tcl_DetachPids, since for WIN32 it's really
 		 * using process handles, not process ids. */
-		Tcl_DetachPids(1, (Tcl_Pid *)&(procArr[i].pid));
+		Tcl_DetachPids(1, (Tcl_Pid *)&pids[i].pid);
 	    }
 	}
-	Blt_Free(procArr);
+	Blt_Free(pids);
     }
     nPids = -1;
     goto cleanup;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_CreateFileHandler --
  *
@@ -2237,7 +2279,7 @@ Blt_CreatePipeline(
  *	Registers procedure and data to call back when data
  *	is available on the pipe.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
 Blt_CreateFileHandler(
@@ -2260,12 +2302,12 @@ Blt_CreateFileHandler(
 
     /* Add the handler to the list of managed pipes. */
     EnterCriticalSection(&pipeCriticalSection);
-    Blt_ChainAppend(&pipeChain, pipePtr);
+    Blt_Chain_Append(&pipeChain, pipePtr);
     LeaveCriticalSection(&pipeCriticalSection);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_DeleteFileHandler --
  *
@@ -2275,13 +2317,13 @@ Blt_CreateFileHandler(
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
 Blt_DeleteFileHandler(int fd)	/* Descriptor or handle of file */
 {
     PipeHandler *pipePtr;
-    Blt_ChainLink *linkPtr;
+    Blt_ChainLink link;
     HANDLE hPipe;
 
     if (!initialized) {
@@ -2293,11 +2335,11 @@ Blt_DeleteFileHandler(int fd)	/* Descriptor or handle of file */
     hPipe = (HANDLE) fd;
     EnterCriticalSection(&pipeCriticalSection);
 
-    for (linkPtr = Blt_ChainFirstLink(&pipeChain); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	pipePtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(&pipeChain); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	pipePtr = Blt_Chain_GetValue(link);
 	if ((pipePtr->hPipe == hPipe) && !(pipePtr->flags & PIPE_DELETED)) {
-	    Blt_ChainDeleteLink(&pipeChain, linkPtr);
+	    Blt_Chain_DeleteLink(&pipeChain, link);
 	    DeletePipeHandler(pipePtr);
 	    break;
 	}
@@ -2309,7 +2351,7 @@ Blt_DeleteFileHandler(int fd)	/* Descriptor or handle of file */
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_AsyncRead --
  *
@@ -2318,7 +2360,7 @@ Blt_DeleteFileHandler(int fd)	/* Descriptor or handle of file */
  * Results:
  *	Returns the number of bytes read.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
 Blt_AsyncRead(
@@ -2326,7 +2368,7 @@ Blt_AsyncRead(
     char *buffer,
     unsigned int size)
 {
-    register PipeHandler *pipePtr;
+    PipeHandler *pipePtr;
     unsigned int count;
     int nBytes;
 
@@ -2385,7 +2427,7 @@ Blt_AsyncRead(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_AsyncWrite --
  *
@@ -2394,15 +2436,15 @@ Blt_AsyncRead(
  * Results:
  *	Returns the number of bytes written.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
 Blt_AsyncWrite(
     int f,
-    char *buffer,
+    const char *buffer,
     unsigned int size)
 {
-    register PipeHandler *pipePtr;
+    PipeHandler *pipePtr;
 
     pipePtr = GetPipeHandler((HANDLE) f);
     if ((pipePtr == NULL) || (pipePtr->flags & PIPE_DELETED)) {
@@ -2427,8 +2469,7 @@ Blt_AsyncWrite(
     if (size > pipePtr->size) {
 	char *ptr;
 
-	ptr = Blt_Malloc(size);
-	assert(ptr);
+	ptr = Blt_AssertMalloc(size);
 	Blt_Free(pipePtr->buffer);
 	pipePtr->buffer = ptr;
     }

@@ -20,24 +20,22 @@ package require BLT
 #    table . .g -resize both
 #
 # --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
+
 #source scripts/demo.tcl
 
 option add *takeFocus 0
 
 set file1 ../demos/images/chalk.gif
+#set file1 /home/gah/titanium.jpg
 set file2 ../demos/images/tan_paper.gif
-image create photo texture1 -file $file1
+image create picture texture1 -file $file1
 image create photo texture2 -file $file2
 option add *Frame.Tile texture1
 option add *Toplevel.Tile texture1
 option add *Label.Tile texture1
-option add *Scrollbar.tile texture1
+#option add *Scrollbar.tile texture1
 #option add *Scrollbar.activeTile texture2
-option add *Button.tile texture1
+#option add *Button.tile texture1
 #option add *Button.activeTile texture2
 option add *HighlightThickness 0
 option add *Entry.highlightThickness 2
@@ -60,7 +58,7 @@ option add *Entry.highlightThickness 2
 #
 
 #debug 50
-bitmap define attlogo { { 60 30 } {
+blt::bitmap define attlogo { { 60 30 } {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -83,7 +81,7 @@ bitmap define attlogo { { 60 30 } {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }
 }
 
-bitmap define globe_00 { { 32 32 } {
+blt::bitmap define globe_00 { { 32 32 } {
     00 40 02 00 00 1c 3c 00 00 01 fe 00 80 80 fe 03 60 00 ff 07 10 c0 f1 0f
     00 80 c0 1f 00 c0 07 3f 00 c0 ff 3f 00 f0 ff 4f 02 f0 ff 5d 00 f0 ff 1b
     00 f0 ff 8f 02 f0 ff 0f 06 e0 fc 0f 0e 00 f8 0f 0f 00 f8 07 3f 00 f8 03
@@ -92,7 +90,7 @@ bitmap define globe_00 { { 32 32 } {
     00 00 00 00 00 00 1f 00 }
 }
 
-bitmap define globe_01 { { 32 32 } {
+blt::bitmap define globe_01 { { 32 32 } {
     00 c0 00 00 00 34 38 00 00 02 e8 00 80 01 fa 03 e0 00 fc 07 30 00 e6 0f
     10 00 86 1f 08 00 3e 3c 04 00 ff 3f 04 80 ff 5f 02 80 ff 3f 00 80 ff 2f
     00 80 ff 3f 0c 00 ff 3f 1c 00 ee 3f 3c 00 c0 3f 7e 00 c0 1f fe 01 80 1f
@@ -101,7 +99,7 @@ bitmap define globe_01 { { 32 32 } {
     00 00 00 00 00 00 1e 00 }
 }
 
-bitmap define globe_02 { { 32 32 } {
+blt::bitmap define globe_02 { { 32 32 } {
     00 c0 01 00 00 60 30 00 00 04 f0 00 80 07 e0 03 e0 01 f0 07 f0 00 38 0f
     30 00 10 1e 18 00 f0 30 04 00 f8 3f 10 00 f8 7f 12 00 fc 7f 02 00 fc 7f
     04 00 fc 7f 74 00 f8 7f f0 00 70 7f f8 01 00 7e f8 03 00 7e f8 0f 00 7c
@@ -110,7 +108,7 @@ bitmap define globe_02 { { 32 32 } {
     00 00 00 00 00 10 1c 00 }
 }
 
-bitmap define globe_03 { { 32 32 } {
+blt::bitmap define globe_03 { { 32 32 } {
     00 c0 01 00 00 dc 20 00 00 09 c0 00 80 1f a0 03 e0 07 c0 07 f0 01 c0 0c
     f8 00 40 18 78 00 c0 23 08 00 c0 3f 04 00 e0 7f 54 00 e0 7f 0c 00 c0 7f
     10 00 c0 ff d0 01 c0 ff c0 03 80 fb e0 0f 00 f0 e0 1f 00 f0 e0 ff 00 f0
@@ -119,7 +117,7 @@ bitmap define globe_03 { { 32 32 } {
     00 00 00 00 00 20 18 00 }
 }
 
-bitmap define globe_04 { { 32 32 } {
+blt::bitmap define globe_04 { { 32 32 } {
     00 c0 03 00 00 7c 03 00 00 13 00 00 80 7f c0 03 c0 1f 00 07 e0 0f 00 0d
     f0 03 00 10 f0 01 00 0e 38 01 00 3e 10 00 00 7f 50 00 00 7f 30 00 00 7f
     40 00 00 ff 00 1e 00 fe 00 3f 00 ec 00 7f 00 c0 00 ff 00 c0 00 ff 07 c0
@@ -128,7 +126,7 @@ bitmap define globe_04 { { 32 32 } {
     00 00 00 00 00 40 10 00 }
 }
 
-bitmap define globe_05 { { 32 32 } {
+blt::bitmap define globe_05 { { 32 32 } {
     00 c0 03 00 00 bc 06 00 00 cf 00 00 80 ff 01 02 c0 7f 00 06 c0 3f 00 0e
     e0 1f 00 14 e0 0f 00 18 e0 00 00 38 60 00 00 78 40 08 00 78 c0 01 00 78
     00 02 00 f8 00 f0 00 f0 00 f0 01 b0 00 f8 07 80 00 f8 0f 80 00 f8 3f 00
@@ -137,7 +135,7 @@ bitmap define globe_05 { { 32 32 } {
     00 00 00 00 00 80 10 00 }
 }
 
-bitmap define globe_06 { { 32 32 } {
+blt::bitmap define globe_06 { { 32 32 } {
     00 80 07 00 00 7c 0d 00 00 9f 03 00 00 ff 07 02 00 ff 03 04 80 ff 00 08
     c0 7f 00 00 80 3f 00 30 80 07 00 20 00 03 00 60 00 03 00 60 00 0e 00 60
     00 10 00 e0 00 80 07 c0 00 80 0f c0 00 80 3f 00 00 c0 7f 00 00 c0 ff 01
@@ -146,7 +144,7 @@ bitmap define globe_06 { { 32 32 } {
     00 00 00 00 00 00 01 00 }
 }
 
-bitmap define globe_07 { { 32 32 } {
+blt::bitmap define globe_07 { { 32 32 } {
     00 80 07 00 00 fc 1a 00 00 7d 02 00 00 fe 1f 00 00 fe 0f 00 00 fe 07 00
     00 ff 03 00 00 fe 01 20 00 1c 01 00 00 1c 00 40 00 18 00 40 00 70 00 00
     00 80 00 80 00 00 39 80 00 00 7c 00 00 00 fc 01 00 00 fe 03 00 00 fe 0f
@@ -155,7 +153,7 @@ bitmap define globe_07 { { 32 32 } {
     00 00 00 00 00 00 02 00 }
 }
 
-bitmap define globe_08 { { 32 32 } {
+blt::bitmap define globe_08 { { 32 32 } {
     00 00 07 00 00 fc 25 00 00 f8 19 00 00 f8 7f 00 00 f8 3f 00 00 f8 1f 00
     00 f8 1f 00 00 f8 0f 00 00 f0 08 00 00 f0 00 00 00 c0 04 00 00 80 03 00
     00 00 0c 00 00 00 c8 01 00 00 e0 03 00 00 e0 0f 00 00 e0 0f 00 00 f0 3f
@@ -164,7 +162,7 @@ bitmap define globe_08 { { 32 32 } {
     00 00 00 00 00 00 04 00 }
 }
 
-bitmap define globe_09 { { 32 32 } {
+blt::bitmap define globe_09 { { 32 32 } {
     00 00 03 00 00 fc 27 00 00 f0 13 00 00 e0 ff 00 00 e0 ff 01 00 e0 7f 00
     00 e0 7f 00 00 c0 7f 00 00 80 47 00 00 80 07 00 00 00 26 00 00 00 1c 00
     00 00 60 00 00 00 40 0e 00 00 00 1f 00 00 00 3f 00 00 00 3f 00 00 00 7f
@@ -173,7 +171,7 @@ bitmap define globe_09 { { 32 32 } {
     00 00 00 00 00 00 08 00 }
 }
 
-bitmap define globe_10 { { 32 32 } {
+blt::bitmap define globe_10 { { 32 32 } {
     00 00 06 00 00 f4 2f 00 00 c8 4f 00 00 80 ff 01 00 80 ff 01 00 80 ff 01
     00 00 ff 01 00 00 fe 01 00 00 3c 00 00 00 3c 00 00 00 30 04 00 00 e0 00
     00 00 00 01 00 00 00 3a 00 00 00 38 00 00 00 78 00 00 00 f8 00 00 00 fc
@@ -182,7 +180,7 @@ bitmap define globe_10 { { 32 32 } {
     00 00 00 00 00 00 10 00 }
 }
 
-bitmap define globe_11 { { 32 32 } {
+blt::bitmap define globe_11 { { 32 32 } {
     00 00 06 00 00 ec 1f 00 00 91 9f 00 00 00 fe 03 00 00 fc 07 00 00 fc 07
     00 00 fc 07 00 00 f0 07 00 00 f0 01 00 00 e0 00 00 00 80 05 00 00 00 07
     00 00 00 08 00 00 00 60 00 00 00 e0 00 00 00 e0 00 00 00 e0 00 00 00 e0
@@ -191,7 +189,7 @@ bitmap define globe_11 { { 32 32 } {
     00 00 00 00 00 00 10 00 }
 }
 
-bitmap define globe_12 { { 32 32 } {
+blt::bitmap define globe_12 { { 32 32 } {
     00 00 04 00 00 dc 3f 00 00 42 7e 00 00 00 f8 03 20 00 f0 07 10 00 f0 0f
     00 00 e0 0f 00 00 c0 0f 00 00 00 07 00 00 00 06 00 00 00 14 00 00 00 18
     00 00 00 20 00 00 00 80 00 00 00 80 00 00 00 80 00 00 00 80 01 00 00 80
@@ -200,7 +198,7 @@ bitmap define globe_12 { { 32 32 } {
     00 00 00 00 00 00 00 00 }
 }
 
-bitmap define globe_13 { { 32 32 } {
+blt::bitmap define globe_13 { { 32 32 } {
     00 00 04 00 00 bc 3f 00 00 01 79 00 80 00 e0 03 60 00 c0 07 10 00 80 0f
     00 00 80 1f 08 00 00 1e 00 00 00 1c 00 00 00 58 00 00 00 10 00 00 00 20
     00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 01 00 00 00 06 00 00 00
@@ -209,7 +207,7 @@ bitmap define globe_13 { { 32 32 } {
     00 00 00 00 00 10 00 00 }
 }
 
-bitmap define globe_14 { { 32 32 } {
+blt::bitmap define globe_14 { { 32 32 } {
     00 00 00 00 00 fc 3f 00 00 03 e6 00 80 01 c0 03 60 00 00 07 30 00 00 0f
     00 00 00 1e 00 00 00 38 04 00 00 30 00 00 00 30 02 00 00 00 00 00 00 40
     00 00 00 80 00 00 00 00 02 00 00 00 01 00 00 00 01 00 00 00 18 00 00 00
@@ -218,7 +216,7 @@ bitmap define globe_14 { { 32 32 } {
     00 00 00 00 00 30 00 00 }
 }
 
-bitmap define globe_15 { { 32 32 } {
+blt::bitmap define globe_15 { { 32 32 } {
     00 00 00 00 00 fc 3d 00 00 27 c8 00 80 13 00 03 e0 01 00 06 70 00 00 0c
     10 00 00 18 18 00 00 30 0c 00 00 20 0c 00 00 40 02 00 00 00 02 00 00 00
     00 00 00 00 00 00 00 00 01 00 00 00 03 00 00 00 13 00 00 00 64 00 00 00
@@ -228,7 +226,7 @@ bitmap define globe_15 { { 32 32 } {
   }
 }
 
-bitmap define globe_16 { { 32 32 } {
+blt::bitmap define globe_16 { { 32 32 } {
     00 00 00 00 00 fc 3b 00 00 9f a0 00 80 4f 00 02 e0 0f 00 04 f0 01 00 08
     70 00 00 10 38 00 00 20 3c 00 00 00 1c 00 00 00 06 00 00 00 04 00 00 00
     04 00 00 00 00 00 00 00 20 00 00 00 0a 00 00 00 0a 00 00 00 00 03 00 00
@@ -237,7 +235,7 @@ bitmap define globe_16 { { 32 32 } {
     00 00 00 00 00 f0 00 00 }
 }
 
-bitmap define globe_17 { { 32 32 } {
+blt::bitmap define globe_17 { { 32 32 } {
     00 00 00 00 00 fc 37 00 00 3f 42 00 80 3f 01 02 e0 1f 00 00 f0 07 00 00
     f0 11 00 00 f8 04 00 00 fc 00 00 00 7c 00 00 00 1a 00 00 00 9a 00 00 00
     18 00 00 00 00 00 00 00 00 00 00 00 20 00 00 00 28 00 00 00 08 18 00 00
@@ -247,7 +245,7 @@ bitmap define globe_17 { { 32 32 } {
   }
 }
 
-bitmap define globe_18 { { 32 32 } {
+blt::bitmap define globe_18 { { 32 32 } {
     00 00 00 00 00 fc 2f 00 00 ff 84 00 80 ff 04 00 e0 7f 00 00 f0 9f 00 00
     f0 97 00 00 f8 27 00 00 fc 07 00 00 fc 03 00 00 6c 00 00 00 64 00 00 00
     60 04 00 00 40 00 00 00 20 00 00 00 20 01 00 00 a0 01 00 00 00 c0 05 00
@@ -257,7 +255,7 @@ bitmap define globe_18 { { 32 32 } {
   }
 }
 
-bitmap define globe_19 { { 32 32 } {
+blt::bitmap define globe_19 { { 32 32 } {
     00 40 00 00 00 fc 3f 00 00 ff 13 00 80 ff 13 00 e0 ff 03 00 f0 ff 00 00
     f0 9f 00 00 f8 3f 00 00 fc 3f 00 00 f8 1f 00 00 ba 07 00 00 98 23 00 00
     08 03 00 00 08 00 00 00 00 00 00 00 80 09 00 00 00 0d 01 00 00 21 0e 00
@@ -267,7 +265,7 @@ bitmap define globe_19 { { 32 32 } {
   }
 }
 
-bitmap define globe_20 { { 32 32 } {
+blt::bitmap define globe_20 { { 32 32 } {
     00 00 00 00 00 fc 3f 00 00 ff 07 00 80 ff 0f 00 e0 ff 0f 00 f0 ff 13 00
     f0 ff 10 00 f8 ff 00 00 fc ff 01 00 f4 ff 00 00 e6 1e 00 00 62 1c 01 00
     20 18 00 00 20 10 00 00 01 80 00 00 01 cc 00 00 01 68 08 00 00 00 60 00
@@ -277,7 +275,7 @@ bitmap define globe_20 { { 32 32 } {
   }
 }
 
-bitmap define globe_21 { { 32 32 } {
+blt::bitmap define globe_21 { { 32 32 } {
     00 80 00 00 00 fc 3f 00 00 ff 1f 00 80 ff bf 00 e0 ff 3f 00 f0 ff 1f 00
     f8 ff 17 00 f8 ff 27 00 ec ff 0f 00 8c ff 07 00 9e f7 00 00 0e e3 00 00
     06 c1 00 00 06 81 10 00 03 40 04 00 03 20 06 00 03 40 06 00 01 80 00 03
@@ -286,7 +284,7 @@ bitmap define globe_21 { { 32 32 } {
     00 00 00 00 00 f0 1f 00 }
 }
 
-bitmap define globe_22 { { 32 32 } {
+blt::bitmap define globe_22 { { 32 32 } {
     00 00 01 00 00 fc 3f 00 00 ff 3f 00 80 ff 7f 00 e0 ff ff 00 f0 ff 7f 00
     f0 ff 1f 00 e0 ff 3f 00 fc ff 3f 00 34 fe 3f 00 76 bc 07 00 36 1c 07 00
     0e 08 0e 00 1e 08 80 00 0f 00 02 00 0f 00 20 00 07 00 36 00 07 00 04 08
@@ -295,7 +293,7 @@ bitmap define globe_22 { { 32 32 } {
     00 00 00 00 00 f0 1f 00 }
 }
 
-bitmap define globe_23 { { 32 32 } {
+blt::bitmap define globe_23 { { 32 32 } {
     00 00 00 00 00 fc 3f 00 00 ff 7f 00 80 ff ff 01 e0 ff ff 01 e0 ff ff 01
     e8 ff ff 00 c0 ff ff 00 fc fe ff 01 dc f2 ff 01 de e3 3d 00 de e1 38 02
     7e 40 70 00 fe 40 00 04 7f 00 00 00 3e 00 30 01 3e 00 a0 01 1e 00 20 20
@@ -304,7 +302,7 @@ bitmap define globe_23 { { 32 32 } {
     00 00 00 00 00 f0 1f 00 }
 }
 
-bitmap define globe_24 { { 32 32 } {
+blt::bitmap define globe_24 { { 32 32 } {
     00 00 02 00 00 fc 3f 00 00 fe ff 00 80 ff ff 01 c0 ff ff 03 80 ff ff 03
     e0 ff ff 03 18 ff ff 03 fc ff ff 07 7c 87 ff 07 fe 1f ef 01 fe 0e c6 01
     fe 01 82 03 fe 03 02 00 ff 03 00 08 fc 01 80 09 fc 00 00 0d fc 00 00 00
@@ -313,7 +311,7 @@ bitmap define globe_24 { { 32 32 } {
     00 00 00 00 00 f0 1f 00 }
 }
 
-bitmap define globe_25 { { 32 32 } {
+blt::bitmap define globe_25 { { 32 32 } {
     00 00 00 00 00 f0 3f 00 00 fc ff 00 80 ff ff 03 80 ff ff 07 a0 ff ff 07
     10 ff ff 07 30 f8 ff 0f f8 df ff 1f fc 3b fc 1f fc fb 78 07 fe 77 30 0e
     fe 1f 30 0c fe 3f 00 48 fe 1f 00 00 f0 0f 00 24 f0 07 00 a0 f0 07 00 08
@@ -322,7 +320,7 @@ bitmap define globe_25 { { 32 32 } {
     00 00 00 00 00 f0 1f 00 }
 }
 
-bitmap define globe_26 { { 32 32 } {
+blt::bitmap define globe_26 { { 32 32 } {
     00 40 00 00 00 e0 3f 00 00 e8 ff 00 00 fc ff 03 00 ff ff 07 c0 fe ff 0f
     40 f0 ff 1f e0 e0 ff 1f f0 ff fe 3f f8 df e1 3f f8 df c7 1b fc bf 83 19
     fc ff 80 30 fc ff 01 20 f8 ff 00 00 c0 ff 00 00 c0 7f 00 e0 80 3f 00 20
@@ -331,7 +329,7 @@ bitmap define globe_26 { { 32 32 } {
     00 00 00 00 00 f0 1f 00 }
 }
 
-bitmap define globe_27 { { 32 32 } {
+blt::bitmap define globe_27 { { 32 32 } {
     00 80 00 00 00 c4 3f 00 00 f0 ff 00 00 fe ff 03 00 fe ff 07 00 eb ff 0f
     80 c9 ff 1f 80 07 ff 3f c0 ff f7 3f e0 ff 0e 7f f0 ff 3e 6e f0 ff 1d 64
     f0 ff 07 44 f0 ff 0f 00 60 ff 0f 00 00 fe 07 40 00 fe 03 00 01 fc 01 00
@@ -340,7 +338,7 @@ bitmap define globe_27 { { 32 32 } {
     00 00 00 00 00 e0 1f 00 }
 }
 
-bitmap define globe_28 { { 32 32 } {
+blt::bitmap define globe_28 { { 32 32 } {
     00 00 00 00 00 88 3f 00 00 40 ff 00 00 e8 ff 03 00 f8 ff 07 00 8c ff 0f
     00 06 fe 1f 00 1e f8 3f 00 ff bf 3f 80 ff 77 7c 80 ff ff 79 c0 ff ef 10
     c0 ff 3f 90 c0 ff 7f 00 81 fb 7f 00 01 f0 3f 00 01 f0 1f 00 03 e0 1f 00
@@ -349,7 +347,7 @@ bitmap define globe_28 { { 32 32 } {
     00 00 00 00 00 c0 1f 00 }
 }
 
-bitmap define globe_29 { { 32 32 } {
+blt::bitmap define globe_29 { { 32 32 } {
     00 40 01 00 00 0c 3f 00 00 80 fd 00 00 a0 ff 03 20 e0 ff 07 00 30 fd 0f
     00 10 f4 1f 00 f8 c0 3f 00 f8 ff 3f 00 fc bf 73 00 fe ff 67 00 fe 7f 47
     00 fe ff 41 00 fe ff 03 01 dc ff 03 03 00 ff 01 07 80 ff 00 0f 00 ff 00
@@ -427,13 +425,15 @@ if { ($visual == "staticgray") || ($visual == "grayscale") } {
 #fff4de
 	SetOption normalBgColor grey90
 	SetOption normalFgColor #da5f5f
-	SetOption normalFgColor navyblue
+	SetOption normalFgColor black
+#navyblue
 	SetOption focusHighlightColor #fffdf8 
     }
     option add *Entry.background $pq_dict(normalBgColor) widgetDefault
     option add *Text.background $pq_dict(normalBgColor) widgetDefault
     option add *Label.foreground $pq_dict(normalFgColor) widgetDefault
     option add *Button.foreground $pq_dict(normalFgColor) widgetDefault
+    option add *Scrollbar.background $pq_dict(normalBgColor) 
     set pq_dict(visual) color
 }    
 
@@ -441,8 +441,8 @@ SetOption statusFont 	 -*-Helvetica-Medium-R-*-*-14-*-*-*-*-*-*-*
 SetOption titleFont	 -*-Helvetica-Bold-R-*-*-14-*-*-*-*-*-*-*
 SetOption headingFont 	 -*-Helvetica-Medium-R-*-*-14-*-*-*-*-*-*-*
 SetOption subheadingFont -*-Helvetica-Medium-R-*-*-12-*-*-*-*-*-*-* 
-SetOption entryFont 	 -*-Courier-Medium-R-*-*-12-*-*-*-*-*-*-*
-SetOption textFont 	 -*-Courier-Bold-R-*-*-12-*-*-*-*-*-*-*
+SetOption entryFont 	 -*-Courier-Medium-R-*-*-18-*-*-*-*-*-*-*
+SetOption textFont 	 -*-Courier-Bold-R-*-*-18-*-*-*-*-*-*-*
 #SetOption entryFont 	 fixed
 #SetOption textFont 	 fixed
 
@@ -456,7 +456,7 @@ option add *Text.width 		35		    widgetDefault
 option add *Text.height 	10 		    widgetDefault
 option add *Scrollbar.relief 	flat		    widgetDefault
 option add *Scrollbar.minSlider	10		    widgetDefault
-option add *Button.padY 6
+option add *Button.padY 4
 option add *Text.relief 	sunken		    widgetDefault
 option add *Text.borderWidth 	2 		    widgetDefault
 
@@ -616,13 +616,13 @@ proc PostQuery {} {
 proc ClearFields {} {
     global pq_dict 
 
-    busy hold . ; update
+    blt::busy hold . ; update
     foreach name $pq_dict(entryNames) {
 	.${name}_entry delete 0 end
     }
     set pq_dict(textIndex) {}
     .status_label configure -text "Cleared query fields"
-    busy release .
+    blt::busy release .
 }
 
 
@@ -843,10 +843,10 @@ proc Animate option {
 
     case $option {
 	on {
-	    busy hold . 
+	    blt::busy hold . 
 	    .status_label configure -text "Searching..."
 	    global topLevel
-	    table $topLevel .cancel_button 18,8 -anchor e -reqwidth .70i
+	    blt::table $topLevel .cancel_button 18,8 -anchor e -reqwidth .70i
 	    winop raise .cancel_button
 	    .quit_button configure -state disabled
 	    .clear_button configure -state disabled
@@ -857,14 +857,14 @@ proc Animate option {
 	    update
 	} 
 	off {
-	    table forget .cancel_button
+	    blt::table forget .cancel_button
 	    .quit_button configure -state normal
 	    .clear_button configure -state normal
 	    .trademark configure -bitmap attlogo
 	    set pq_dict(lastBitmap) $pq_dict(curBitmap)
 	    set pq_dict(curBitmap) -1 
 	    focus $pq_dict(lastFocus)
-	    busy release .
+	    blt::busy release .
 	}
     }
     #
@@ -886,18 +886,19 @@ proc Animate option {
 #
 # main body of program
 #
-frame .frame 
+
+blt::tile::frame .frame 
 set topLevel .frame
 
-label .overall_label -font  -*-Helvetica-Bold-R-*-*-18-*-*-*-*-*-*-*
-label .name_label -font $pq_dict(titleFont)
-label .tel_label  -font $pq_dict(titleFont)
-label .addr_label -font $pq_dict(titleFont)
-label .org_title -font $pq_dict(titleFont)
-label .loc_title -font $pq_dict(titleFont)
+blt::tile::label .overall_label -font  -*-Helvetica-Bold-R-*-*-18-*-*-*-*-*-*-*
+blt::tile::label .name_label -font $pq_dict(titleFont)
+blt::tile::label .tel_label  -font $pq_dict(titleFont)
+blt::tile::label .addr_label -font $pq_dict(titleFont)
+blt::tile::label .org_title -font $pq_dict(titleFont)
+blt::tile::label .loc_title -font $pq_dict(titleFont)
 
 foreach name $pq_dict(entryNames) {
-    label .${name}_label 
+    blt::tile::label .${name}_label 
     entry .${name}_entry
 }
 if [info exists env(POST_DEFAULTS)] {
@@ -912,22 +913,22 @@ foreach i $pq_dict(defaults) {
 	}
     }
 }
-label .orders_title -text "Current Orders" \
+blt::tile::label .orders_title -text "Current Orders" \
 	-font  -*-Helvetica-Bold-R-*-*-16-*-*-*-*-*-*-*
 
-set font -*-Helvetica-Bold-R-*-*-14-*-*-*-*-*-*-*
+set font -*-Helvetica-Bold-R-*-*-12-*-*-*-*-*-*-*
 button .clear_button -command ClearFields -font $font
 button .quit_button -command { exit }  -font $font
 button .search_button -text "Search" -font $font 
 
-label .status_label
+blt::tile::label .status_label
 button .cancel_button -command StopQuery 
 #-relief raised
-label .trademark -bitmap attlogo 
+blt::tile::label .trademark -bitmap attlogo 
 text .text -yscrollcommand { .vscroll set } -state disabled 
 scrollbar .vscroll -command { .text yview } 
 
-table $topLevel \
+blt::table $topLevel \
     .overall_label	0,1 -cspan 10 -pady 5 \
     .name_label  	1,2 \
     .last_entry  	2,2 -cspan 2 \
@@ -972,32 +973,32 @@ table $topLevel \
     .text 		17,2 -cspan 8 -fill both -padx 2 \
     .vscroll 		17,10 -anchor center -fill both \
     .status_label	18,4 -cspan 6 -reqwidth {0 4i} \
-    .search_button      18,3 -reqwidth .9i -anchor center -pady 8\
-    .clear_button       18,5 -reqwidth .9i -anchor center \
-    .quit_button        18,8 -reqwidth .9i -anchor center
+    .search_button      18,3 -reqwidth .6i -anchor center -pady 8\
+    .clear_button       18,5 -reqwidth .6i -anchor center \
+    .quit_button        18,8 -reqwidth .6i -anchor center
 
-eval table configure $topLevel \
+eval blt::table configure $topLevel \
 	[info command .*_label] [info commands .*_title] \
 	-anchor w -padx 2 -ipadx 2 
-eval table configure $topLevel [info command .*_entry] \
+eval blt::table configure $topLevel [info command .*_entry] \
 	-fill both -padx 2 
-eval table configure $topLevel .name_label .tel_label .org_title \
+eval blt::table configure $topLevel .name_label .tel_label .org_title \
     .com_label .addr_label .street_entry .street_label \
     -cspan 3  
-eval table configure $topLevel .last_entry .ema_entry .city_entry \
+eval blt::table configure $topLevel .last_entry .ema_entry .city_entry \
     .ema_label .city_label -cspan 2 
 
-table configure $topLevel .overall_label -anchor center
-table configure $topLevel r16 -pady { 5 5 } -resize both
-table configure $topLevel c0 -width .vscroll
-table configure $topLevel c0 c10 -resize none 
-table configure $topLevel r3 r6 r10 r12 -resize none
-table configure $topLevel r17 -height { 40 {} } 
-table configure $topLevel r16 r18 -resize none
-table configure $topLevel c6 -pad { 5 5 }
+blt::table configure $topLevel .overall_label -anchor center
+blt::table configure $topLevel r16 -pady { 5 5 } -resize both
+blt::table configure $topLevel c0 -width .vscroll
+blt::table configure $topLevel c0 c10 -resize none 
+blt::table configure $topLevel r3 r6 r10 r12 -resize none
+blt::table configure $topLevel r17 -height { 40 {} } 
+blt::table configure $topLevel r16 r18 -resize none
+blt::table configure $topLevel c6 -pad { 5 5 }
 
 if { $topLevel == ".frame" } {
-    table . \
+    blt::table . \
 	$topLevel 0,0 -fill both
 }
 
@@ -1022,7 +1023,7 @@ bind .text <Enter> {
 }
 
 bind .text <Leave> {
-    if { [busy isbusy .] != "." } {	
+    if { [blt::busy isbusy .] != "." } {	
 	.text tag delete highlight
 	.status_label configure -text ""
     }

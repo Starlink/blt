@@ -106,29 +106,37 @@ Specific problems:
    may need to edit ./src/Makefile/shared to reflect the real paths of 
    the Tcl and Tk source distributions.
 
+9. ./configure can't find the Tcl/Tk libraries (or finds the wrong version).
+
+   If you build Tcl/Tk Tk with --enable-symbols versions, ./configure
+   won't find the libraries (it's looking for libtcl8.4.a and your
+   library is named libtcl8.4g.a)  You need to build Tcl/Tk again, this
+   time with --disable-symbols.
+
 General Problems:
 
 1. I can't compile BLT.
 
    Send the output of both "./configure" and "make" to me at
 
-	gah@myfirstlink.net
+	ghowlett@grandecom.net
 	gah@silconmetrics.com
 
-   This will make it easier to track down the exact problem.  
+   This will make it easier to track down the exact problem.  Make
+   sure you put "BLT" in the subject line.
 
 2. I get a segfault when running BLT in my application.
 
-   The best method is to send a Tcl script that I can run to
-   demonstrate the problem.  The hard work you do pruning
-   down the problem into a small script will greatly help solve
-   it.  Once I see what the problem is, I can usually fix it right
-   away.
+   The best method is to send a Tcl script that I can run that
+   demonstrates the problem.  Make sure you include all the necessary 
+   pieces to make it run (e.g. data file). If it's needed, include 
+   directions how to make the problem occur (e.g. "double click on the 
+   left mouse button").    
 
-   Make sure you include all the necessary pieces to make it 
-   run (e.g. data file). If it's needed, also include directions 
-   how to make the problem occur (e.g. "double click on the left 
-   mouse button").    
+   The hard work you do pruning down the problem into a small script 
+   will greatly help solve it.  Once I see the problem, I can usually 
+   fix it right away.
+
 
 3. The manual page lies. 
 

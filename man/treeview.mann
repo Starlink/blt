@@ -24,10 +24,10 @@
 .BS
 '\" Note:  do not modify the .SH NAME line immediately below!
 .SH NAME
-treeview \- Create and manipulate hierarchical table widgets
+\fBtreeview\fR \- Create and manipulate hierarchical table widgets
 .BE
 .SH SYNOPSIS
-\fBtreeview\fR \fIpathName \fR?\fIoptions\fR?
+\fBblt::treeview\fR \fIpathName \fR?\fIoptions\fR?
 .SH DESCRIPTION
 The \fBtreeview\fR widget displays a tree of data.  It replaces both
 the \fBhiertable\fR and \fBhierbox\fR widgets.  The \fBtreeview\fR is
@@ -77,7 +77,7 @@ code while still managing and displaying the tree from Tcl. The widget
 is automatically notified whenever the tree is modified via C or Tcl.
 .SH SYNTAX
 .DS
-\fBtreeview \fIpathName \fR?\fIoption value\fR?...
+\fBblt::treeview \fIpathName \fR?\fIoption value\fR?...
 .DE
 The \fBtreeview\fR command creates a new window \fIpathName\fR and
 makes it into a \fBtreeview\fR widget.  At the time this command is

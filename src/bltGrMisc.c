@@ -2,80 +2,68 @@
 /*
  * bltGrMisc.c --
  *
- *	This module implements miscellaneous routines for the BLT
- *	graph widget.
+ * This module implements miscellaneous routines for the BLT graph widget.
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.  
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltGraph.h"
 #include <X11/Xutil.h>
-
-#if defined(__STDC__)
+#include <bltAlloc.h>
+#include <bltOp.h>
 #include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
 
-
-static Tk_OptionParseProc StringToPoint;
-static Tk_OptionPrintProc PointToString;
-static Tk_OptionParseProc StringToColorPair;
-static Tk_OptionPrintProc ColorPairToString;
-Tk_CustomOption bltPointOption =
+static Blt_OptionParseProc ObjToPoint;
+static Blt_OptionPrintProc PointToObj;
+Blt_CustomOption bltPointOption =
 {
-    StringToPoint, PointToString, (ClientData)0
-};
-Tk_CustomOption bltColorPairOption =
-{
-    StringToColorPair, ColorPairToString, (ClientData)0
+    ObjToPoint, PointToObj, NULL, (ClientData)0
 };
 
-/* ----------------------------------------------------------------------
+/*
+ *---------------------------------------------------------------------------
  * Custom option parse and print procedures
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_GetXY --
  *
- *	Converts a string in the form "@x,y" into an XPoint structure
- *	of the x and y coordinates.
+ *	Converts a string in the form "@x,y" into an XPoint structure of the x
+ *	and y coordinates.
  *
  * Results:
- *	A standard Tcl result. If the string represents a valid position
- *	*pointPtr* will contain the converted x and y coordinates and
- *	TCL_OK is returned.  Otherwise,	TCL_ERROR is returned and
- *	interp->result will contain an error message.
+ *	A standard TCL result. If the string represents a valid position
+ *	*pointPtr* will contain the converted x and y coordinates and TCL_OK
+ *	is returned.  Otherwise, TCL_ERROR is returned and interp->result will
+ *	contain an error message.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_GetXY(interp, tkwin, string, xPtr, yPtr)
-    Tcl_Interp *interp;
-    Tk_Window tkwin;
-    char *string;
-    int *xPtr, *yPtr;
+Blt_GetXY(Tcl_Interp *interp, Tk_Window tkwin, const char *string, 
+	  int *xPtr, int *yPtr)
 {
     char *comma;
     int result;
@@ -94,7 +82,7 @@ Blt_GetXY(interp, tkwin, string, xPtr, yPtr)
     }
     *comma = '\0';
     result = ((Tk_GetPixels(interp, tkwin, string + 1, &x) == TCL_OK) &&
-	(Tk_GetPixels(interp, tkwin, comma + 1, &y) == TCL_OK));
+	      (Tk_GetPixels(interp, tkwin, comma + 1, &y) == TCL_OK));
     *comma = ',';
     if (!result) {
 	Tcl_AppendResult(interp, ": can't parse position \"", string, "\"",
@@ -111,34 +99,34 @@ Blt_GetXY(interp, tkwin, string, xPtr, yPtr)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * StringToPoint --
+ * ObjToPoint --
  *
- *	Convert the string representation of a legend XY position into
- *	window coordinates.  The form of the string must be "@x,y" or
- *	none.
+ *	Convert the string representation of a legend XY position into window
+ *	coordinates.  The form of the string must be "@x,y" or none.
  *
  * Results:
- *	A standard Tcl result.  The symbol type is written into the
+ *	A standard TCL result.  The symbol type is written into the
  *	widget record.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-StringToPoint(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* New legend position string */
-    char *widgRec;		/* Widget record */
-    int offset;			/* offset to XPoint structure */
+ObjToPoint(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tk_Window tkwin,		/* Not used. */
+    Tcl_Obj *objPtr,		/* New legend position string */
+    char *widgRec,		/* Widget record */
+    int offset,			/* Offset to field in structure */
+    int flags)			/* Not used. */
 {
     XPoint *pointPtr = (XPoint *)(widgRec + offset);
     int x, y;
 
-    if (Blt_GetXY(interp, tkwin, string, &x, &y) != TCL_OK) {
+    if (Blt_GetXY(interp, tkwin, Tcl_GetString(objPtr), &x, &y) != TCL_OK) {
 	return TCL_ERROR;
     }
     pointPtr->x = x, pointPtr->y = y;
@@ -146,245 +134,69 @@ StringToPoint(clientData, interp, tkwin, string, widgRec, offset)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * PointToString --
+ * PointToObj --
  *
  *	Convert the window coordinates into a string.
  *
  * Results:
  *	The string representing the coordinate position is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
-static char *
-PointToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget record */
-    int offset;			/* offset of XPoint in record */
-    Tcl_FreeProc **freeProcPtr;	/* Memory deallocation scheme to use */
+static Tcl_Obj *
+PointToObj(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,		/* Not used. */
+    Tk_Window tkwin,		/* Not used. */
+    char *widgRec,		/* Widget record */
+    int offset,			/* Offset to field in structure */
+    int flags)			/* Not used. */
 {
-    char *result;
     XPoint *pointPtr = (XPoint *)(widgRec + offset);
+    Tcl_Obj *objPtr;
 
-    result = "";
     if ((pointPtr->x != -SHRT_MAX) && (pointPtr->y != -SHRT_MAX)) {
 	char string[200];
 
-	sprintf(string, "@%d,%d", pointPtr->x, pointPtr->y);
-	result = Blt_Strdup(string);
-	assert(result);
-	*freeProcPtr = (Tcl_FreeProc *)Blt_Free;
+	sprintf_s(string, 200, "@%d,%d", pointPtr->x, pointPtr->y);
+	objPtr = Tcl_NewStringObj(string, -1);
+    } else { 
+	objPtr = Tcl_NewStringObj("", -1);
     }
-    return result;
+    return objPtr;
 }
 
-/*LINTLIBRARY*/
-static int
-GetColorPair(interp, tkwin, fgStr, bgStr, pairPtr, allowDefault)
-    Tcl_Interp *interp;
-    Tk_Window tkwin;
-    char *fgStr, *bgStr;
-    ColorPair *pairPtr;
-    int allowDefault;
-{
-    unsigned int length;
-    XColor *fgColor, *bgColor;
-
-    length = strlen(fgStr);
-    if (fgStr[0] == '\0') {
-	fgColor = NULL;
-    } else if ((allowDefault) && (fgStr[0] == 'd') &&
-	(strncmp(fgStr, "defcolor", length) == 0)) {
-	fgColor = COLOR_DEFAULT;
-    } else {
-	fgColor = Tk_GetColor(interp, tkwin, Tk_GetUid(fgStr));
-	if (fgColor == NULL) {
-	    return TCL_ERROR;
-	}
-    }
-    length = strlen(bgStr);
-    if (bgStr[0] == '\0') {
-	bgColor = NULL;
-    } else if ((allowDefault) && (bgStr[0] == 'd') &&
-	(strncmp(bgStr, "defcolor", length) == 0)) {
-	bgColor = COLOR_DEFAULT;
-    } else {
-	bgColor = Tk_GetColor(interp, tkwin, Tk_GetUid(bgStr));
-	if (bgColor == NULL) {
-	    return TCL_ERROR;
-	}
-    }
-    pairPtr->fgColor = fgColor;
-    pairPtr->bgColor = bgColor;
-    return TCL_OK;
-}
-
-void
-Blt_FreeColorPair(pairPtr)
-    ColorPair *pairPtr;
-{
-    if ((pairPtr->bgColor != NULL) && (pairPtr->bgColor != COLOR_DEFAULT)) {
-	Tk_FreeColor(pairPtr->bgColor);
-    }
-    if ((pairPtr->fgColor != NULL) && (pairPtr->fgColor != COLOR_DEFAULT)) {
-	Tk_FreeColor(pairPtr->fgColor);
-    }
-    pairPtr->bgColor = pairPtr->fgColor = NULL;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * StringToColorPair --
- *
- *	Convert the color names into pair of XColor pointers.
- *
- * Results:
- *	A standard Tcl result.  The color pointer is written into the
- *	widget record.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-StringToColorPair(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* String representing color */
-    char *widgRec;		/* Widget record */
-    int offset;			/* Offset of color field in record */
-{
-    ColorPair *pairPtr = (ColorPair *)(widgRec + offset);
-    ColorPair sample;
-    int allowDefault = (int)clientData;
-
-    sample.fgColor = sample.bgColor = NULL;
-    if ((string != NULL) && (*string != '\0')) {
-	int nColors;
-	char **colors;
-	int result;
-
-	if (Tcl_SplitList(interp, string, &nColors, &colors) != TCL_OK) {
-	    return TCL_ERROR;
-	}
-	switch (nColors) {
-	case 0:
-	    result = TCL_OK;
-	    break;
-	case 1:
-	    result = GetColorPair(interp, tkwin, colors[0], "", &sample,
-		allowDefault);
-	    break;
-	case 2:
-	    result = GetColorPair(interp, tkwin, colors[0], colors[1],
-		&sample, allowDefault);
-	    break;
-	default:
-	    result = TCL_ERROR;
-	    Tcl_AppendResult(interp, "too many names in colors list",
-		(char *)NULL);
-	}
-	Blt_Free(colors);
-	if (result != TCL_OK) {
-	    return TCL_ERROR;
-	}
-    }
-    Blt_FreeColorPair(pairPtr);
-    *pairPtr = sample;
-    return TCL_OK;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * NameOfColor --
- *
- *	Convert the color option value into a string.
- *
- * Results:
- *	The static string representing the color option is returned.
- *
- *----------------------------------------------------------------------
- */
-static char *
-NameOfColor(colorPtr)
-    XColor *colorPtr;
-{
-    if (colorPtr == NULL) {
-	return "";
-    } else if (colorPtr == COLOR_DEFAULT) {
-	return "defcolor";
-    } else {
-	return Tk_NameOfColor(colorPtr);
-    }
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * ColorPairToString --
- *
- *	Convert the color pairs into color names.
- *
- * Results:
- *	The string representing the symbol color is returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static char *
-ColorPairToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Element information record */
-    int offset;			/* Offset of symbol type field in record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    ColorPair *pairPtr = (ColorPair *)(widgRec + offset);
-    Tcl_DString dString;
-    char *result;
-
-    Tcl_DStringInit(&dString);
-    Tcl_DStringAppendElement(&dString, NameOfColor(pairPtr->fgColor));
-    Tcl_DStringAppendElement(&dString, NameOfColor(pairPtr->bgColor));
-    result = Tcl_DStringValue(&dString);
-    if (result == dString.staticSpace) {
-	result = Blt_Strdup(result);
-    }
-    *freeProcPtr = (Tcl_FreeProc *)Blt_Free;
-    return result;
-}
 
 int
-Blt_PointInSegments(samplePtr, segments, nSegments, halo)
-    Point2D *samplePtr;
-    Segment2D *segments;
-    int nSegments;
-    double halo;
+Blt_PointInSegments(
+    Point2d *samplePtr,
+    Segment2d *segments,
+    int nSegments,
+    double halo)
 {
-    register Segment2D *segPtr, *endPtr;
-    double left, right, top, bottom;
-    Point2D p, t;
-    double dist, minDist;
+    Segment2d *sp, *send;
+    double minDist;
 
     minDist = DBL_MAX;
-    for (segPtr = segments, endPtr = segments + nSegments; segPtr < endPtr; 
-	 segPtr++) {
+    for (sp = segments, send = sp + nSegments; sp < send; sp++) {
+	double dist;
+	double left, right, top, bottom;
+	Point2d p, t;
+
 	t = Blt_GetProjection((int)samplePtr->x, (int)samplePtr->y, 
-		      &segPtr->p, &segPtr->q);
-	if (segPtr->p.x > segPtr->q.x) {
-	    right = segPtr->p.x, left = segPtr->q.x;
+			      &sp->p, &sp->q);
+	if (sp->p.x > sp->q.x) {
+	    right = sp->p.x, left = sp->q.x;
 	} else {
-	    right = segPtr->q.x, left = segPtr->p.x;
+	    right = sp->q.x, left = sp->p.x;
 	}
-	if (segPtr->p.y > segPtr->q.y) {
-	    bottom = segPtr->p.y, top = segPtr->q.y;
+	if (sp->p.y > sp->q.y) {
+	    bottom = sp->p.y, top = sp->q.y;
 	} else {
-	    bottom = segPtr->q.y, top = segPtr->p.y;
+	    bottom = sp->q.y, top = sp->p.y;
 	}
 	p.x = BOUND(t.x, left, right);
 	p.y = BOUND(t.y, top, bottom);
@@ -397,21 +209,22 @@ Blt_PointInSegments(samplePtr, segments, nSegments, halo)
 }
 
 int
-Blt_PointInPolygon(samplePtr, points, nPoints)
-    Point2D *samplePtr;
-    Point2D *points;
-    int nPoints;
+Blt_PointInPolygon(
+    Point2d *s,			/* Sample point. */
+    Point2d *points,		/* Points representing the polygon. */
+    int nPoints)		/* # of points in above array. */
 {
-    double b;
-    register Point2D *p, *q, *endPtr;
-    register int count;
+    Point2d *p, *q, *qend;
+    int count;
 
     count = 0;
-    for (p = points, q = p + 1, endPtr = p + nPoints; q < endPtr; p++, q++) {
-	if (((p->y <= samplePtr->y) && (samplePtr->y < q->y)) || 
-	    ((q->y <= samplePtr->y) && (samplePtr->y < p->y))) {
-	    b = (q->x - p->x) * (samplePtr->y - p->y) / (q->y - p->y) + p->x;
-	    if (samplePtr->x < b) {
+    for (p = points, q = p + 1, qend = p + nPoints; q < qend; p++, q++) {
+	if (((p->y <= s->y) && (s->y < q->y)) || 
+	    ((q->y <= s->y) && (s->y < p->y))) {
+	    double b;
+
+	    b = (q->x - p->x) * (s->y - p->y) / (q->y - p->y) + p->x;
+	    if (s->x < b) {
 		count++;	/* Count the number of intersections. */
 	    }
 	}
@@ -420,89 +233,83 @@ Blt_PointInPolygon(samplePtr, points, nPoints)
 }
 
 int
-Blt_RegionInPolygon(extsPtr, points, nPoints, enclosed)
-    Extents2D *extsPtr;
-    Point2D *points;
-    int nPoints;
-    int enclosed;
+Blt_RegionInPolygon(
+    Region2d *regionPtr,
+    Point2d *points,
+    int nPoints,
+    int enclosed)
 {
-    register Point2D *pointPtr, *endPtr;
+    Point2d *pp, *pend;
 
     if (enclosed) {
 	/*  
 	 * All points of the polygon must be inside the rectangle.
 	 */
-	for (pointPtr = points, endPtr = points + nPoints; pointPtr < endPtr; 
-	     pointPtr++) {
-	    if ((pointPtr->x < extsPtr->left) ||
-		(pointPtr->x > extsPtr->right) ||
-		(pointPtr->y < extsPtr->top) ||
-		(pointPtr->y > extsPtr->bottom)) {
+	for (pp = points, pend = pp + nPoints; pp < pend; pp++) {
+	    if ((pp->x < regionPtr->left) || (pp->x > regionPtr->right) ||
+		(pp->y < regionPtr->top) || (pp->y > regionPtr->bottom)) {
 		return FALSE;	/* One point is exterior. */
 	    }
 	}
 	return TRUE;
     } else {
-	Point2D p, q;
-
+	Point2d r;
 	/*
 	 * If any segment of the polygon clips the bounding region, the
 	 * polygon overlaps the rectangle.
 	 */
 	points[nPoints] = points[0];
-	for (pointPtr = points, endPtr = points + nPoints; pointPtr < endPtr; 
-	     pointPtr++) {
-	    p = *pointPtr;
-	    q = *(pointPtr + 1);
-	    if (Blt_LineRectClip(extsPtr, &p, &q)) {
+	for (pp = points, pend = pp + nPoints; pp < pend; pp++) {
+	    Point2d p, q;
+
+	    p = *pp;
+	    q = *(pp + 1);
+	    if (Blt_LineRectClip(regionPtr, &p, &q)) {
 		return TRUE;
 	    }
 	}
 	/* 
-	 * Otherwise the polygon and rectangle are either disjoint
-	 * or enclosed.  Check if one corner of the rectangle is
-	 * inside the polygon.  
+	 * Otherwise the polygon and rectangle are either disjoint or
+	 * enclosed.  Check if one corner of the rectangle is inside the
+	 * polygon.
 	 */
-	p.x = extsPtr->left;
-	p.y = extsPtr->top;
-	return Blt_PointInPolygon(&p, points, nPoints);
+	r.x = regionPtr->left;
+	r.y = regionPtr->top;
+	return Blt_PointInPolygon(&r, points, nPoints);
     }
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_GraphExtents --
  *
- *	Generates a bounding box representing the plotting area of
- *	the graph. This data structure is used to clip the points and
- *	line segments of the line element.
+ *	Generates a bounding box representing the plotting area of the
+ *	graph. This data structure is used to clip the points and line
+ *	segments of the line element.
  *
- *	The clip region is the plotting area plus such arbitrary extra
- *	space.  The reason we clip with a bounding box larger than the
- *	plot area is so that symbols will be drawn even if their center
- *	point isn't in the plotting area.
+ *	The clip region is the plotting area plus such arbitrary extra space.
+ *	The reason we clip with a bounding box larger than the plot area is so
+ *	that symbols will be drawn even if their center point isn't in the
+ *	plotting area.
  *
  * Results:
  *	None.
  *
  * Side Effects:
- *	The bounding box is filled with the dimensions of the plotting
- *	area.
+ *	The bounding box is filled with the dimensions of the plotting area.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
-Blt_GraphExtents(graphPtr, extsPtr)
-    Graph *graphPtr;
-    Extents2D *extsPtr;
+Blt_GraphExtents(Graph *graphPtr, Region2d *regionPtr)
 {
-    extsPtr->left = (double)(graphPtr->hOffset - graphPtr->padX.side1);
-    extsPtr->top = (double)(graphPtr->vOffset - graphPtr->padY.side1);
-    extsPtr->right = (double)(graphPtr->hOffset + graphPtr->hRange + 
-	graphPtr->padX.side2);
-    extsPtr->bottom = (double)(graphPtr->vOffset + graphPtr->vRange + 
-	graphPtr->padY.side2);
+    regionPtr->left = (double)(graphPtr->hOffset - graphPtr->xPad.side1);
+    regionPtr->top = (double)(graphPtr->vOffset - graphPtr->yPad.side1);
+    regionPtr->right = (double)(graphPtr->hOffset + graphPtr->hRange + 
+	graphPtr->xPad.side2);
+    regionPtr->bottom = (double)(graphPtr->vOffset + graphPtr->vRange + 
+	graphPtr->yPad.side2);
 }
 
 static int 
@@ -528,7 +335,7 @@ ClipTest (double ds, double dr, double *t1, double *t2)
       }
   } else {
       /* d = 0, so line is parallel to this clipping edge */
-      if (dr < 0.0) { /* Line is outside clipping edge */
+      if (dr < 0.0) {		/* Line is outside clipping edge */
 	  return FALSE;
       }
   }
@@ -536,40 +343,41 @@ ClipTest (double ds, double dr, double *t1, double *t2)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_LineRectClip --
  *
- *	Clips the given line segment to a rectangular region.  The
- *	coordinates of the clipped line segment are returned.  The
- *	original coordinates are overwritten.
+ *	Clips the given line segment to a rectangular region.  The coordinates
+ *	of the clipped line segment are returned.  The original coordinates
+ *	are overwritten.
  *
- *	Reference:  Liang-Barsky Line Clipping Algorithm.
+ *	Reference: 
+ *	  Liang, Y-D., and B. Barsky, A new concept and method for
+ *	  Line Clipping, ACM, TOG,3(1), 1984, pp.1-22.
  *
  * Results:
- *	Returns if line segment is visible within the region. The
- *	coordinates of the original line segment are overwritten
- *	by the clipped coordinates.
+ *	Returns if line segment is visible within the region. The coordinates
+ *	of the original line segment are overwritten by the clipped
+ *	coordinates.
  *
- *---------------------------------------------------------------------- 
+ *---------------------------------------------------------------------------
  */
 int 
-Blt_LineRectClip(extsPtr, p, q)
-    Extents2D *extsPtr;		/* Rectangular region to clip. */
-    Point2D *p, *q;		/* (in/out) Coordinates of original
-				 * and clipped line segment. */
+Blt_LineRectClip(
+    Region2d *regionPtr,	/* Rectangular region to clip. */
+    Point2d *p, Point2d *q)	/* (in/out) Coordinates of original and
+				 * clipped line segment. */
 {
     double t1, t2;
     double dx, dy;
 
-    t1 = 0.0;
-    t2 = 1.0;
+    t1 = 0.0, t2 = 1.0;
     dx = q->x - p->x;
-    if ((ClipTest (-dx, p->x - extsPtr->left, &t1, &t2)) &&
-	(ClipTest (dx, extsPtr->right - p->x, &t1, &t2))) {
+    if ((ClipTest (-dx, p->x - regionPtr->left, &t1, &t2)) &&
+	(ClipTest (dx, regionPtr->right - p->x, &t1, &t2))) {
 	dy = q->y - p->y;
-	if ((ClipTest (-dy, p->y - extsPtr->top, &t1, &t2)) && 
-	    (ClipTest (dy, extsPtr->bottom - p->y, &t1, &t2))) {
+	if ((ClipTest (-dy, p->y - regionPtr->top, &t1, &t2)) && 
+	    (ClipTest (dy, regionPtr->bottom - p->y, &t1, &t2))) {
 	    if (t2 < 1.0) {
 		q->x = p->x + t2 * dx;
 		q->y = p->y + t2 * dy;
@@ -585,74 +393,75 @@ Blt_LineRectClip(extsPtr, p, q)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_PolyRectClip --
  *
  *	Clips the given polygon to a rectangular region.  The resulting
- *	polygon is returned. Note that the resulting polyon may be 
- *	complex, connected by zero width/height segments.  The drawing 
- *	routine (such as XFillPolygon) will not draw a connecting
- *	segment.
+ *	polygon is returned. Note that the resulting polyon may be complex,
+ *	connected by zero width/height segments.  The drawing routine (such as
+ *	XFillPolygon) will not draw a connecting segment.
  *
- *	Reference:  Liang-Barsky Polygon Clipping Algorithm 
+ *	Reference:  
+ *	  Liang Y. D. and Brian A. Barsky, "Analysis and Algorithm for
+ *	  Polygon Clipping", Communications of ACM, Vol. 26,
+ *	  p.868-877, 1983
  *
  * Results:
- *	Returns the number of points in the clipped polygon. The
- *	points of the clipped polygon are stored in *outputPts*.
+ *	Returns the number of points in the clipped polygon. The points of the
+ *	clipped polygon are stored in *outputPts*.
  *
- *---------------------------------------------------------------------- 
+ *---------------------------------------------------------------------------
  */
 #define EPSILON  FLT_EPSILON
 #define AddVertex(vx, vy)	    r->x=(vx), r->y=(vy), r++, count++ 
 #define LastVertex(vx, vy)	    r->x=(vx), r->y=(vy), count++ 
 
 int 
-Blt_PolyRectClip(extsPtr, points, nPoints, clipPts)
-    Extents2D *extsPtr;
-    Point2D *points;
-    int nPoints;
-    Point2D *clipPts;
+Blt_PolyRectClip(
+    Region2d *regionPtr,	/* Rectangular region clipping the polygon. */
+    Point2d *points,		/* Points of polygon to be clipped. */
+    int nPoints,		/* # of points in polygon. */
+    Point2d *clipPts)		/* (out) Points of clipped polygon. */
 {
-    Point2D *endPtr;
-    double dx, dy;
-    double tin1, tin2;
-    double tinx, tiny;
-    double xin, yin, xout, yout;
+    Point2d *p;			/* First vertex of input polygon edge. */
+    Point2d *pend;
+    Point2d *q;			/* Last vertex of input polygon edge. */
+    Point2d *r;
     int count;
-    register Point2D *p;	/* First vertex of input polygon edge. */
-    register Point2D *q;	/* Last vertex of input polygon edge. */
-    register Point2D *r;
 
     r = clipPts;
     count = 0;			/* Counts # of vertices in output polygon. */
 
     points[nPoints] = points[0];
+    for (p = points, q = p + 1, pend = p + nPoints; p < pend; p++, q++) {
+	double dx, dy;
+	double tin1, tin2, tinx, tiny;
+	double xin, yin, xout, yout;
 
-    for (p = points, q = p + 1, endPtr = p + nPoints; p < endPtr; p++, q++) {
 	dx = q->x - p->x;	/* X-direction */
 	dy = q->y - p->y;	/* Y-direction */
 
 	if (FABS(dx) < EPSILON) { 
-	    dx = (p->x > extsPtr->left) ? -EPSILON : EPSILON ;
+	    dx = (p->x > regionPtr->left) ? -EPSILON : EPSILON ;
 	}
 	if (FABS(dy) < EPSILON) { 
-	    dy = (p->y > extsPtr->top) ? -EPSILON : EPSILON ;
+	    dy = (p->y > regionPtr->top) ? -EPSILON : EPSILON ;
 	}
 
 	if (dx > 0.0) {		/* Left */
-	    xin = extsPtr->left;
-	    xout = extsPtr->right + 1.0;
+	    xin = regionPtr->left;
+	    xout = regionPtr->right + 1.0;
 	} else {		/* Right */
-	    xin = extsPtr->right + 1.0;
-	    xout = extsPtr->left;
+	    xin = regionPtr->right + 1.0;
+	    xout = regionPtr->left;
 	}
 	if (dy > 0.0) {		/* Top */
-	    yin = extsPtr->top;
-	    yout = extsPtr->bottom + 1.0;
+	    yin = regionPtr->top;
+	    yout = regionPtr->bottom + 1.0;
 	} else {		/* Bottom */
-	    yin = extsPtr->bottom + 1.0;
-	    yout = extsPtr->top;
+	    yin = regionPtr->bottom + 1.0;
+	    yout = regionPtr->top;
 	}
 	
 	tinx = (xin - p->x) / dx;
@@ -701,6 +510,7 @@ Blt_PolyRectClip(extsPtr, points, nPoints, clipPts)
 			} else {
 			    AddVertex(xout, yin);
 			}
+
 		    }
 		}
             }
@@ -713,31 +523,31 @@ Blt_PolyRectClip(extsPtr, points, nPoints, clipPts)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_GetProjection --
  *
- *	Computes the projection of a point on a line.  The line (given
- *	by two points), is assumed the be infinite.
+ *	Computes the projection of a point on a line.  The line (given by two
+ *	points), is assumed the be infinite.
  *
- *	Compute the slope (angle) of the line and rotate it 90 degrees.
- *	Using the slope-intercept method (we know the second line from
- *	the sample test point and the computed slope), then find the
- *	intersection of both lines. This will be the projection of the
- *	sample point on the first line.
+ *	Compute the slope (angle) of the line and rotate it 90 degrees.  Using
+ *	the slope-intercept method (we know the second line from the sample
+ *	test point and the computed slope), then find the intersection of both
+ *	lines. This will be the projection of the sample point on the first
+ *	line.
  *
  * Results:
  *	Returns the coordinates of the projection on the line.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-Point2D
-Blt_GetProjection(x, y, p, q)
-    int x, y;			/* Screen coordinates of the sample point. */
-    Point2D *p, *q;		/* Line segment to project point onto */
+Point2d
+Blt_GetProjection(
+    int x, int y,		/* Screen coordinates of the sample point. */
+    Point2d *p, Point2d *q)	/* Line segment to project point onto */
 {
     double dx, dy;
-    Point2D t;
+    Point2d t;
 
     dx = p->x - q->x;
     dy = p->y - q->y;
@@ -753,17 +563,17 @@ Blt_GetProjection(x, y, p, q)
 	double midX, midY;	/* Midpoint of line segment. */
 	double ax, ay, bx, by;
 
-	/* Compute the slop and intercept of the line segment. */
+	/* Compute the slope and intercept of PQ. */
 	m1 = (dy / dx);
 	b1 = p->y - (p->x * m1);
 
 	/* 
-	 * Compute the slope and intercept of a second line segment:
-	 * one that intersects through sample X-Y coordinate with a
-	 * slope perpendicular to original line. 
+	 * Compute the slope and intercept of a second line segment: one that
+	 * intersects through sample X-Y coordinate with a slope perpendicular
+	 * to original line.
 	 */
 
-	/* Find midpoint of original segment. */
+	/* Find midpoint of PQ. */
 	midX = (p->x + q->x) * 0.5;
 	midY = (p->y + q->y) * 0.5;
 
@@ -803,10 +613,9 @@ typedef struct {
 			   (c)->green = (int)((g) * 65535.0), \
 			   (c)->blue = (int)((b) * 65535.0))
 
+#ifdef notdef
 void
-Blt_XColorToHSV(colorPtr, hsvPtr)
-    XColor *colorPtr;
-    HSV *hsvPtr;
+Blt_XColorToHSV(XColor *colorPtr, HSV *hsvPtr)
 {
     unsigned short max, min;
     double range;
@@ -849,9 +658,7 @@ Blt_XColorToHSV(colorPtr, hsvPtr)
 }
 
 void
-Blt_HSVToXColor(hsvPtr, colorPtr)
-    HSV *hsvPtr;
-    XColor *colorPtr;
+Blt_HSVToXColor(HSV *hsvPtr, XColor *colorPtr)
 {
     double hue, p, q, t;
     double frac;
@@ -894,9 +701,10 @@ Blt_HSVToXColor(hsvPtr, colorPtr)
 	break;
     }
 }
+#endif
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_AdjustViewport --
  *
@@ -919,22 +727,19 @@ Blt_HSVToXColor(hsvPtr, colorPtr)
  * Results:
  *	The corrected offset is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_AdjustViewport(offset, worldSize, windowSize, scrollUnits, scrollMode)
-    int offset, worldSize, windowSize;
-    int scrollUnits;
-    int scrollMode;
+Blt_AdjustViewport(int offset, int worldSize, int windowSize, int scrollUnits, 
+		   int scrollMode)
 {
     switch (scrollMode) {
     case BLT_SCROLL_MODE_CANVAS:
 
 	/*
-	 * Canvas-style scrolling allows the world to be scrolled
-	 * within the window.
+	 * Canvas-style scrolling allows the world to be scrolled within the
+	 * window.
 	 */
-
 	if (worldSize < windowSize) {
 	    if ((worldSize - offset) > windowSize) {
 		offset = worldSize - windowSize;
@@ -964,8 +769,8 @@ Blt_AdjustViewport(offset, worldSize, windowSize, scrollUnits, scrollMode)
     case BLT_SCROLL_MODE_HIERBOX:
 
 	/*
-	 * Hierbox-style scrolling allows the world to be scrolled
-	 * within the window.
+	 * Hierbox-style scrolling allows the world to be scrolled within the
+	 * window.
 	 */
 	if ((offset + windowSize) > worldSize) {
 	    offset = worldSize - windowSize;
@@ -979,108 +784,36 @@ Blt_AdjustViewport(offset, worldSize, windowSize, scrollUnits, scrollMode)
 }
 
 int
-Blt_GetScrollInfo(interp, argc, argv, offsetPtr, worldSize, windowSize,
-    scrollUnits, scrollMode)
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
-    int *offsetPtr;
-    int worldSize, windowSize;
-    int scrollUnits;
-    int scrollMode;
+Blt_GetScrollInfoFromObj(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv,
+			 int *offsetPtr, int worldSize, int windowSize, 
+			 int scrollUnits, int scrollMode)
 {
     char c;
-    unsigned int length;
+    const char *string;
+    int length;
     int offset;
-    int count;
-    double fract;
 
     offset = *offsetPtr;
-    c = argv[0][0];
-    length = strlen(argv[0]);
-    if ((c == 's') && (strncmp(argv[0], "scroll", length) == 0)) {
-	if (argc != 3) {
-	    return TCL_ERROR;
-	}
-	/* scroll number unit/page */
-	if (Tcl_GetInt(interp, argv[1], &count) != TCL_OK) {
-	    return TCL_ERROR;
-	}
-	c = argv[2][0];
-	length = strlen(argv[2]);
-	if ((c == 'u') && (strncmp(argv[2], "units", length) == 0)) {
-	    fract = (double)count *scrollUnits;
-	} else if ((c == 'p') && (strncmp(argv[2], "pages", length) == 0)) {
-	    /* A page is 90% of the view-able window. */
-	    fract = (double)count *windowSize * 0.9;
-	} else {
-	    Tcl_AppendResult(interp, "unknown \"scroll\" units \"", argv[2],
-		"\"", (char *)NULL);
-	    return TCL_ERROR;
-	}
-	offset += (int)fract;
-    } else if ((c == 'm') && (strncmp(argv[0], "moveto", length) == 0)) {
-	if (argc != 2) {
-	    return TCL_ERROR;
-	}
-	/* moveto fraction */
-	if (Tcl_GetDouble(interp, argv[1], &fract) != TCL_OK) {
-	    return TCL_ERROR;
-	}
-	offset = (int)(worldSize * fract);
-    } else {
-	/* Treat like "scroll units" */
-	if (Tcl_GetInt(interp, argv[0], &count) != TCL_OK) {
-	    return TCL_ERROR;
-	}
-	fract = (double)count *scrollUnits;
-	offset += (int)fract;
-    }
-    *offsetPtr = Blt_AdjustViewport(offset, worldSize, windowSize, scrollUnits,
-	scrollMode);
-    return TCL_OK;
-}
-
-#if (TCL_MAJOR_VERSION >= 8)
-int
-Blt_GetScrollInfoFromObj(interp, objc, objv, offsetPtr, worldSize, windowSize,
-    scrollUnits, scrollMode)
-    Tcl_Interp *interp;
-    int objc;
-    Tcl_Obj *CONST *objv;
-    int *offsetPtr;
-    int worldSize, windowSize;
-    int scrollUnits;
-    int scrollMode;
-{
-    char c;
-    unsigned int length;
-    int offset;
-    int count;
-    double fract;
-    char *string;
-
-    offset = *offsetPtr;
-
-    string = Tcl_GetString(objv[0]);
+    string = Tcl_GetStringFromObj(objv[0], &length);
     c = string[0];
-    length = strlen(string);
     if ((c == 's') && (strncmp(string, "scroll", length) == 0)) {
+	double fract;
+	int count;
+
 	if (objc != 3) {
 	    return TCL_ERROR;
 	}
-	/* scroll number unit/page */
+	/* Scroll number unit/page */
 	if (Tcl_GetIntFromObj(interp, objv[1], &count) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	string = Tcl_GetString(objv[2]);
+	string = Tcl_GetStringFromObj(objv[2], &length);
 	c = string[0];
-	length = strlen(string);
 	if ((c == 'u') && (strncmp(string, "units", length) == 0)) {
 	    fract = (double)count *scrollUnits;
 	} else if ((c == 'p') && (strncmp(string, "pages", length) == 0)) {
 	    /* A page is 90% of the view-able window. */
-	    fract = (double)count *windowSize * 0.9;
+	    fract = (double)count * windowSize * 0.9;
 	} else {
 	    Tcl_AppendResult(interp, "unknown \"scroll\" units \"", 
 		     Tcl_GetString(objv[2]), "\"", (char *)NULL);
@@ -1088,6 +821,8 @@ Blt_GetScrollInfoFromObj(interp, objc, objv, offsetPtr, worldSize, windowSize,
 	}
 	offset += (int)fract;
     } else if ((c == 'm') && (strncmp(string, "moveto", length) == 0)) {
+	double fract;
+
 	if (objc != 2) {
 	    return TCL_ERROR;
 	}
@@ -1097,6 +832,9 @@ Blt_GetScrollInfoFromObj(interp, objc, objv, offsetPtr, worldSize, windowSize,
 	}
 	offset = (int)(worldSize * fract);
     } else {
+	double fract;
+	int count;
+
 	/* Treat like "scroll units" */
 	if (Tcl_GetIntFromObj(interp, objv[0], &count) != TCL_OK) {
 	    return TCL_ERROR;
@@ -1108,17 +846,16 @@ Blt_GetScrollInfoFromObj(interp, objc, objv, offsetPtr, worldSize, windowSize,
 	scrollMode);
     return TCL_OK;
 }
-#endif /* TCL_MAJOR_VERSION >= 8 */
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_UpdateScrollbar --
  *
- * 	Invoke a Tcl command to the scrollbar, defining the new
- *	position and length of the scroll. See the Tk documentation
- *	for further information on the scrollbar.  It is assumed the
- *	scrollbar command prefix is valid.
+ * 	Invoke a TCL command to the scrollbar, defining the new position and
+ * 	length of the scroll. See the Tk documentation for further information
+ * 	on the scrollbar.  It is assumed the scrollbar command prefix is
+ * 	valid.
  *
  * Results:
  *	None.
@@ -1126,49 +863,56 @@ Blt_GetScrollInfoFromObj(interp, objc, objv, offsetPtr, worldSize, windowSize,
  * Side Effects:
  *	Scrollbar is commanded to change position and/or size.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
-Blt_UpdateScrollbar(interp, scrollCmd, firstFract, lastFract)
-    Tcl_Interp *interp;
-    char *scrollCmd;		/* scrollbar command */
-    double firstFract, lastFract;
+Blt_UpdateScrollbar(
+    Tcl_Interp *interp,
+    Tcl_Obj *scrollCmdObjPtr,		/* Scrollbar command prefix. May be
+					 * several words */
+    double firstFract, double lastFract)
 {
-    char string[200];
-    Tcl_DString dString;
+    Tcl_Obj **objv;
+    Tcl_Obj *listObjPtr;
+    int objc;
 
-    Tcl_DStringInit(&dString);
-    Tcl_DStringAppend(&dString, scrollCmd, -1);
-    sprintf(string, " %f %f", firstFract, lastFract);
-    Tcl_DStringAppend(&dString, string, -1);
-    if (Tcl_GlobalEval(interp, Tcl_DStringValue(&dString)) != TCL_OK) {
+    listObjPtr = Tcl_DuplicateObj(scrollCmdObjPtr);
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(firstFract));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(lastFract));
+    if (Tcl_ListObjGetElements(interp, listObjPtr, &objc, &objv) != TCL_OK) {
 	Tcl_BackgroundError(interp);
+    } else {
+	Tcl_IncrRefCount(listObjPtr);
+	if (Tcl_EvalObjv(interp, objc, objv, TCL_EVAL_GLOBAL) != TCL_OK) {
+	    Tcl_BackgroundError(interp);
+	}
     }
-    Tcl_DStringFree(&dString);
+    Tcl_DecrRefCount(listObjPtr);
+
 }
 
-/* -------------- */
+/* -------------------------------------------------------------------------- */
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_GetPrivateGCFromDrawable --
  *
- *      Like Tk_GetGC, but doesn't share the GC with any other widget.
- *	This is needed because the certain GC parameters (like dashes)
- *	can not be set via XCreateGC, therefore there is no way for
- *	Tk's hashing mechanism to recognize that two such GCs differ.
+ *      Like Tk_GetGC, but doesn't share the GC with any other widget.  This
+ *      is needed because the certain GC parameters (like dashes) can not be
+ *      set via XCreateGC, therefore there is no way for Tk's hashing
+ *      mechanism to recognize that two such GCs differ.
  *
  * Results:
  *      A new GC is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 GC
-Blt_GetPrivateGCFromDrawable(display, drawable, gcMask, valuePtr)
-    Display *display;
-    Drawable drawable;
-    unsigned long gcMask;
-    XGCValues *valuePtr;
+Blt_GetPrivateGCFromDrawable(
+    Display *display,
+    Drawable drawable,
+    unsigned long gcMask,
+    XGCValues *valuePtr)
 {
     GC newGC;
 
@@ -1181,25 +925,25 @@ Blt_GetPrivateGCFromDrawable(display, drawable, gcMask, valuePtr)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_GetPrivateGC --
  *
- *      Like Tk_GetGC, but doesn't share the GC with any other widget.
- *	This is needed because the certain GC parameters (like dashes)
- *	can not be set via XCreateGC, therefore there is no way for
- *	Tk's hashing mechanism to recognize that two such GCs differ.
+ *      Like Tk_GetGC, but doesn't share the GC with any other widget.  This
+ *      is needed because the certain GC parameters (like dashes) can not be
+ *      set via XCreateGC, therefore there is no way for Tk's hashing
+ *      mechanism to recognize that two such GCs differ.
  *
  * Results:
  *      A new GC is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 GC
-Blt_GetPrivateGC(tkwin, gcMask, valuePtr)
-    Tk_Window tkwin;
-    unsigned long gcMask;
-    XGCValues *valuePtr;
+Blt_GetPrivateGC(
+    Tk_Window tkwin,
+    unsigned long gcMask,
+    XGCValues *valuePtr)
 {
     GC gc;
     Pixmap pixmap;
@@ -1209,12 +953,11 @@ Blt_GetPrivateGC(tkwin, gcMask, valuePtr)
     pixmap = None;
     drawable = Tk_WindowId(tkwin);
     display = Tk_Display(tkwin);
-
     if (drawable == None) {
 	Drawable root;
 	int depth;
 
-	root = RootWindow(display, Tk_ScreenNumber(tkwin));
+	root = Tk_RootWindow(tkwin);
 	depth = Tk_Depth(tkwin);
 
 	if (depth == DefaultDepth(display, Tk_ScreenNumber(tkwin))) {
@@ -1222,6 +965,8 @@ Blt_GetPrivateGC(tkwin, gcMask, valuePtr)
 	} else {
 	    pixmap = Tk_GetPixmap(display, root, 1, 1, depth);
 	    drawable = pixmap;
+	    Blt_SetDrawableAttribs(display, drawable, 1, 1, depth, 
+		Tk_Colormap(tkwin), Tk_Visual(tkwin));
 	}
     }
     gc = Blt_GetPrivateGCFromDrawable(display, drawable, gcMask, valuePtr);
@@ -1232,9 +977,7 @@ Blt_GetPrivateGC(tkwin, gcMask, valuePtr)
 }
 
 void
-Blt_FreePrivateGC(display, gc)
-    Display *display;
-    GC gc;
+Blt_FreePrivateGC(Display *display, GC gc)
 {
     Tk_FreeXId(display, (XID) XGContextFromGC(gc));
     XFreeGC(display, gc);
@@ -1242,136 +985,78 @@ Blt_FreePrivateGC(display, gc)
 
 #ifndef WIN32
 void
-Blt_SetDashes(display, gc, dashesPtr)
-    Display *display;
-    GC gc;
-    Blt_Dashes *dashesPtr;
+Blt_SetDashes(Display *display, GC gc, Blt_Dashes *dashesPtr)
 {
-    XSetDashes(display, gc, dashesPtr->offset, 
-       (CONST char *)dashesPtr->values, strlen((char *)dashesPtr->values));
+    XSetDashes(display, gc, dashesPtr->offset, (const char *)dashesPtr->values,
+	(int)strlen((char *)dashesPtr->values));
 }
 #endif
 
-
-static double
-FindSplit(points, i, j, split) 
-    Point2D points[];
-    int i, j;			/* Indices specifying the range of points. */
-    int *split;			/* (out) Index of next split. */
-{    double maxDist;
-    
-    maxDist = -1.0;
-    if ((i + 1) < j) {
-	register int k;
-	double a, b, c;	
-	double sqDist;
-
-	/* 
-	 * 
-	 * sqDist P(k) =  |  1  P(i).x  P(i).y  |
-	 *		  |  1  P(j).x  P(j).y  |
-	 *                |  1  P(k).x  P(k).y  |
-	 *              ---------------------------
- 	 *       (P(i).x - P(j).x)^2 + (P(i).y - P(j).y)^2
-	 */
-
-	a = points[i].y - points[j].y;
-	b = points[j].x - points[i].x;
-	c = (points[i].x * points[j].y) - (points[i].y * points[j].x);
-	for (k = (i + 1); k < j; k++) {
-	    sqDist = (points[k].x * a) + (points[k].y * b) + c;
-	    if (sqDist < 0.0) {
-		sqDist = -sqDist;	
-	    }
-	    if (sqDist > maxDist) {
-		maxDist = sqDist;	/* Track the maximum. */
-		*split = k;
-	    }
-	}
-	/* Correction for segment length---should be redone if can == 0 */
-	maxDist *= maxDist / (a * a + b * b);
-    } 
-    return maxDist;
-}
-
-
-/* Douglas-Peucker line simplification algorithm */
-int
-Blt_SimplifyLine(inputPts, low, high, tolerance, indices) 
-   Point2D inputPts[];
-   int low, high;
-   double tolerance;
-   int indices[];
+void
+Blt_ScreenDPI(Tk_Window tkwin, unsigned int *xPtr, unsigned int *yPtr) 
 {
-#define StackPush(a)	s++, stack[s] = (a)
-#define StackPop(a)	(a) = stack[s], s--
-#define StackEmpty()	(s < 0)
-#define StackTop()	stack[s]
-    int *stack;
-    int split = -1; 
-    double sqDist, sqTolerance;
-    int s = -1;			/* Points to top stack item. */
-    int count;
+    Screen *screen;
 
-    stack = Blt_Malloc(sizeof(int) * (high - low + 1));
-    StackPush(high);
-    count = 0;
-    indices[count++] = 0;
-    sqTolerance = tolerance * tolerance;
-    while (!StackEmpty()) {
-	sqDist = FindSplit(inputPts, low, StackTop(), &split);
-	if (sqDist > sqTolerance) {
-	    StackPush(split);
-	} else {
-	    indices[count++] = StackTop();
-	    StackPop(low);
-	}
-    } 
-    Blt_Free(stack);
-    return count;
+#define MM_INCH		25.4
+    screen = Tk_Screen(tkwin);
+    *xPtr = (unsigned int)((WidthOfScreen(screen) * MM_INCH) / 
+			   WidthMMOfScreen(screen));
+    *yPtr = (unsigned int)((HeightOfScreen(screen) * MM_INCH) / 
+			   HeightMMOfScreen(screen));
 }
 
 void
-Blt_Draw2DSegments(display, drawable, gc, segPtr, nSegments)
-    Display *display;
-    Drawable drawable;
-    GC gc;
-    register Segment2D *segPtr;
-    int nSegments;
+Blt_Draw2DSegments(
+    Display *display,
+    Drawable drawable,
+    GC gc,
+    Segment2d *segments,
+    int nSegments)
 {
-    XSegment *xSegPtr, *xSegArr;
-    Segment2D *endPtr;
+    XSegment *dp, *xsegments;
+    Segment2d *sp, *send;
 
-    xSegArr = Blt_Malloc(nSegments * sizeof(XSegment));
-    if (xSegArr == NULL) {
+    xsegments = Blt_Malloc(nSegments * sizeof(XSegment));
+    if (xsegments == NULL) {
 	return;
     }
-    xSegPtr = xSegArr;
-    for (endPtr = segPtr + nSegments; segPtr < endPtr; segPtr++) {
-	xSegPtr->x1 = (short int)segPtr->p.x;
-	xSegPtr->y1 = (short int)segPtr->p.y;
-	xSegPtr->x2 = (short int)segPtr->q.x;
-	xSegPtr->y2 = (short int)segPtr->q.y;
-	xSegPtr++;
+    dp = xsegments;
+    for (sp = segments, send = sp + nSegments; sp < send; sp++) {
+	dp->x1 = (short int)sp->p.x;
+	dp->y1 = (short int)sp->p.y;
+	dp->x2 = (short int)sp->q.x;
+	dp->y2 = (short int)sp->q.y;
+	dp++;
     }
-    XDrawSegments(display, drawable, gc, xSegArr, nSegments);
-    Blt_Free(xSegArr);
+    XDrawSegments(display, drawable, gc, xsegments, nSegments);
+    Blt_Free(xsegments);
 }
 
 void
-Blt_DrawArrow(display, drawable, gc, x, y, arrowHeight, orientation)
-    Display *display;
-    Drawable drawable;
-    GC gc;
-    int x, y;
-    int arrowHeight;
-    int orientation;
+Blt_DrawArrowOld(
+    Display *display,
+    Drawable drawable,
+    GC gc,
+    int x, int y,
+    int arrowWidth,
+    int arrowHeight,
+    int orientation)
 {
-    XPoint arrow[5];
-    int a, b;
-    
-    a = arrowHeight / 2 + 1;
-    b = arrowHeight;
+#define ARROW_PAD	0
+#define TAN30		0.577350269189
+#define COS30		0.866025403785
+    XPoint arrow[4];
+    int s;
+    double s2;
+    double d;
+    int cx, cy;
+
+    s = MIN(arrowWidth, arrowHeight);
+    s2 = s * 0.5;
+
+    cx = x;
+    cy = y;
+
     switch (orientation) {
     case ARROW_UP:
 	/*
@@ -1385,14 +1070,14 @@ Blt_DrawArrow(display, drawable, gc, x, y, arrowHeight, orientation)
 	 *      +-----------+
 	 *     1      b      2
 	 */
-	arrow[0].x = x;
-	arrow[0].y = y - a;
-	arrow[1].x = arrow[0].x - b;
-	arrow[1].y = arrow[0].y + b;
-	arrow[2].x = arrow[0].x + b;
-	arrow[2].y = arrow[0].y + b;
-	arrow[3].x = arrow[0].x;
-	arrow[3].y = arrow[0].y;
+	d = s2 * TAN30;
+	arrow[0].x = ROUND(cx - s2);
+	arrow[1].x = ROUND(cx + s2);
+	arrow[2].x = cx;
+	arrow[0].y = arrow[1].y = ROUND(cy + d);
+	d = s2 / COS30;
+	arrow[2].y = ROUND(cy - d);
+	arrow[3] = arrow[0];
 	break;
 
     case ARROW_DOWN:
@@ -1407,14 +1092,14 @@ Blt_DrawArrow(display, drawable, gc, x, y, arrowHeight, orientation)
 	 *            +
 	 *            0
 	 */
-	arrow[0].x = x;
-	arrow[0].y = y + a;
-	arrow[1].x = arrow[0].x - b;
-	arrow[1].y = arrow[0].y - b;
-	arrow[2].x = arrow[0].x + b;
-	arrow[2].y = arrow[0].y - b;
-	arrow[3].x = arrow[0].x;
-	arrow[3].y = arrow[0].y;
+	d = s2 * TAN30;
+	arrow[0].x = ROUND(cx - s2);
+	arrow[1].x = ROUND(cx + s2);
+	arrow[2].x = cx;
+	arrow[0].y = arrow[1].y = ROUND(cy - d);
+	d = s2 / COS30;
+	arrow[2].y = ROUND(cy + d);
+	arrow[3] = arrow[0];
 	break;
 
     case ARROW_RIGHT:
@@ -1435,14 +1120,14 @@ Blt_DrawArrow(display, drawable, gc, x, y, arrowHeight, orientation)
 	 *       +
 	 *       1
 	 */
-	arrow[0].x = x + a;
-	arrow[0].y = y;
-	arrow[1].x = arrow[0].x - b;
-	arrow[1].y = arrow[0].y + b;
-	arrow[2].x = arrow[0].x - b;
-	arrow[2].y = arrow[0].y - b;
-	arrow[3].x = arrow[0].x;
-	arrow[3].y = arrow[0].y;
+	d = s2 * TAN30;
+	arrow[0].y = ROUND(cy - s2);
+	arrow[1].y = ROUND(cy + s2);
+	arrow[2].y = cy;
+	arrow[0].x = arrow[1].x = ROUND(cx - d);
+	d = s2 / COS30;
+	arrow[2].x = ROUND(cx + d);
+	arrow[3] = arrow[0];
 	break;
 
     case ARROW_LEFT:
@@ -1463,14 +1148,14 @@ Blt_DrawArrow(display, drawable, gc, x, y, arrowHeight, orientation)
 	 *       	+
 	 *             	1
 	 */
-	arrow[0].x = x - a;
-	arrow[0].y = y;
-	arrow[1].x = arrow[0].x + b;
-	arrow[1].y = arrow[0].y + b;
-	arrow[2].x = arrow[0].x + b;
-	arrow[2].y = arrow[0].y - b;
-	arrow[3].x = arrow[0].x;
-	arrow[3].y = arrow[0].y;
+	d = s2 * TAN30;
+	arrow[0].y = ROUND(cy - s2);
+	arrow[1].y = ROUND(cy + s2);
+	arrow[2].y = cy;
+	arrow[0].x = arrow[1].x = ROUND(cx + d);
+	d = s2 / COS30;
+	arrow[2].x = ROUND(cx - d);
+	arrow[3] = arrow[0];
 	break;
 
     }
@@ -1478,34 +1163,114 @@ Blt_DrawArrow(display, drawable, gc, x, y, arrowHeight, orientation)
     XDrawLines(display, drawable, gc, arrow, 4, CoordModeOrigin);
 }
 
-int 
-Blt_MaxRequestSize(Display *display, unsigned int elemSize) 
+void
+Blt_DrawArrow(
+    Display *display,
+    Drawable drawable,
+    GC gc,
+    int x, int y, int w, int h,
+    int borderWidth,
+    int orientation)
 {
-    long size;
+    int s;
+    int s2;
+    int ax, ay;
+    int dx, dy;
+    
+#define ARROW_IPAD 1
+    w -= 2 * (ARROW_IPAD + borderWidth);
+    h -= 2 * (ARROW_IPAD + borderWidth);
+    x += ARROW_IPAD + borderWidth;
+    y += ARROW_IPAD + borderWidth;
 
-#ifdef HAVE_XEXTENDEDMAXREQUESTSIZE
-    size = XExtendedMaxRequestSize(display);
-    if (size == 0) {
-	size = XMaxRequestSize(display);
+    s = MIN(w, h);
+    s2 = s / 2;
+    ax = x + w / 2;
+    ay = y + h / 2;
+
+    switch (orientation) {
+    case ARROW_UP:
+	ay -= s2 / 2;
+	for (dx = 0; dx < s2; dx++, ay++) {
+	    XDrawLine(display, drawable, gc, ax - dx, ay, ax + dx, ay);
+	}
+	break;
+    case ARROW_DOWN:
+	ay += s2 / 2;
+	for (dx = 0; dx < s2; dx++, ay--) {
+	    XDrawLine(display, drawable, gc, ax - dx, ay, ax + dx, ay);
+	}
+	break;
+    case ARROW_LEFT:
+	ax -= s2 / 2;
+	for (dy = 0; dy < s2; dy++, ax++) {
+	    XDrawLine(display, drawable, gc, ax, ay - dy, ax, ay + dy);
+	}
+	break;
+    case ARROW_RIGHT:
+	ax += s2 / 2;
+	for (dy = 0; dy < s2; dy++, ax--) {
+	    XDrawLine(display, drawable, gc, ax, ay - dy, ax, ay + dy);
+	}
+	break;
     }
+}
+
+long 
+Blt_MaxRequestSize(Display *display, size_t elemSize) 
+{
+    static long maxSizeBytes = 0L;
+
+    if (maxSizeBytes == 0L) {
+	long size;
+#ifndef WIN32
+	size = XExtendedMaxRequestSize(display);
+	if (size == 0) {
+	    size = XMaxRequestSize(display);
+	}
 #else
-    size = XMaxRequestSize(display);
+	size = XMaxRequestSize(display);
 #endif
-    size -= 4;
-    return ((size * 4) / elemSize);
+	size -= (4 * elemSize);
+	/*	maxSizeBytes = (size * 4); */
+	maxSizeBytes = size;
+    }
+    return (maxSizeBytes / elemSize);
+}
+
+void
+Blt_GetLineExtents(size_t nPoints, Point2d *points, Region2d *r)
+{
+    Point2d *p, *pend;
+    r->top = r->left = DBL_MAX;
+    r->bottom = r->right = -DBL_MAX;
+    for (p = points, pend = p + nPoints; p < pend; p++) {
+	if (r->top > p->y) {
+	    r->top = p->y;
+	}
+	if (r->bottom < p->y) {
+	    r->bottom = p->y;
+	}
+	if (r->left > p->x) {
+	    r->left = p->x;
+	}
+	if (r->right < p->x) {
+	    r->right = p->x;
+	}
+    }
 }
 
 #undef Blt_Fill3DRectangle
 void
-Blt_Fill3DRectangle(tkwin, drawable, border, x, y, width,
-	height, borderWidth, relief)
-    Tk_Window tkwin;		/* Window for which border was allocated. */
-    Drawable drawable;		/* X window or pixmap in which to draw. */
-    Tk_3DBorder border;		/* Token for border to draw. */
-    int x, y, width, height;	/* Outside area of rectangular region. */
-    int borderWidth;		/* Desired width for border, in
-				 * pixels. Border will be *inside* region. */
-    int relief;			/* Indicates 3D effect: TK_RELIEF_FLAT,
+Blt_Fill3DRectangle(
+    Tk_Window tkwin,		/* Window for which border was allocated. */
+    Drawable drawable,		/* X window or pixmap in which to draw. */
+    Tk_3DBorder border,		/* Token for border to draw. */
+    int x, int y, 
+    int width, int  height,	/* Outside area of rectangular region. */
+    int borderWidth,		/* Desired width for border, in pixels. Border
+				 * will be *inside* region. */
+    int relief)			/* Indicates 3D effect: TK_RELIEF_FLAT,
 				 * TK_RELIEF_RAISED, or TK_RELIEF_SUNKEN. */
 {
 #ifndef notdef
@@ -1520,15 +1285,14 @@ Blt_Fill3DRectangle(tkwin, drawable, border, x, y, width,
 #define TK_3D_DARK2_GC TK_3D_DARK_GC+2
 	if (relief == TK_RELIEF_RAISED) {
 	    lightGC = Tk_3DBorderGC(tkwin, border, TK_3D_FLAT_GC);
-#ifdef WIN32
 	    darkGC = Tk_3DBorderGC(tkwin, border, TK_3D_DARK_GC);
-#else
+#ifdef notdef
 	    darkGC = DefaultGC(Tk_Display(tkwin), Tk_ScreenNumber(tkwin));
 #endif
 	} else {
-#ifdef WIN32
+
 	    lightGC = Tk_3DBorderGC(tkwin, border, TK_3D_LIGHT_GC);
-#else
+#ifdef notdef
 	    lightGC = DefaultGC(Tk_Display(tkwin), Tk_ScreenNumber(tkwin));
 #endif
 	    darkGC = Tk_3DBorderGC(tkwin, border, TK_3D_FLAT_GC);
@@ -1547,15 +1311,15 @@ Blt_Fill3DRectangle(tkwin, drawable, border, x, y, width,
 
 #undef Blt_Draw3DRectangle
 void
-Blt_Draw3DRectangle(tkwin, drawable, border, x, y, width,
-	height, borderWidth, relief)
-    Tk_Window tkwin;		/* Window for which border was allocated. */
-    Drawable drawable;		/* X window or pixmap in which to draw. */
-    Tk_3DBorder border;		/* Token for border to draw. */
-    int x, y, width, height;	/* Outside area of rectangular region. */
-    int borderWidth;		/* Desired width for border, in
-				 * pixels. Border will be *inside* region. */
-    int relief;			/* Indicates 3D effect: TK_RELIEF_FLAT,
+Blt_Draw3DRectangle(
+    Tk_Window tkwin,		/* Window for which border was allocated. */
+    Drawable drawable,		/* X window or pixmap in which to draw. */
+    Tk_3DBorder border,		/* Token for border to draw. */
+    int x, int y, 
+    int width, int height,	/* Outside area of rectangular region. */
+    int borderWidth,		/* Desired width for border, in pixels. Border
+				 * will be *inside* region. */
+    int relief)			/* Indicates 3D effect: TK_RELIEF_FLAT,
 				 * TK_RELIEF_RAISED, or TK_RELIEF_SUNKEN. */
 {
 #ifndef notdef
@@ -1568,15 +1332,13 @@ Blt_Draw3DRectangle(tkwin, drawable, border, x, y, width,
 	y2 = y + height - 1;
 	if (relief == TK_RELIEF_RAISED) {
 	    lightGC = Tk_3DBorderGC(tkwin, border, TK_3D_FLAT_GC);
-#ifdef WIN32
 	    darkGC = Tk_3DBorderGC(tkwin, border, TK_3D_DARK_GC);
-#else
+#ifdef notdef
 	    darkGC = DefaultGC(Tk_Display(tkwin), Tk_ScreenNumber(tkwin));
 #endif
 	} else {
-#ifdef WIN32
 	    lightGC = Tk_3DBorderGC(tkwin, border, TK_3D_LIGHT_GC);
-#else
+#ifdef notdef
 	    lightGC = DefaultGC(Tk_Display(tkwin), Tk_ScreenNumber(tkwin));
 #endif
 	    darkGC = Tk_3DBorderGC(tkwin, border, TK_3D_FLAT_GC);
@@ -1608,35 +1370,31 @@ typedef struct {
 				 * the border will be used. */
     Colormap colormap;		/* Colormap out of which pixels are
 				 * allocated. */
-    int refCount;		/* Number of active uses of this color
-				 * (each active use corresponds to a
-				 * call to Blt_Get3DBorder).  If this
-				 * count is 0, then this structure is
-				 * no longer valid and it isn't
-				 * present in borderTable: it is being
-				 * kept around only because there are
-				 * objects referring to it.  The
-				 * structure is freed when refCount is
-				 * 0. */
+    int refCount;		/* Number of active uses of this color (each
+				 * active use corresponds to a call to
+				 * Blt_Get3DBorder).  If this count is 0, then
+				 * this structure is no longer valid and it
+				 * isn't present in borderTable: it is being
+				 * kept around only because there are objects
+				 * referring to it.  The structure is freed
+				 * when refCount is 0. */
 
     XColor *bgColorPtr;		/* Color of face. */
     XColor *shadows[4];
 
-    Pixmap darkStipple;		/* Stipple pattern to use for drawing
-				 * shadows areas.  Used for displays with
-				 * <= 64 colors or where colormap has filled
-				 * up. */
-    Pixmap lightStipple;	/* Stipple pattern to use for drawing
-				 * shadows areas.  Used for displays with
-				 * <= 64 colors or where colormap has filled
-				 * up. */
-    GC bgGC;			/* Used (if necessary) to draw areas in
-				 * the background color. */
+    Pixmap darkStipple;		/* Stipple pattern to use for drawing shadows
+				 * areas.  Used for displays with <= 64 colors
+				 * or where colormap has filled up. */
+    Pixmap lightStipple;	/* Stipple pattern to use for drawing shadows
+				 * areas.  Used for displays with <= 64 colors
+				 * or where colormap has filled up. */
+    GC bgGC;			/* Used (if necessary) to draw areas in the
+				 * background color. */
     GC lightGC, darkGC;
-    Tcl_HashEntry *hashPtr;	/* Entry in borderTable (needed in
-				 * order to delete structure). */
+    Tcl_HashEntry *hashPtr;	/* Entry in borderTable (needed in order to
+				 * delete structure). */
 
-    struct Blt_3DBorderStruct *nextPtr;
+    struct _Blt_3DBorder *nextPtr;
 } Border, *Blt_3DBorder;
     
 
@@ -1674,7 +1432,7 @@ Blt_Draw3DRectangle(tkwin, drawable, border, x, y, width,
 	for (i = 1; i < (borderWidth - 1); i++) {
 
 	    /*
-	     *  +---------
+	     *  +----------
 	     *  |+-------
 	     *  ||+-----
 	     *  |||
@@ -1731,9 +1489,6 @@ FreeBorder(display, borderPtr)
     for (i = 0; i < 4; i++) {
 	Tk_FreeColor(display, borderPtr->shadows[i]);
     }
-    if (borderPtr->tile != NULL) {
-	Blt_FreeTile(tile);
-    }
     if (borderPtr->darkGC != NULL) {
 	Blt_FreePrivateGC(display, borderPtr->darkGC);
     }
@@ -1763,8 +1518,8 @@ Blt_Free3DBorder(display, border)
 	    headPtr = headPtr->next;
 	}
 	if (headPtr == NULL) {
-	    return;		/* This can't happen. It means that 
-				 * we could not find the border. */
+	    return;		/* This can't happen. It means that we could
+				 * not find the border. */
 	}
 	if (lastPtr != NULL) {
 	    lastPtr->next = borderPtr->next;
@@ -1776,17 +1531,13 @@ Blt_Free3DBorder(display, border)
 }
 
 Blt_3DBorder *
-Blt_Get3DBorder(interp, tkwin, borderName)
-    Tcl_Interp *interp;
-    Tk_Window tkwin;
-    char *borderName;
+Blt_Get3DBorder(Tcl_Interp *interp, Tk_Window tkwin, const char *borderName)
 {
     Blt_3DBorder *borderPtr, *lastBorderPtr;
     Blt_HashEntry *hPtr;
-    Blt_Tile tile;
     XColor *bgColorPtr;
     char **argv;
-    char *colorName;
+    const char *colorName;
     int argc;
     int isNew;
 
@@ -1806,30 +1557,24 @@ Blt_Get3DBorder(interp, tkwin, borderName)
     /* Create a new border. */
     argv = NULL;
     bgColorPtr = NULL;
-    tile = NULL;
 
     if (Tcl_SplitList(interp, borderName, &argc, &argv) != TCL_OK) {
 	goto error;
     }
     colorName = borderName;
-    if ((argc == 2) && (Blt_GetTile(interp, tkwin, argv[0], &tile) == TCL_OK)) {
-	colorName = argv[1];
-    }
     bgColorPtr = Tk_GetColor(interp, tkwin, colorName);
     if (bgColorPtr == NULL) {
 	goto error;
     }
 
     /* Create a new border */
-    borderPtr = Blt_Calloc(1, sizeof(Blt_3DBorder));
-    assert(borderPtr);
+    borderPtr = Blt_AssertCalloc(1, sizeof(Blt_3DBorder));
     borderPtr->screen = Tk_Screen(tkwin);
     borderPtr->visual = Tk_Visual(tkwin);
     borderPtr->depth = Tk_Depth(tkwin);
     borderPtr->colormap = Tk_Colormap(tkwin);
     borderPtr->refCount = 1;
     borderPtr->bgColorPtr = bgColorPtr;
-    borderPtr->tile = tile;
     borderPtr->darkGC = Blt_GetPrivateGC(tkwin, 0, NULL);
     borderPtr->lightGC = Blt_GetPrivateGC(tkwin, 0, NULL);
     borderPtr->hashPtr = lastBorderPtr->hashPtr;
@@ -1843,8 +1588,8 @@ Blt_Get3DBorder(interp, tkwin, borderName)
 	/* Convert the face (background) color to HSV */
 	Blt_XColorToHSV(borderPtr->bgColorPtr, &hsv);
 	
-	/* Using the color as the baseline intensity, pick a set of
-	 * colors around the intensity. */
+	/* Using the color as the baseline intensity, pick a set of colors
+	 * around the intensity. */
 #define UFLOOR(x,u)		(floor((x)*(u))/(u))
 	diff = hsv.sat - UFLOOR(hsv.sat, 0.2);
 	sat = 0.1 + (diff - 0.1);
@@ -1869,9 +1614,6 @@ Blt_Get3DBorder(interp, tkwin, borderName)
     if (argv != NULL) {
 	Blt_Free(argv);
     }
-    if (tile != NULL) {
-	Blt_FreeTile(tile);
-    }
     if (bgColorPtr != NULL) {
 	Tk_FreeColor(bgColorPtr);
     }
@@ -1881,4 +1623,349 @@ Blt_Get3DBorder(interp, tkwin, borderName)
     return NULL;
 }
 
+
 #endif
+
+typedef struct {
+    float x, y, z;
+} Vector3f;
+
+typedef struct {
+    float x, y, z, w;
+} Vector4f;
+
+typedef Vector4f Quaternion;
+
+typedef float Matrix3x3f[3][3];
+
+typedef struct _ArcBall {
+    Vector3f click;      
+    Vector3f drag;		
+    float xScale;   
+    float yScale;  
+} ArcBall;
+
+/*
+ * Arcball sphere constants:
+ * Diameter is       2.0f
+ * Radius is         1.0f
+ * Radius squared is 1.0f
+ */
+
+/* assuming IEEE-754 (float), which i believe has max precision of 7 bits */
+#define EPSILON FLT_EPSILON
+static INLINE float 
+LengthVector3f(Vector3f *a)
+{
+    return sqrtf((a->x * a->x) + (a->y * a->y) + (a->z * a->z));
+}
+
+static INLINE float DotProductVector3f(Vector3f *a,  Vector3f *b)
+{
+    return (a->x * b->x) + (a->y * b->y) + (a->z * b->z);
+}
+
+/**
+  * Calculate the cross product of two 3D vectors: c = a x b.
+  * "c" must not refer to the same memory location as "a" or "b".
+  */
+static INLINE void 
+CrossProductVector3f(Vector3f *a, Vector3f *b, Vector3f *c)
+{
+    c->x = (a->y * b->z) - (b->y * a->z);
+    c->y = (a->z * b->x) - (b->z * a->x);
+    c->z = (a->x * b->y) - (b->x * a->y);
+}
+
+static void 
+PointOnSphere (ArcBall *arcPtr, float x, float y, Vector3f *outPtr)
+{
+    float sx, sy;
+    float d;
+
+    /* Adjust point coords and scale down to range of [-1 ... 1] */
+    sx = (x * arcPtr->xScale)  - 1.0f;
+    sy = 1.0f - (y * arcPtr->yScale);
+
+    /* Compute the square of the length of the vector to the point from the
+     * center. */
+    d = (sx * sx) + (sy * sy);
+
+    /* If the point is mapped outside of the sphere ... 
+     * (length > radius squared)
+     */
+    if (d > 1.0f) {
+        float scale;
+
+        /* Compute a normalizing factor (radius / sqrt(length)) */
+        scale = 1.0f / sqrt (d);
+
+        /* Return the "normalized" vector, a point on the sphere */
+        outPtr->x = sx * scale;
+        outPtr->y = sy * scale;
+        outPtr->z = 0.0f;
+    } else {   /* else it's on the inside */
+        /* Return a vector to a point mapped inside the sphere
+         * sqrt(radius squared - length) */
+        outPtr->x = sx;
+        outPtr->y = sy;
+        outPtr->z = sqrtf(1.0f - d);
+    }
+}
+
+static void 
+SetArcBallBounds(ArcBall *arcPtr, float w, float h)
+{
+    if (w <= 1.0f ) {
+        w = 2.0f;
+    }
+    if (h <= 1.0f ) {
+        h = 2.0f;
+    }
+    /* Set adjustment factor for width/height */
+    arcPtr->xScale = 1.0f / ((w - 1.0f) * 0.5f);
+    arcPtr->yScale = 1.0f / ((h - 1.0f) * 0.5f);
+}
+
+static ArcBall *
+CreateArcBall (float w, float h)
+{
+    ArcBall *arcPtr;
+
+    arcPtr = Blt_AssertCalloc(1, sizeof(ArcBall));
+    SetArcBallBounds (arcPtr, w, h);
+    return arcPtr;
+}
+
+static void 
+DestroyArcBall(ArcBall *arcPtr)
+{
+    if (arcPtr != NULL) {
+        Blt_Free(arcPtr);
+    }
+}
+
+/* Mouse down: Supply mouse position in x and y */
+static void 
+ArcBallOnClick(ArcBall *arcPtr, float x, float y)
+{
+    PointOnSphere (arcPtr, x, y, &arcPtr->click);
+}
+
+/* Mouse drag, calculate rotation: Supply mouse position in x and y */
+static void 
+ArcBallOnDrag(ArcBall *arcPtr, float x, float y, Quaternion *outPtr)
+{
+    /* Map the point to the sphere */
+    PointOnSphere(arcPtr, x, y, &arcPtr->drag);
+
+    /* Return the quaternion equivalent to the rotation */
+    if (outPtr != NULL) {
+        Vector3f perp;
+
+        /* Compute the vector perpendicular to the begin and end vectors */
+        CrossProductVector3f(&arcPtr->drag, &arcPtr->click, &perp);
+
+        /* Compute the length of the perpendicular vector */
+        if (LengthVector3f(&perp) > FLT_EPSILON) {
+            /* If its non-zero, we're ok, so return the perpendicular
+             * vector as the transform after all
+             */
+            outPtr->x = perp.x;
+            outPtr->y = perp.y;
+            outPtr->z = perp.z;
+            /* In the quaternion values, w is cosine (theta / 2),
+             * where theta is rotation angle
+             */
+            outPtr->w = DotProductVector3f(&arcPtr->click, &arcPtr->drag);
+        } else {
+            /* If it is zero, the begin and end vectors coincide,
+             * so return an identity transform
+             */
+            outPtr->x = outPtr->y = outPtr->z = outPtr->z = 0.0f;
+        }
+    }
+}
+
+
+static INLINE void 
+SetRotationMatrix(const Quaternion* q, Matrix3x3f mat)
+{
+    float n, s;
+    float xs, ys, zs;
+    float wx, wy, wz;
+    float xx, xy, xz;
+    float yy, yz, zz;
+
+    assert(mat && q);
+    
+    n = (q->x * q->x) + (q->y * q->y) + (q->z * q->z) + (q->w * q->w);
+
+    s = (n > 0.0f) ? (2.0f / n) : 0.0f;
+    
+    xs = q->x * s;  
+    ys = q->y * s;  
+    zs = q->z * s;
+    wx = q->w * xs; 
+    wy = q->w * ys; 
+    wz = q->w * zs;
+    xx = q->x * xs; 
+    xy = q->x * ys; 
+    xz = q->x * zs;
+    yy = q->y * ys; 
+    yz = q->y * zs; 
+    zz = q->z * zs;
+    
+    mat[0][0] = 1.0f - (yy + zz); 
+    mat[0][1] = xy - wz;  
+    mat[0][2] = xz + wy;
+    mat[1][0] = xy + wz;  
+    mat[1][1] = 1.0f - (xx + zz); 
+    mat[1][2] = yz - wx;
+    mat[2][0] = xz - wy;  
+    mat[2][1] = yz + wx;  
+    mat[2][2] = 1.0f - (xx + yy);
+}
+
+/* Return quaternion product qL * qR.  Note: order is important!
+ * To combine rotations, use the product Mul(Second, First),
+ * which gives the effect of rotating by First then Second. */
+static INLINE void
+CombineRotations(Quaternion *a, Quaternion *b, Quaternion *result)
+{
+    result->w = (a->w * b->w) - (a->x * b->x) - (a->y * b->y) - (a->z * b->z);
+    result->x = (a->w * b->x) + (a->x * b->w) + (a->y * b->z) - (a->z * b->y);
+    result->y = (a->w * b->y) + (a->y * b->w) + (a->z * b->x) - (a->x * b->z);
+    result->z = (a->w * b->z) + (a->z * b->w) + (a->x * b->y) - (a->y * b->x);
+}
+
+
+static int
+GetQuaternionFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Quaternion *q)
+{
+    Tcl_Obj **objv;
+    int objc;
+    double x, y, z, w;
+    
+    if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if (objc != 4) {
+	Tcl_AppendResult(interp, "wrong number of elements in quaternion \"",
+			 Tcl_GetString(objPtr), "\"", (char *)NULL);
+	return TCL_ERROR;
+    }
+    if ((Tcl_GetDoubleFromObj(interp, objv[0], &x) != TCL_OK) ||
+	(Tcl_GetDoubleFromObj(interp, objv[1], &y) != TCL_OK) ||
+	(Tcl_GetDoubleFromObj(interp, objv[2], &z) != TCL_OK) ||
+	(Tcl_GetDoubleFromObj(interp, objv[3], &w) != TCL_OK)) {
+	return TCL_ERROR;
+    }
+    q->x = x, q->y = y, q->z = z, q->w = w;
+    return TCL_OK;
+}
+
+static int
+ArcBallCombineOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		 Tcl_Obj *const *objv)
+{
+    Tcl_Obj *listObjPtr;
+    Quaternion q1, q2, r;
+
+    if (GetQuaternionFromObj(interp, objv[2], &q1) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if (GetQuaternionFromObj(interp, objv[3], &q2) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    CombineRotations(&q2, &q1, &r);
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(r.x));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(r.y));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(r.w));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(r.z));
+    Tcl_SetObjResult(interp, listObjPtr);
+    return TCL_OK;
+}
+
+static int
+ArcBallRotateOp(ClientData clientData, Tcl_Interp *interp, int objc,
+		 Tcl_Obj *const *objv)
+{
+    ArcBall *arcPtr;
+    Tcl_Obj *listObjPtr;
+    Quaternion q;
+    double x1, y1, x2, y2;
+    int w, h;
+
+    if ((Tcl_GetIntFromObj(interp, objv[2], &w) != TCL_OK) ||
+	(Tcl_GetIntFromObj(interp, objv[3], &h) != TCL_OK)) {
+	return TCL_ERROR;
+    }
+    if ((Tcl_GetDoubleFromObj(interp, objv[4], &x1) != TCL_OK) ||
+	(Tcl_GetDoubleFromObj(interp, objv[5], &y1) != TCL_OK) ||
+	(Tcl_GetDoubleFromObj(interp, objv[6], &x2) != TCL_OK) ||
+	(Tcl_GetDoubleFromObj(interp, objv[7], &y2) != TCL_OK)) {
+	return TCL_ERROR;
+    }
+    arcPtr = CreateArcBall((float)w, (float)h);
+    ArcBallOnClick(arcPtr, x1, y1);
+    ArcBallOnDrag(arcPtr, x2, y2, &q);
+    DestroyArcBall(arcPtr);
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(q.x));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(q.y));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(q.w));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(q.z));
+    Tcl_SetObjResult(interp, listObjPtr);
+    return TCL_OK;
+}
+
+static int
+ArcBallMatrixOp(ClientData clientData, Tcl_Interp *interp, int objc, 
+		Tcl_Obj *const *objv)
+{
+    Matrix3x3f rot;
+    Tcl_Obj *listObjPtr;
+    Quaternion q;
+
+    if (GetQuaternionFromObj(interp, objv[2], &q) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    SetRotationMatrix(&q, rot);
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **) NULL);
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(rot[0][0]));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(rot[0][1]));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(rot[0][2]));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(rot[1][0]));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(rot[1][1]));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(rot[1][2]));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(rot[2][0]));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(rot[2][1]));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(rot[2][2]));
+    Tcl_SetObjResult(interp, listObjPtr);
+    return TCL_OK;
+}
+
+static Blt_OpSpec arcBallOps[] =
+{
+    {"combine", 1, ArcBallCombineOp, 4, 4, "quat1 quat2",},
+    {"matrix",  1, ArcBallMatrixOp,  3, 3, "quat",},
+    {"rotate",  1, ArcBallRotateOp,  8, 8, "w h x1 y1 x2 y2",},
+};
+static int nArcBallOps = sizeof(arcBallOps) / sizeof(Blt_OpSpec);
+
+static int
+ArcBallCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
+	   Tcl_Obj *const *objv)
+{
+    Tcl_ObjCmdProc *proc;
+    int result;
+
+    proc = Blt_GetOpFromObj(interp, nArcBallOps, arcBallOps, BLT_OP_ARG1, 
+			    objc, objv, 0);
+    if (proc == NULL) {
+	return TCL_ERROR;
+    }
+    result = (*proc) (clientData, interp, objc, objv);
+}

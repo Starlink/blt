@@ -23,6 +23,6 @@ wm protocol . WM_DELETE_WINDOW { DoExit 0 }
 bind all <Control-KeyPress-c> { DoExit 0 } 
 
 proc DoExit { code } {
-    destroy .
-    #exit $code
+    #destroy .
+    exit $code
 }

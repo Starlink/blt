@@ -2,25 +2,29 @@
 /*
  * bltVector.h --
  *
- * Copyright 1993-2000 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_VECTOR_H
@@ -33,10 +37,10 @@ typedef enum {
 				 * Blt_FreeVectorId) */
 } Blt_VectorNotify;
 
-typedef struct Blt_VectorIdStruct *Blt_VectorId;
+typedef struct _Blt_VectorId *Blt_VectorId;
 
-typedef void (Blt_VectorChangedProc) _ANSI_ARGS_((Tcl_Interp *interp,
-	ClientData clientData, Blt_VectorNotify notify));
+typedef void (Blt_VectorChangedProc)(Tcl_Interp *interp, ClientData clientData,
+	Blt_VectorNotify notify);
 
 typedef struct {
     double *valueArr;		/* Array of values (possibly malloc-ed) */
@@ -48,7 +52,7 @@ typedef struct {
 
 } Blt_Vector;
 
-typedef double (Blt_VectorIndexProc) _ANSI_ARGS_((Blt_Vector * vecPtr));
+typedef double (Blt_VectorIndexProc)(Blt_Vector * vecPtr);
 
 typedef enum {
     BLT_MATH_FUNC_SCALAR = 1,	/* The function returns a single double
@@ -78,48 +82,56 @@ typedef enum {
 #define Blt_VecSize(v)		((v)->arraySize)
 #define Blt_VecDirty(v)		((v)->dirty)
 
-EXTERN double Blt_VecMin _ANSI_ARGS_((Blt_Vector *vPtr));
-EXTERN double Blt_VecMax _ANSI_ARGS_((Blt_Vector *vPtr));
+BLT_EXTERN double Blt_VecMin(Blt_Vector *vPtr);
+BLT_EXTERN double Blt_VecMax(Blt_Vector *vPtr);
 
-EXTERN Blt_VectorId Blt_AllocVectorId _ANSI_ARGS_((Tcl_Interp *interp,
-	char *vecName));
+BLT_EXTERN Blt_VectorId Blt_AllocVectorId(Tcl_Interp *interp, 
+	const char *vecName);
 
-EXTERN void Blt_SetVectorChangedProc _ANSI_ARGS_((Blt_VectorId clientId,
-	Blt_VectorChangedProc * proc, ClientData clientData));
+BLT_EXTERN void Blt_SetVectorChangedProc(Blt_VectorId clientId, 
+	Blt_VectorChangedProc *proc, ClientData clientData);
 
-EXTERN void Blt_FreeVectorId _ANSI_ARGS_((Blt_VectorId clientId));
+BLT_EXTERN void Blt_FreeVectorId(Blt_VectorId clientId);
 
-EXTERN int Blt_GetVectorById _ANSI_ARGS_((Tcl_Interp *interp,
-	Blt_VectorId clientId, Blt_Vector **vecPtrPtr));
+BLT_EXTERN int Blt_GetVectorById(Tcl_Interp *interp, Blt_VectorId clientId, 
+	Blt_Vector **vecPtrPtr);
 
-EXTERN char *Blt_NameOfVectorId _ANSI_ARGS_((Blt_VectorId clientId));
+BLT_EXTERN const char *Blt_NameOfVectorId(Blt_VectorId clientId);
 
-EXTERN char *Blt_NameOfVector _ANSI_ARGS_((Blt_Vector *vecPtr));
+BLT_EXTERN const char *Blt_NameOfVector(Blt_Vector *vecPtr);
 
-EXTERN int Blt_VectorNotifyPending _ANSI_ARGS_((Blt_VectorId clientId));
+BLT_EXTERN int Blt_VectorNotifyPending(Blt_VectorId clientId);
 
-EXTERN int Blt_CreateVector _ANSI_ARGS_((Tcl_Interp *interp, char *vecName,
-	int size, Blt_Vector ** vecPtrPtr));
+BLT_EXTERN int Blt_CreateVector(Tcl_Interp *interp, const char *vecName, 
+	int size, Blt_Vector ** vecPtrPtr);
 
-EXTERN int Blt_GetVector _ANSI_ARGS_((Tcl_Interp *interp, char *vecName,
-	Blt_Vector **vecPtrPtr));
+BLT_EXTERN int Blt_CreateVector2(Tcl_Interp *interp, const char *vecName, 
+	const char *cmdName, const char *varName, int initialSize, 
+	Blt_Vector **vecPtrPtr);
 
-EXTERN int Blt_VectorExists _ANSI_ARGS_((Tcl_Interp *interp, char *vecName));
+BLT_EXTERN int Blt_GetVector(Tcl_Interp *interp, const char *vecName, 
+	Blt_Vector **vecPtrPtr);
 
-EXTERN int Blt_ResetVector _ANSI_ARGS_((Blt_Vector *vecPtr, double *dataArr,
-	int nValues, int arraySize, Tcl_FreeProc *freeProc));
+BLT_EXTERN int Blt_GetVectorFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, 
+	Blt_Vector **vecPtrPtr);
 
-EXTERN int Blt_ResizeVector _ANSI_ARGS_((Blt_Vector *vecPtr, int nValues));
+BLT_EXTERN int Blt_VectorExists(Tcl_Interp *interp, const char *vecName);
 
-EXTERN int Blt_DeleteVectorByName _ANSI_ARGS_((Tcl_Interp *interp,
-	char *vecName));
+BLT_EXTERN int Blt_ResetVector(Blt_Vector *vecPtr, double *dataArr, int n, 
+	int arraySize, Tcl_FreeProc *freeProc);
 
-EXTERN int Blt_DeleteVector _ANSI_ARGS_((Blt_Vector *vecPtr));
+BLT_EXTERN int Blt_ResizeVector(Blt_Vector *vecPtr, int n);
 
-EXTERN int Blt_ExprVector _ANSI_ARGS_((Tcl_Interp *interp, char *expression,
-	Blt_Vector *vecPtr));
+BLT_EXTERN int Blt_DeleteVectorByName(Tcl_Interp *interp, const char *vecName);
 
-EXTERN void Blt_InstallIndexProc _ANSI_ARGS_((Tcl_Interp *interp, 
-	char *indexName, Blt_VectorIndexProc * procPtr));
+BLT_EXTERN int Blt_DeleteVector(Blt_Vector *vecPtr);
+
+BLT_EXTERN int Blt_ExprVector(Tcl_Interp *interp, char *expr, 
+	Blt_Vector *vecPtr);
+
+BLT_EXTERN void Blt_InstallIndexProc(Tcl_Interp *interp, const char *indexName,
+	Blt_VectorIndexProc * procPtr);
+
+BLT_EXTERN int Blt_VectorExists2(Tcl_Interp *interp, const char *vecName);
 
 #endif /* _BLT_VECTOR_H */

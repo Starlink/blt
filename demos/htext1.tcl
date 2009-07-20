@@ -1,30 +1,7 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
-source scripts/demo.tcl
+#source scripts/demo.tcl
 
 set visual [winfo screenvisual .] 
 if { $visual == "staticgray"  || $visual == "grayscale" } {
@@ -38,11 +15,12 @@ if { $visual == "staticgray"  || $visual == "grayscale" } {
     if { $tk_version >= 4.0 } {
 	set file1 ./images/clouds.gif
 	set file2 ./images/chalk.gif
-	image create photo bgTexture1 -file $file1
-	image create photo bgTexture2 -file $file2
-#	option add *htext.tile bgTexture1
+	image create picture texture1 -file $file1
+	image create picture texture2 -file $file2
+	set bg1 [blt::bgpattern create tile -image texture1]
+	set bg2 [blt::bgpattern create tile -image texture2]
 	option add *htext.foreground black
-	option add *htext.background white
+	option add *htext.background $bg1
 	option add *htext.selectBackground gold1
     }
 }
@@ -53,13 +31,13 @@ proc Blt_FindPattern { htext } {
     wm title .search "Text search"
     label .search.label1 -text "Enter Pattern"
     entry .search.entry -relief sunken
-    button .search.clear -text "Clear" \
+    label .search.clear -text "Clear" \
 	-command ".search.entry delete 0 end"
-    button .search.cancel -text "Cancel" \
+    label .search.cancel -text "Cancel" \
 	-command "destroy .search; focus $htext"
-    button .search.search -text "Search" -command "Blt_Search&Move $htext"
+    label .search.search -text "Search" -command "Blt_Search&Move $htext"
     bind .search.entry <Return> "Blt_Search&Move $htext"
-    table .search \
+    blt::table .search \
 	.search.label1 	0,0 -padx 4 \
 	.search.entry 	0,1 -cspan 2 -pady 4 -padx 4 -reqwidth 3i \
 	.search.search  3,0 -reqwidth .75i -anchor w -padx 10 -pady 5  \
@@ -103,19 +81,19 @@ scrollbar .vscroll -command { .htext yview } -orient vertical
 scrollbar .hscroll -command { .htext xview } -orient horizontal
 
 # Create the hypertext widget 
-htext .htext -file ./htext.txt  \
+blt::htext .htext -file ./htext.txt  \
     -yscrollcommand { .vscroll set } \
     -xscrollcommand { .hscroll set } \
     -yscrollunits 10m -xscrollunits .25i \
     -height 6i 
 
 
-table . \
+blt::table . \
     .htext 0,0 -fill both \
     .vscroll 0,1 -fill y \
     .hscroll 1,0 -fill x 
 
-table configure . r1 c1 -resize none
+blt::table configure . r1 c1 -resize none
 
 bind .htext <B1-Motion> {
     %W select to @%x,%y

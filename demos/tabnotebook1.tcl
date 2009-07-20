@@ -1,45 +1,23 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 
-# Create a tabnotebook widget.  
+# Create a tabset widget.  
 
-tabnotebook .tnb
+blt::tabset .ts -bg blue -outerpad 0 \
+    -highlightthickness 0 -bd 0 -gap 2 -justify left -tabwidth same
 
-# The notebook is initially empty.  Insert tabs (pages) into the notebook.  
+# The tabset is initially empty.  Insert tabs (pages) into the tabset.  
 
 foreach label { First Second Third Fourth } {
-    .tnb insert end -text $label
+    .ts insert end -text $label
 }
 
 # Tabs are referred to by their index.  Tab indices can be one of the 
 # following:
 #
-#	 number		Position of tab the notebook's list of tabs.
+#	 number		Position of tab the tabset's list of tabs.
 # 	 @x,y		Tab closest to the specified X-Y screen coordinates.
 # 	 "active"	Tab currently under the mouse pointer.
 # 	 "focus"	Tab that has focus.  
@@ -56,31 +34,31 @@ foreach label { First Second Third Fourth } {
 
 # Each tab has a text label and an optional Tk image.
 
-set image [image create photo -file ./images/mini-book1.gif]
-.tnb tab configure 0 -image $image
+set image [image create picture -file ./images/mini-book1.gif]
+.ts tab configure 0 -image $image
 
 #
 # How to embed a widget into a page.  
 #
 
-# 1. The widget must be a child of the tabnotebook.
+# 1. The widget must be a child of the tabset.
 
-set image [image create photo -file ./images/blt98.gif]
-label .tnb.label -image $image -relief sunken -bd 2
+set image [image create picture -file ./images/blt98.gif]
+label .ts.label -image $image -relief sunken -bd 2
 
 # 2. Use the -window option to embed the widget.
 
-.tnb tab configure 0 -window .tnb.label
+#.ts tab configure 0 -window .ts.label
 
 # The tearoff perforation, displayed on the selected tab, is
-# controlled by the tabnotebook's -tearoff option.  
+# controlled by the tabset's -tearoff option.  
 #
 # If you don't want tearoff pages, configure -tearoff to "no".
 
-.tnb configure -tearoff yes
+.ts configure -tearoff yes
 
-table . \
-    0,0 .tnb -fill both 
+blt::table . \
+    0,0 .ts -fill both 
 
-focus .tnb
+focus .ts
 

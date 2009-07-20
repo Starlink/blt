@@ -20,27 +20,27 @@
 '\" Vector command created by George Howlett.
 '\"
 .so man.macros
-.TH vector n BLT_VERSION BLT "BLT Built-In Commands"
+.TH blt::vector n BLT_VERSION BLT "BLT Built-In Commands"
 .BS
 '\" Note:  do not modify the .SH NAME line immediately below!
 .SH NAME
-vector \-  Vector data type for Tcl
+\fBvector\fR \-  Vector data type for Tcl
 .SH SYNOPSIS
-\fBvector create \fIvecName \fR?\fIvecName\fR...? ?\fIswitches\fR? 
+\fBblt::vector create \fIvecName \fR?\fIvecName\fR...? ?\fIswitches\fR? 
 .sp
-\fBvector destroy \fIvecName \fR?\fIvecName\fR...?
+\fBblt::vector destroy \fIvecName \fR?\fIvecName\fR...?
 .sp
-\fBvector expr \fIexpression\fR
+\fBblt::vector expr \fIexpression\fR
 .sp
-\fBvector names \fR?\fIpattern\fR...?
+\fBblt::vector names \fR?\fIpattern\fR...?
 .BE
 .SH DESCRIPTION
-The \fBvector\fR command creates a vector of floating point
+The \fBvector\fR command creates an array of floating point
 values.  The vector's components can be manipulated in three ways:
 through a Tcl array variable, a Tcl command, or the C API.
 .SH INTRODUCTION
-A vector is simply an ordered set of numbers.  The components of a
-vector are real numbers, indexed by counting numbers.
+A vector is an ordered set of real numbers.  The components of a
+vector are indexed by integers.
 .PP
 Vectors are common data structures for many applications.  For
 example, a graph may use two vectors to represent the X-Y
@@ -94,7 +94,7 @@ You create vectors using the \fBvector\fR command and its \fBcreate\fR
 operation.
 .CS
 # Create a new vector. 
-vector create y(50)
+blt::vector create y(50)
 .CE
 This creates a new vector named \f(CWy\fR.  It has fifty components, by
 default, initialized to \f(CW0.0\fR.  In addition, both a Tcl command
@@ -154,7 +154,7 @@ puts "new first element is $y(0)"
 The vector's Tcl command can also be used to query or set the vector.
 .CS
 # Create and set the components of a new vector
-vector create x
+blt::vector create x
 x set { 0.02 0.04 0.06 0.08 0.10 0.12 0.14 0.16 0.18 0.20 }
 .CE
 Here we've created a vector \f(CWx\fR without a initial length specification.
@@ -222,21 +222,21 @@ To delete a vector, use the \fBvector delete\fR command.
 Both the vector and its corresponding Tcl command are destroyed.
 .CS
 # Remove vector x
-vector destroy x
+blt::vector destroy x
 .CE
 .SH SYNTAX
 Vectors are created using the \fBvector create\fR operation.  
 Th \fBcreate\fR operation can be invoked in one of three forms:
 .TP
-\fBvector create \fIvecName\fR
+\fBblt::vector create \fIvecName\fR
 This creates a new vector \fIvecName\fR which initially has no components.
 .TP
-\fBvector create \fIvecName\fR(\fIsize\fR)
+\fBblt::vector create \fIvecName\fR(\fIsize\fR)
 This second form creates a new vector which will contain \fIsize\fR
 number of components.  The components will be indexed starting from
 zero (0). The default value for the components is \f(CW0.0\fR.
 .TP
-\fBvector create \fIvecName\fR(\fIfirst\fR:\fIlast\fR)
+\fBblt::vector create \fIvecName\fR(\fIfirst\fR:\fIlast\fR)
 The last form creates a new vector of indexed \fIfirst\fR through
 \fIlast\fR.  \fIFirst\fR and \fIlast\fR can be any integer value
 so long as \fIfirst\fR is less than \fIlast\fR.
@@ -245,13 +245,13 @@ Vector names must start with a letter and consist of letters, digits,
 or underscores.  
 .CS
 # Error: must start with letter
-vector create 1abc
+blt::vector create 1abc
 .CE
 You can automatically generate vector names using the
 "\f(CW#auto\fR" vector name.  The \fBcreate\fR operation will generate a 
 unique vector name.
 .CS
-set vec [vector create #auto]
+set vec [blt::vector create #auto]
 puts "$vec has [$vec length] components"
 .CE
 .SS VECTOR INDICES
@@ -302,7 +302,7 @@ puts $vecName(:)
 .CE
 .SH VECTOR OPERATIONS
 .TP
-\fBvector create \fIvecName\fR?(\fIsize\fR)?... \fR?\fIswitches\fR? 
+\fBblt::vector create \fIvecName\fR?(\fIsize\fR)?... \fR?\fIswitches\fR? 
 The \fBcreate\fR operation creates a new vector \fIvecName\fR.  Both a
 Tcl command and array variable \fIvecName\fR are also created.  The
 name \fIvecName\fR must be unique, so another Tcl command or array
@@ -337,9 +337,11 @@ the vector will not be deleted.  This is different from previous
 releases.  Set \fIboolean\fR to "true" to get the old behavior.
 .RE
 .TP
-\fBvector destroy \fIvecName\fR \fR?\fIvecName...\fR?
+\fBblt::vector destroy \fIvecName\fR \fR?\fIvecName...\fR?
+Deletes one or more vectors.  Both the Tcl command and array variable
+are removed also.
 .TP
-\fBvector expr \fIexpression\fR
+\fBblt::vector expr \fIexpression\fR
 .RS
 All binary operators take vectors as operands (remember that numbers
 are treated as one-component vectors).  The exact action of binary

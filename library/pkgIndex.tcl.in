@@ -1,26 +1,109 @@
 # Tcl package index file, version 1.0
 
-proc LoadBLT { version dir } {
+namespace eval blt {}
 
-    set prefix "%LIB_PREFIX%"
-    set suffix [info sharedlibextension]
+proc blt::load_library { name version dir package } {
+
+    set prefix "%SO_PREFIX%"
+    set suffix "%LIB_SUFFIX%"
+    set so [info sharedlibextension]
     regsub {\.} $version {} version_no_dots
 
-    # Determine whether to load the full BLT library or
-    # the "lite" tcl-only version.
+    set fullname ${prefix}${name}${version_no_dots}${suffix}${so}
 
-    if { [info commands tk] == "tk" } {
-        set name ${prefix}BLT${version_no_dots}${suffix}
+    global tcl_platform
+    if { $tcl_platform(platform) == "unix" } {
+	set library [file join $dir $fullname]
+	if { ![file exists $library] } {
+	    # Try the parent directory.
+	    set library [file join [file dirname $dir] $fullname]
+	}
+	if { ![file exists $library] } {
+	    # Default to the path generated at compilation.
+	    set library [file join "%LIB_DIR%" $fullname]
+	}
     } else {
-        set name ${prefix}BLTlite${version_no_dots}${suffix}
+	set library $fullname
     }
-
-    set library [file join [file dirname $dir] $name]
-    load $library BLT
+    load $library $package
 }
 
 set version "%VERSION%"
 
-package ifneeded BLT $version [list LoadBLT $version $dir]
+package ifneeded BLT $version [subst -nocommands {
+    package require blt_core $version
+    if { [info commands tk] == "tk" } {
+	package require blt_extra $version
+    } 
+    package provide BLT $version
+}]
+
+# Core (tcl-only) and extra (Tk) packages 
+
+package ifneeded blt_core $version \
+    [list blt::load_library "BLTCore" $version $dir "blt_core"]
+
+package ifneeded blt_extra $version [subst {
+    package require blt_core
+    blt::load_library "BLTX" $version $dir "blt_x"
+}]
+
+# Data table data format packages
+
+package ifneeded blt_datatable_xml $version [subst {
+    package require blt_core
+    blt::datatable load xml $dir
+}]
+
+package ifneeded blt_datatable_mysql $version \
+	[list blt::datatable load mysql $dir]
+
+package ifneeded blt_datatable_tree $version \
+	[list blt::datatable load tree $dir]
+
+package ifneeded blt_datatable_vector $version \
+	[list blt::datatable load vector $dir]
+
+package ifneeded blt_datatable_csv $version \
+	[list blt::datatable load csv $dir]
+
+# Picture image format packages
+
+package ifneeded blt_picture_bmp $version [subst {
+    package require BLT
+    blt::picture load bmp $dir
+}]
+
+package ifneeded blt_picture_gif $version \
+	[list blt::picture load gif $dir]
+
+package ifneeded blt_picture_jpg $version \
+	[list blt::picture load jpg $dir]
+
+package ifneeded blt_picture_pbm $version \
+	[list blt::picture load pbm $dir]
+
+package ifneeded blt_picture_png $version \
+	[list blt::picture load png $dir]
+
+package ifneeded blt_picture_ps $version \
+	[list blt::picture load ps $dir]
+
+package ifneeded blt_picture_tif $version \
+	[list blt::picture load tif $dir]
+
+package ifneeded blt_picture_xbm $version \
+	[list blt::picture load xbm $dir]
+
+package ifneeded blt_picture_xpm $version \
+	[list blt::picture load xpm $dir]
+
+package ifneeded blt_picture_photo $version \
+	[list blt::picture load photo $dir]
+
+# Tree data format packages
+
+package ifneeded blt_tree_xml $version \
+	[list blt::tree load xml $dir]
 
 # End of package index file

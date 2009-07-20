@@ -23,7 +23,7 @@ package require BLT
 
 if { $tcl_version >= 8.0 } {
     namespace import blt::*
-    namespace import -force blt::tile::*
+    namespace import -force blt::tk::*
 }
 
 source scripts/demo.tcl
@@ -42,6 +42,6 @@ foreach demo [glob barchart?.tcl] {
 }
 
 button .kill -text "Kill All" -command { set var 0 }
-table . .kill -fill both 
+blt::table . .kill -fill both 
 
 

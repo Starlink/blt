@@ -23,7 +23,7 @@ package require BLT
 
 if { $tcl_version >= 8.0 } {
     namespace import blt::*
-    namespace import -force blt::tile::*
+    namespace import -force blt::tk::*
 }
 
 source scripts/demo.tcl
@@ -221,7 +221,7 @@ bitmap define sharky [bitmap data $bitmapFile]  -rotate 45 -scale 0.75
 bitmap define large_question [bitmap data question]  -scale 2.0
 bitmap define large_questhead [bitmap data questhead]  -scale 2.0
 
-table . \
+blt::table . \
 	.top	0,1 -fill x \
 	.left   1,0 -fill y \
 	.center 1,1 -fill both \

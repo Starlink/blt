@@ -32,7 +32,6 @@ set Y3 {
 }
 
 set configOptions {
-    Axis.TitleFont		{Times 18 bold}
     Element.Pixels		6
     Element.Smooth		catrom
     Legend.ActiveBackground	khaki2

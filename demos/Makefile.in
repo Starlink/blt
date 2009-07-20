@@ -2,13 +2,16 @@
 # 	Makefile for demos 
 # ------------------------------------------------------------------------
 
-prefix =	@prefix@
+datadir =	@datadir@
+datarootdir =	@datarootdir@
 exec_prefix =	@exec_prefix@
-version =	@BLT_VERSION@
 libdir =	@libdir@
+prefix =	@prefix@
+srcdir =	@srcdir@
+
+version =	@BLT_VERSION@
 scriptdir =	$(prefix)/lib/blt$(version)
 destdir =	$(scriptdir)/demos
-srcdir =	@srcdir@
 
 SHELL =		/bin/sh
 RM =		rm -rf

@@ -1,39 +1,42 @@
 
+
 /*
  *  bltUnixDnd.c --
  *
- *	This module implements a drag-and-drop manager for the BLT
- *	Toolkit.  Allows widgets to be registered as drag&drop sources
- *	and targets for handling "drag-and-drop" operations between
- *	Tcl/Tk applications.
+ * This module implements a drag-and-drop manager for the BLT Toolkit.
+ * Allows widgets to be registered as drag&drop sources and targets
+ * for handling "drag-and-drop" operations between Tcl/Tk
+ * applications.
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1995-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
  *
- *	The "drag&drop" command was created by Michael J. McLennan.
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltInt.h"
 
 #ifndef NO_DRAGDROP
-
+#include "bltOp.h"
 #include <bltHash.h>
 #include <bltChain.h>
 
@@ -114,7 +117,7 @@
 /*
  *   Each widget representing a drag & drop target is tagged with 
  *   a "BltDndTarget" property in XA_STRING format.  This property 
- *   identifies the window as a target.  It's formated as a Tcl list 
+ *   identifies the window as a target.  It's formated as a TCL list 
  *   and contains the following information:
  *
  *	"flags DATA_TYPE DATA_TYPE ..."
@@ -213,21 +216,18 @@
 #define DEF_TOKEN_REJECT_STIPPLE_MONO	RGB_GREY50
 #define DEF_TOKEN_RELIEF		"raised"
 
-static int StringToCursors _ANSI_ARGS_((ClientData clientData, 
-	Tcl_Interp *interp, Tk_Window tkwin, char *string, char *widgRec, 
-	int offset));
-static char *CursorsToString _ANSI_ARGS_((ClientData clientData, Tk_Window tkwin,
-	char *widgRec, int offset, Tcl_FreeProc **freeProcPtr));
-
-Tk_CustomOption cursorsOption =
+static Blt_OptionFreeProc FreeCursors;
+static Blt_OptionParseProc ObjToCursors;
+static Blt_OptionPrintProc CursorsToObj;
+static Blt_CustomOption cursorsOption =
 {
-    StringToCursors, CursorsToString, (ClientData)0
+    ObjToCursors, CursorsToObj, FreeCursors, (ClientData)0
 };
 
 typedef struct {
     Blt_HashTable dndTable;	/* Hash table of dnd structures keyed by 
 				 * the address of the reference Tk window */
-    Tk_Window mainWindow;
+    Tk_Window tkMain;
     Display *display;
     Atom mesgAtom;		/* Atom signifying a drag-and-drop message. */
     Atom formatsAtom;		/* Source formats property atom.  */
@@ -279,7 +279,7 @@ typedef struct {
  */
 typedef struct {
     char letter;		/* character like 'x' in "%x" */
-    char *value;		/* value to be substituted in place of "%x" */
+    const char *value;		/* value to be substituted in place of "%x" */
 } SubstDescriptors;
 
 /*
@@ -341,7 +341,7 @@ typedef struct {
  *	trip calls to the server needed to query window geometry information
  *	and grab the target property.  
  */
-typedef struct WinfoStruct {
+typedef struct _Winfo {
     Window window;		/* Window in hierarchy. */
     
     int initialized;		/* If zero, the rest of this structure's
@@ -350,10 +350,10 @@ typedef struct WinfoStruct {
     int x1, y1, x2, y2;		/* Extents of the window (upper-left and
 				 * lower-right corners). */
     
-    struct WinfoStruct *parentPtr;	/* Parent node. NULL if root. Used to
+    struct _Winfo *parentPtr;	/* Parent node. NULL if root. Used to
 				 * compute offset for X11 windows. */
     
-    Blt_Chain *chainPtr;	/* List of this window's children. If NULL,
+    Blt_Chain chain;		/* List of this window's children. If NULL,
 				 * there are no children. */
     
     int isTarget;		/* Indicates if this window is a drag&drop
@@ -369,7 +369,7 @@ typedef struct WinfoStruct {
 				 *	010 Motion events.
 				 *	100 Leave events.  
 				 */
-    char *matches;
+    const char *matches;
     
 } Winfo;
 
@@ -424,7 +424,7 @@ typedef struct {
     int selfTarget;		/* Indicated if the source should drop onto 
 				 * itself. */
 
-    char **reqFormats;		/* List of requested data formats. The
+    const char **reqFormats;	/* List of requested data formats. The
 				 * list should be ordered with the more 
 				 * desireable formats first. You can also
 				 * temporarily turn off a source by setting 
@@ -439,13 +439,13 @@ typedef struct {
 				 * target the pointer was over. If NULL, 
 				 * the pointer was not over a valid target. */
 
-    char **packageCmd;		/* Tcl command executed at start of the drag
+    const char **packageCmd;	/* TCL command executed at start of the drag
 				 * operation to initialize token. */
 
-    char **resultCmd;		/* Tcl command executed at the end of the
+    const char **resultCmd;	/* TCL command executed at the end of the
 				 * "drop" operation to indicate its status. */
 
-    char **siteCmd;		/* Tcl command executed to update token 
+    const char **siteCmd;	/* TCL command executed to update token 
 				 * window. */
 
     Token *tokenPtr;		/* Token used to provide special cursor. */
@@ -464,16 +464,16 @@ typedef struct {
 
     Blt_HashTable setDataTable;	/* Table of data handlers (converters)
 				 * registered for this target. */
-    char **enterCmd;		/* Tcl proc called when the mouse enters the
+    const char **enterCmd;	/* TCL proc called when the mouse enters the
 				 * target. */
-    char **leaveCmd;		/* Tcl proc called when the mouse leaves the
+    const char **leaveCmd;	/* TCL proc called when the mouse leaves the
 				 * target. */
-    char **motionCmd;		/* Tcl proc called when the mouse is moved
+    const char **motionCmd;	/* TCL proc called when the mouse is moved
 				 * over the target. */
-    char **dropCmd;		/* Tcl proc called when the mouse button
+    const char **dropCmd;	/* TCL proc called when the mouse button
 				 * is released over the target. */
 
-    char *matchingFormats;
+    const char *matchingFormats;  /*  */
     int lastId;			/* The last transaction id used. This is used
 				 * to cache the above formats string. */
 
@@ -496,256 +496,251 @@ typedef struct {
     int lastRepsonse;		/* Indicates what the last response was. */
     Window window;		/* Window id of the top-level window (ie.
 				 * the wrapper). */
-    char **formatArr;		/* List of formats available from source. 
+    const char **formatArr;	/* List of formats available from source. 
 				 * Must be pruned down to matching list. */
     DndInterpData *dataPtr;
     int x, y;
     
 } XDndHandler;
 
-extern Tk_CustomOption bltListOption;
-extern Tk_CustomOption bltDistanceOption;
-
-static Tk_ConfigSpec configSpecs[] =
+static Blt_ConfigSpec configSpecs[] =
 {
-    {TK_CONFIG_CUSTOM, "-allowformats", "allowFormats", "AllowFormats", 
-	DEF_DND_SEND, Tk_Offset(Dnd, reqFormats), 
-        TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_INT, "-button", "buttonNumber", "ButtonNumber",
-	DEF_DND_BUTTON_NUMBER, Tk_Offset(Dnd, reqButton), 0},
-    {TK_CONFIG_CUSTOM, "-dragthreshold", "dragThreshold", "DragThreshold",
-	DEF_DND_DRAG_THRESHOLD, Tk_Offset(Dnd, dragStart), 0, 
-        &bltDistanceOption},
-    {TK_CONFIG_CUSTOM, "-cursors", "cursors", "cursors",
-	DEF_TOKEN_CURSOR, Tk_Offset(Dnd, cursors), 
-	TK_CONFIG_NULL_OK, &cursorsOption },
-    {TK_CONFIG_CUSTOM, "-onenter", "onEnter", "OnEnter",
-	DEF_DND_ENTER_COMMAND, Tk_Offset(Dnd, enterCmd), 
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_CUSTOM, "-onmotion", "onMotion", "OnMotion",
-	DEF_DND_MOTION_COMMAND, Tk_Offset(Dnd, motionCmd), 
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_CUSTOM, "-onleave", "onLeave", "OnLeave",
-	DEF_DND_LEAVE_COMMAND, Tk_Offset(Dnd, leaveCmd), 
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_CUSTOM, "-ondrop", "onDrop", "OnDrop",
-	DEF_DND_DROP_COMMAND, Tk_Offset(Dnd, dropCmd), 
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_CUSTOM, "-package", "packageCommand", "PackageCommand",
-	DEF_DND_PACKAGE_COMMAND, Tk_Offset(Dnd, packageCmd), 
-        TK_CONFIG_NULL_OK, &bltListOption },
-    {TK_CONFIG_CUSTOM, "-result", "result", "Result",
-	DEF_DND_RESULT_COMMAND, Tk_Offset(Dnd, resultCmd), 
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_BOOLEAN, "-selftarget", "selfTarget", "SelfTarget",
-	DEF_DND_SELF_TARGET, Tk_Offset(Dnd, selfTarget), 0},
-    {TK_CONFIG_CUSTOM, "-site", "siteCommand", "Command",
-	DEF_DND_SITE_COMMAND, Tk_Offset(Dnd, siteCmd), 
-        TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_BOOLEAN, "-source", "source", "Source",
-	DEF_DND_IS_SOURCE, Tk_Offset(Dnd, isSource), 0},
-    {TK_CONFIG_BOOLEAN, "-target", "target", "Target",
-	DEF_DND_IS_TARGET, Tk_Offset(Dnd, isTarget), 0},
-    {TK_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
+    {BLT_CONFIG_LIST, "-allowformats", "allowFormats", "AllowFormats", 
+	DEF_DND_SEND, Blt_Offset(Dnd, reqFormats), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_INT, "-button", "buttonNumber", "ButtonNumber",
+	DEF_DND_BUTTON_NUMBER, Blt_Offset(Dnd, reqButton), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-dragthreshold", "dragThreshold", "DragThreshold",
+	DEF_DND_DRAG_THRESHOLD, Blt_Offset(Dnd, dragStart), 0},
+    {BLT_CONFIG_CUSTOM, "-cursors", "cursors", "cursors", DEF_TOKEN_CURSOR, 
+	Blt_Offset(Dnd, cursors), BLT_CONFIG_NULL_OK, &cursorsOption },
+    {BLT_CONFIG_LIST, "-onenter", "onEnter", "OnEnter", DEF_DND_ENTER_COMMAND, 
+	Blt_Offset(Dnd, enterCmd), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_LIST, "-onmotion", "onMotion", "OnMotion", 
+	DEF_DND_MOTION_COMMAND, Blt_Offset(Dnd, motionCmd), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_LIST, "-onleave", "onLeave", "OnLeave", DEF_DND_LEAVE_COMMAND, 
+	Blt_Offset(Dnd, leaveCmd), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_LIST, "-ondrop", "onDrop", "OnDrop", DEF_DND_DROP_COMMAND, 
+	Blt_Offset(Dnd, dropCmd), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_LIST, "-package", "packageCommand", "PackageCommand",
+	DEF_DND_PACKAGE_COMMAND, Blt_Offset(Dnd, packageCmd), 
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_LIST, "-result", "result", "Result", DEF_DND_RESULT_COMMAND, 
+	Blt_Offset(Dnd, resultCmd), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BOOLEAN, "-selftarget", "selfTarget", "SelfTarget",
+	DEF_DND_SELF_TARGET, Blt_Offset(Dnd, selfTarget), 0},
+    {BLT_CONFIG_LIST, "-site", "siteCommand", "Command", DEF_DND_SITE_COMMAND, 
+	Blt_Offset(Dnd, siteCmd), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BOOLEAN, "-source", "source", "Source", DEF_DND_IS_SOURCE, 
+	Blt_Offset(Dnd, isSource), 0},
+    {BLT_CONFIG_BOOLEAN, "-target", "target", "Target", DEF_DND_IS_TARGET, 
+	Blt_Offset(Dnd, isTarget), 0},
+    {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
 	0, 0},
 };
 
-static Tk_ConfigSpec tokenConfigSpecs[] =
+static Blt_ConfigSpec tokenConfigSpecs[] =
 {
-    {TK_CONFIG_BORDER, "-activebackground", "activeBackground",
+    {BLT_CONFIG_BORDER, "-activebackground", "activeBackground",
 	"ActiveBackground", DEF_TOKEN_ACTIVE_BACKGROUND,
-	Tk_Offset(Token, activeBorder), TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-activebackground", "activeBackground",
+	Blt_Offset(Token, activeBorder), BLT_CONFIG_COLOR_ONLY},
+    {BLT_CONFIG_BORDER, "-activebackground", "activeBackground",
 	"ActiveBackground", DEF_TOKEN_ACTIVE_BG_MONO, 
-	Tk_Offset(Token, activeBorder), TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_RELIEF, "-activerelief", "activeRelief", "activeRelief",
-	DEF_TOKEN_ACTIVE_RELIEF, Tk_Offset(Token, activeRelief), 0},
-    {TK_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
-	DEF_TOKEN_ANCHOR, Tk_Offset(Token, anchor), 0},
-    {TK_CONFIG_PIXELS, "-activeborderwidth", "activeBorderWidth",
+	Blt_Offset(Token, activeBorder), BLT_CONFIG_MONO_ONLY},
+    {BLT_CONFIG_RELIEF, "-activerelief", "activeRelief", "activeRelief",
+	DEF_TOKEN_ACTIVE_RELIEF, Blt_Offset(Token, activeRelief), 0},
+    {BLT_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
+	DEF_TOKEN_ANCHOR, Blt_Offset(Token, anchor), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-activeborderwidth", "activeBorderWidth",
 	"ActiveBorderWidth", DEF_TOKEN_ACTIVE_BORDERWIDTH, 
-	Tk_Offset(Token, activeBorderWidth), 0},
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_TOKEN_BACKGROUND, Tk_Offset(Token, normalBorder),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_TOKEN_BG_MONO, Tk_Offset(Token, normalBorder),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_PIXELS, "-borderwidth", "borderWidth", "BorderWidth",
-	DEF_TOKEN_BORDERWIDTH, Tk_Offset(Token, borderWidth), 0},
-    {TK_CONFIG_COLOR, "-outline", "outline", "Outline",
-	DEF_TOKEN_REJECT_BACKGROUND, Tk_Offset(Token, outlineColor), 
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-outline", "outline", "Outline",
-	DEF_TOKEN_REJECT_BG_MONO, Tk_Offset(Token, outlineColor), 
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_COLOR, "-fill", "fill", "Fill",
-	DEF_TOKEN_REJECT_FOREGROUND, Tk_Offset(Token, fillColor), 
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-fill", "fill", "Fill",
-	DEF_TOKEN_REJECT_BACKGROUND, Tk_Offset(Token, fillColor), 
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
-	DEF_TOKEN_REJECT_STIPPLE_COLOR, Tk_Offset(Token, rejectStipple),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
-	DEF_TOKEN_REJECT_STIPPLE_MONO, Tk_Offset(Token, rejectStipple),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_RELIEF, "-relief", "relief", "Relief",
-	DEF_TOKEN_RELIEF, Tk_Offset(Token, relief), 0},
-    {TK_CONFIG_INT, "-width", "width", "Width",
-	(char *)NULL, Tk_Offset(Token, reqWidth), 0},
-    {TK_CONFIG_INT, "-height", "height", "Height",
-	(char *)NULL, Tk_Offset(Token, reqHeight), 0},
-    {TK_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
+	Blt_Offset(Token, activeBorderWidth), 0},
+    {BLT_CONFIG_BORDER, "-background", "background", "Background",
+	DEF_TOKEN_BACKGROUND, Blt_Offset(Token, normalBorder),
+	BLT_CONFIG_COLOR_ONLY},
+    {BLT_CONFIG_BORDER, "-background", "background", "Background",
+	DEF_TOKEN_BG_MONO, Blt_Offset(Token, normalBorder),
+	BLT_CONFIG_MONO_ONLY},
+    {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", "BorderWidth",
+	DEF_TOKEN_BORDERWIDTH, Blt_Offset(Token, borderWidth), 0},
+    {BLT_CONFIG_COLOR, "-outline", "outline", "Outline", 
+	DEF_TOKEN_REJECT_BACKGROUND, Blt_Offset(Token, outlineColor), 
+	BLT_CONFIG_COLOR_ONLY},
+    {BLT_CONFIG_COLOR, "-outline", "outline", "Outline", 
+	DEF_TOKEN_REJECT_BG_MONO, Blt_Offset(Token, outlineColor), 
+	BLT_CONFIG_MONO_ONLY},
+    {BLT_CONFIG_COLOR, "-fill", "fill", "Fill", DEF_TOKEN_REJECT_FOREGROUND, 
+	Blt_Offset(Token, fillColor), BLT_CONFIG_COLOR_ONLY},
+    {BLT_CONFIG_COLOR, "-fill", "fill", "Fill", DEF_TOKEN_REJECT_BACKGROUND, 
+	Blt_Offset(Token, fillColor), BLT_CONFIG_MONO_ONLY},
+    {BLT_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
+	DEF_TOKEN_REJECT_STIPPLE_COLOR, Blt_Offset(Token, rejectStipple),
+	BLT_CONFIG_COLOR_ONLY | BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BITMAP, "-rejectstipple", "rejectStipple", "Stipple",
+	DEF_TOKEN_REJECT_STIPPLE_MONO, Blt_Offset(Token, rejectStipple),
+	BLT_CONFIG_MONO_ONLY},
+    {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief", DEF_TOKEN_RELIEF, 
+	Blt_Offset(Token, relief), 0},
+    {BLT_CONFIG_INT, "-width", "width", "Width", (char *)NULL, 
+	Blt_Offset(Token, reqWidth), 0},
+    {BLT_CONFIG_INT, "-height", "height", "Height", (char *)NULL, 
+	Blt_Offset(Token, reqHeight), 0},
+    {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
 	0, 0},
 };
-
 
 /*
  *  Forward Declarations
  */
-static int DndCmd _ANSI_ARGS_((ClientData clientData, Tcl_Interp *interp,
-	int argc, char **argv));
-static void TokenEventProc _ANSI_ARGS_((ClientData clientData, 
-	XEvent *eventPtr));
-static void MoveToken _ANSI_ARGS_((Dnd *dndPtr));
-static void DisplayToken _ANSI_ARGS_((ClientData clientData));
-static void HideToken _ANSI_ARGS_((Dnd *dndPtr));
-static void DrawRejectSymbol _ANSI_ARGS_((Dnd *dndPtr));
 
-static int GetDnd _ANSI_ARGS_((ClientData clientData, Tcl_Interp *interp, 
-	char *name, Dnd **dndPtrPtr));
-static Dnd *CreateDnd _ANSI_ARGS_((Tcl_Interp *interp, Tk_Window tkwin));
-static void DestroyDnd _ANSI_ARGS_((DestroyData data));
-static int DndEventProc _ANSI_ARGS_((ClientData clientData, XEvent *eventPtr));
-static int ConfigureToken _ANSI_ARGS_((Tcl_Interp *interp, Dnd *dndPtr,
-	int argc, char **argv, int flags));
+static Tcl_ObjCmdProc DndCmd;
+static Tcl_FreeProc DestroyDnd;
+static Tk_GenericProc DndEventProc;
+static Tk_EventProc TokenEventProc;
+static Tcl_IdleProc DisplayToken;
 
-static Winfo *OverTarget _ANSI_ARGS_((Dnd *dndPtr));
-static void AddTargetProperty _ANSI_ARGS_((Dnd *dndPtr));
+static Winfo *InitRoot (Dnd *dndPtr);
+static Winfo *OverTarget (Dnd *dndPtr);
+static int ConfigureToken (Tcl_Interp *interp, Dnd *dndPtr, int objc,	
+	Tcl_Obj *const *objv, int flags);
+static int GetDndFromObj (ClientData clientData, Tcl_Interp *interp,
+	Tcl_Obj *objPtr, Dnd **dndPtrPtr);
+static void AddTargetProperty (Dnd *dndPtr);
+static void CancelDrag (Dnd *dndPtr);
+static void DrawRejectSymbol (Dnd *dndPtr);
+static void FreeWinfo (Winfo *wr);
+static void GetWinfo (Display *display, Winfo * windowPtr);
+static void HideToken (Dnd *dndPtr);
+static void MoveToken (Dnd *dndPtr);
+static Dnd *CreateDnd (Tcl_Interp *interp, Tk_Window tkwin);
 
-static Winfo *InitRoot _ANSI_ARGS_((Dnd *dndPtr));
-static void FreeWinfo _ANSI_ARGS_((Winfo *wr));
-static void GetWinfo _ANSI_ARGS_((Display *display, Winfo * windowPtr));
+/*ARGSUSED*/
+static void
+FreeCursors(
+    ClientData clientData,	/* Not used. */
+    Display *display,		
+    char *widgRec,
+    int offset)
+{
+    Tk_Cursor **cursorsPtr = (Tk_Cursor **)(widgRec + offset);
 
-static void CancelDrag _ANSI_ARGS_((Dnd *dndPtr));
-
+    if (*cursorsPtr != NULL) {
+	Tk_Cursor *cp;
+
+	for (cp = *cursorsPtr; *cp != None; cp++) {
+	    Tk_FreeCursor(display, *cp);
+	}
+	Blt_Free(*cursorsPtr);
+	*cursorsPtr = NULL;
+    }
+}
+
 /*
- * ----------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * StringToCursors --
+ * ObjToCursors --
  *
  *	Converts the resize mode into its numeric representation.  Valid
  *	mode strings are "none", "expand", "shrink", or "both".
  *
- * ----------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-StringToCursors(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* String representing cursors. */
-    char *widgRec;		/* Structure record */
-    int offset;			/* Offset of field in record. */
+ObjToCursors(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tk_Window tkwin,		/* Not used. */
+    Tcl_Obj *objPtr,		/* String representing cursors. */
+    char *widgRec,		/* Structure record */
+    int offset,			/* Offset to field in structure */
+    int flags)	
 {
-    Tk_Cursor **cursorPtrPtr = (Tk_Cursor **)(widgRec + offset);
-    int result = TCL_OK;
-    int nElems;
-    char **elemArr;
+    int objc;
+    Tcl_Obj **objv;
 
-    if (*cursorPtrPtr != NULL) {
-	Blt_Free(*cursorPtrPtr);
-	*cursorPtrPtr = NULL;
-    }
-    if (string == NULL) {
-	return TCL_OK;
-    }
-    if (Tcl_SplitList(interp, string, &nElems, &elemArr) != TCL_OK) {
+    if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
 	return TCL_ERROR;
     }
-    if (nElems > 0) {
-	Tk_Cursor *cursorArr;
-	register int i;
+    if (objc > 0) {
+	Tk_Cursor **cursorsPtr = (Tk_Cursor **)(widgRec + offset);
+	Tk_Cursor *cursors;
+	int i;
 
-	cursorArr = Blt_Calloc(nElems + 1, sizeof(Tk_Cursor));
-	for (i = 0; i < nElems; i++) {
-	    cursorArr[i] = Tk_GetCursor(interp, tkwin, Tk_GetUid(elemArr[i]));
-	    if (cursorArr[i] == None) {
-		*cursorPtrPtr = cursorArr;
-		result = TCL_ERROR;
-		break;
+	cursors = Blt_AssertCalloc(objc + 1, sizeof(Tk_Cursor));
+	for (i = 0; i < objc; i++) {
+	    cursors[i] = Tk_AllocCursorFromObj(interp, tkwin, objv[i]);
+	    if (cursors[i] == None) {
+		Tk_Cursor *cp;
+
+		for (cp = cursors; *cp != None; cp++) {
+		    Tk_FreeCursor(Tk_Display(tkwin), *cp);
+		}
+		return TCL_ERROR;
 	    }
 	}    
-	Blt_Free(elemArr);
-	*cursorPtrPtr = cursorArr;
+	*cursorsPtr = cursors;
     }
-    return result;
+    return TCL_OK;
 }
 
 /*
- * ----------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * CursorsToString --
+ * CursorsToObj --
  *
  *	Returns resize mode string based upon the resize flags.
  *
  * Results:
  *	The resize mode string is returned.
  *
- * ----------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
-static char *
-CursorsToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Cursor record */
-    int offset;			/* Offset of record. */
-    Tcl_FreeProc **freeProcPtr;	/* Memory deallocation scheme to use */
+static Tcl_Obj *
+CursorsToObj(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,
+    Tk_Window tkwin,		/* Not used. */
+    char *widgRec,		/* Cursor record */
+    int offset,			/* Offset to field in structure */
+    int flags)	
 {
-    Tk_Cursor *cursorArr = *(Tk_Cursor **)(widgRec + offset);
-    Tk_Cursor *cursorPtr;
-    Tcl_DString dString;
-    char *result;
+    Tk_Cursor *cursors = *(Tk_Cursor **)(widgRec + offset);
+    Tcl_Obj *listObjPtr;
 
-    if (cursorArr == NULL) {
-	return "";
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    if (cursors != NULL) {
+	Tcl_Obj *objPtr;
+	Tk_Cursor *cp;
+
+	for (cp = cursors; *cp != NULL; cp++) {
+	    objPtr = Tcl_NewStringObj(Tk_NameOfCursor(Tk_Display(tkwin), *cp),
+		-1);
+	    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+	}
     }
-    Tcl_DStringInit(&dString);
-    for (cursorPtr = cursorArr; *cursorPtr != NULL; cursorPtr++) {
-	Tcl_DStringAppendElement(&dString, 
-		 Tk_NameOfCursor(Tk_Display(tkwin), *cursorPtr));
-    }
-    result = Blt_Strdup(Tcl_DStringValue(&dString));
-    Tcl_DStringFree(&dString);
-    *freeProcPtr = (Tcl_FreeProc *)Blt_Free;
-    return result;
+    return listObjPtr;
 }
 
 
-static char *
-PrintList(list)
-    char **list;
+static Tcl_Obj *
+PrintList(Tcl_Interp *interp, const char **list)
 {
-    int count;
-    char **p;
+    Tcl_Obj *listObjPtr;
+    const char **p;
 
-    count = 0;
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
     for(p = list; *p != NULL; p++) {
-	count++;
+	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewStringObj(*p, -1));
     }
-    return Tcl_Merge(count, list);
+    return listObjPtr;
 }
 
 
 /* ARGSUSED */
 static int
-XSendEventErrorProc(clientData, errEventPtr)
-    ClientData clientData;
-    XErrorEvent *errEventPtr;
+XSendEventErrorProc(
+    ClientData clientData, 
+    XErrorEvent *errEventPtr)
 {
     int *errorPtr = clientData;
 
@@ -754,11 +749,11 @@ XSendEventErrorProc(clientData, errEventPtr)
 }
 
 static void
-SendClientMsg(display, window, mesgAtom, data0, data1, data2, data3, data4)
-    Display *display;
-    Window window;
-    Atom mesgAtom;
-    int data0, data1, data2, data3, data4;
+SendClientMsg(
+    Display *display,
+    Window window,
+    Atom mesgAtom,
+    int data0, int data1, int data2, int data3, int data4)
 {
     XEvent event;
     Tk_ErrorHandler handler;
@@ -792,7 +787,7 @@ SendClientMsg(display, window, mesgAtom, data0, data1, data2, data3, data4)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetWindowZOrder --
  *
@@ -801,39 +796,36 @@ SendClientMsg(display, window, mesgAtom, data0, data1, data2, data3, data4)
  *
  * ------------------------------------------------------------------------ 
  */
-static Blt_Chain *
-GetWindowZOrder(display, window)
-    Display *display;
-    Window window;
+static Blt_Chain
+GetWindowZOrder(Display *display, Window window)
 {
-    Blt_Chain *chainPtr;
-    Window *childArr;
-    unsigned int nChildren;
+    Blt_Chain chain;
+    Window *winv;
+    unsigned int winc;
     Window dummy;
 
-    chainPtr = NULL;
-    if ((XQueryTree(display, window, &dummy, &dummy, &childArr, &nChildren)) &&
-	(nChildren > 0)) {
-	register int i;
+    chain = NULL;
+    if ((XQueryTree(display, window, &dummy, &dummy, &winv, &winc)) && 
+	(winc > 0)) {
+	unsigned int i;
 
-	chainPtr = Blt_ChainCreate();
-	for (i = 0; i < nChildren; i++) {
+	chain = Blt_Chain_Create();
+	for (i = 0; i < winc; i++) {
 	    /* 
 	     * XQuery returns windows in bottom to top order.  We only care
 	     * about the top window.  
 	     */
-	    Blt_ChainPrepend(chainPtr, (ClientData)childArr[i]);
+	    Blt_Chain_Prepend(chain, (ClientData)winv[i]);
 	}
-	if (childArr != NULL) {
-	    XFree((char *)childArr);	/* done with list of kids */
+	if (winv != NULL) {
+	    XFree((char *)winv);	/* done with list of kids */
 	}
     }
-    return chainPtr;
+    return chain;
 }
 
 static int
-GetMaxPropertySize(display)
-    Display *display;
+GetMaxPropertySize(Display *display)
 {
     int size;
 
@@ -843,7 +835,7 @@ GetMaxPropertySize(display)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetProperty --
  *
@@ -852,13 +844,10 @@ GetMaxPropertySize(display)
  *
  * ------------------------------------------------------------------------ 
  */
-static char *
-GetProperty(display, window, atom)
-    Display *display;
-    Window window;
-    Atom atom;
+static unsigned char *
+GetProperty(Display *display, Window window, Atom atom)
 {
-    char *data;
+    unsigned char *data;
     int result, format;
     Atom typeAtom;
     unsigned long nItems, bytesAfter;
@@ -879,7 +868,7 @@ GetProperty(display, window, atom)
         &format,		/* (out) Actual format of the property. */
         &nItems,		/* (out) # of items in specified format. */
         &bytesAfter,		/* (out) # of bytes remaining to be read. */
-	(unsigned char **)&data);
+	&data);
     if ((result != Success) || (format != 8) || (typeAtom != XA_STRING)) {
 	if (data != NULL) {
 	    XFree((char *)data);
@@ -890,7 +879,7 @@ GetProperty(display, window, atom)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  SetProperty --
  *
@@ -900,19 +889,16 @@ GetProperty(display, window, atom)
  * ------------------------------------------------------------------------ 
  */
 static void
-SetProperty(tkwin, atom, data)
-    Tk_Window tkwin;
-    Atom atom;
-    char *data;
+SetProperty(Tk_Window tkwin, Atom atom, const char *data)
 {
     XChangeProperty(Tk_Display(tkwin), Tk_WindowId(tkwin), atom, XA_STRING,
 	8, PropModeReplace, (unsigned char *)data, strlen(data) + 1);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- *  GetWindowRegion --
+ *  GetWindowArea --
  *
  *	Queries for the upper-left and lower-right corners of the 
  *	given window.  
@@ -924,9 +910,7 @@ SetProperty(tkwin, atom, data)
  * ------------------------------------------------------------------------ 
  */
 static int
-GetWindowRegion(display, windowPtr)
-    Display *display;
-    Winfo *windowPtr;
+GetWindowArea(Display *display, Winfo *windowPtr)
 {
     XWindowAttributes winAttrs;
 
@@ -940,7 +924,7 @@ GetWindowRegion(display, windowPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  FindTopWindow --
  *
@@ -950,16 +934,14 @@ GetWindowRegion(display, windowPtr)
  *	Returns a pointer to the node representing the window containing
  *	the point.  If one can't be found, NULL is returned.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Winfo *
-FindTopWindow(dndPtr, x, y)
-    Dnd *dndPtr;
-    int x, y;
+FindTopWindow(Dnd *dndPtr, int x, int y)
 {
     Winfo *rootPtr;
-    register Blt_ChainLink *linkPtr;
-    register Winfo *windowPtr;
+    Blt_ChainLink link;
+    Winfo *windowPtr;
 
     rootPtr = dndPtr->rootPtr;
     if (!rootPtr->initialized) {
@@ -978,13 +960,13 @@ FindTopWindow(dndPtr, x, y)
      * topmost window.  
      */
   descend:
-    for (linkPtr = Blt_ChainFirstLink(rootPtr->chainPtr); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	rootPtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(rootPtr->chain); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	rootPtr = Blt_Chain_GetValue(link);
 	if (!rootPtr->initialized) {
 	    GetWinfo(dndPtr->display, rootPtr);
 	}
-	if (rootPtr->window == Blt_GetRealWindowId(dndPtr->tokenPtr->tkwin)) {
+	if (rootPtr->window == Blt_GetWindowId(dndPtr->tokenPtr->tkwin)) {
 	    continue;		/* Don't examine the token window. */
 	}
 	if ((x >= rootPtr->x1) && (x <= rootPtr->x2) &&
@@ -1002,7 +984,7 @@ FindTopWindow(dndPtr, x, y)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetWidgetCursor --
  *
@@ -1015,9 +997,9 @@ FindTopWindow(dndPtr, x, y)
  * ------------------------------------------------------------------------ 
  */
 static Tk_Cursor
-GetWidgetCursor(interp, tkwin)
-    Tcl_Interp *interp;		/* Interpreter to evaluate widget command. */
-    Tk_Window tkwin;		/* Window of drag&drop source. */
+GetWidgetCursor(
+    Tcl_Interp *interp,		/* Interpreter to evaluate widget command. */
+    Tk_Window tkwin)		/* Window of drag&drop source. */
 {
     Tk_Cursor cursor;
     Tcl_DString dString, savedResult;
@@ -1029,7 +1011,7 @@ GetWidgetCursor(interp, tkwin)
     Tcl_DStringInit(&savedResult);
     Tcl_DStringGetResult(interp, &savedResult);
     if (Tcl_GlobalEval(interp, Tcl_DStringValue(&dString)) == TCL_OK) {
-	char *name;
+	const char *name;
 
 	name = Tcl_GetStringResult(interp);
 	if ((name != NULL) && (name[0] != '\0')) {
@@ -1042,7 +1024,7 @@ GetWidgetCursor(interp, tkwin)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  NameOfStatus --
  *
@@ -1051,11 +1033,10 @@ GetWidgetCursor(interp, tkwin)
  *  Results:
  *	Returns a static string representing the drop result.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-static char *
-NameOfStatus(status)
-    int status;
+static const char *
+NameOfStatus(int status)
 {
     switch (status) {
     case DROP_OK:
@@ -1072,7 +1053,7 @@ NameOfStatus(status)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  NameOfAction --
  *
@@ -1081,11 +1062,10 @@ NameOfStatus(status)
  *  Results:
  *	Returns a static string representing the drop result.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-static char *
-NameOfAction(action)
-    int action;
+static const char *
+NameOfAction(int action)
 {
     switch (action) {
     case DROP_COPY:
@@ -1105,7 +1085,7 @@ NameOfAction(action)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetAction --
  *
@@ -1114,11 +1094,10 @@ NameOfAction(action)
  *  Results:
  *	Returns the drop result.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-GetAction(string)
-    char *string;
+GetAction(const char *string)
 {
     char c;
 
@@ -1139,7 +1118,7 @@ GetAction(string)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetDragResult --
  *
@@ -1148,12 +1127,10 @@ GetAction(string)
  *  Results:
  *	Returns the drag result.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-GetDragResult(interp, string)
-    Tcl_Interp *interp;
-    char *string;
+GetDragResult(Tcl_Interp *interp, const char *string)
 {
     char c;
     int bool;
@@ -1169,8 +1146,7 @@ GetDragResult(interp, string)
 }
 
 static void
-AnimateActiveCursor(clientData)
-    ClientData clientData;
+AnimateActiveCursor(ClientData clientData)
 {
     Dnd *dndPtr = clientData;    
     Tk_Cursor cursor;
@@ -1187,8 +1163,7 @@ AnimateActiveCursor(clientData)
 }
 
 static void
-StartActiveCursor(dndPtr)
-    Dnd *dndPtr;    
+StartActiveCursor(Dnd *dndPtr)
 {
     if (dndPtr->timerToken != NULL) {
 	Tcl_DeleteTimerHandler(dndPtr->timerToken);
@@ -1207,8 +1182,7 @@ StartActiveCursor(dndPtr)
 }
 
 static void
-StopActiveCursor(dndPtr)
-    Dnd *dndPtr;    
+StopActiveCursor(Dnd *dndPtr)
 {
     if (dndPtr->cursorPos > 0) {
 	dndPtr->cursorPos = 0;
@@ -1223,7 +1197,7 @@ StopActiveCursor(dndPtr)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * EventuallyRedrawToken --
  *
@@ -1236,11 +1210,10 @@ StopActiveCursor(dndPtr)
  *	Information gets redisplayed.  Right now we don't do selective
  *	redisplays:  the whole window will be redrawn.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-EventuallyRedrawToken(dndPtr)
-    Dnd *dndPtr;
+EventuallyRedrawToken(Dnd *dndPtr)
 {
     Token *tokenPtr;
 
@@ -1256,42 +1229,40 @@ EventuallyRedrawToken(dndPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  RaiseToken --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-RaiseToken(dndPtr)
-    Dnd *dndPtr;
+RaiseToken(Dnd *dndPtr)
 {
     Token *tokenPtr = dndPtr->tokenPtr;
 
     if (dndPtr->flags & DND_INITIATED) {
 	if ((Tk_Width(tokenPtr->tkwin) != Tk_ReqWidth(tokenPtr->tkwin)) ||
 	    (Tk_Height(tokenPtr->tkwin) != Tk_ReqHeight(tokenPtr->tkwin))) {
-	    Blt_ResizeToplevel(tokenPtr->tkwin, 
+	    Blt_ResizeToplevelWindow(tokenPtr->tkwin, 
 		Tk_ReqWidth(tokenPtr->tkwin),
 		Tk_ReqHeight(tokenPtr->tkwin));
 	}
-	Blt_MapToplevel(tokenPtr->tkwin);
-	Blt_RaiseToplevel(tokenPtr->tkwin);
+	Blt_MapToplevelWindow(tokenPtr->tkwin);
+	Blt_RaiseToplevelWindow(tokenPtr->tkwin);
     }
 }
 
 
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DisplayToken --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DisplayToken(clientData)
-    ClientData clientData;
+DisplayToken(ClientData clientData)
 {
     Dnd *dndPtr = clientData;
     Token *tokenPtr = dndPtr->tokenPtr;
@@ -1323,17 +1294,16 @@ DisplayToken(clientData)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  FadeToken --
  *
  *	Fades the token into the target.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-FadeToken(dndPtr)
-    Dnd *dndPtr;		/* Drag-and-drop manager (source). */
+FadeToken(Dnd *dndPtr)		/* Drag-and-drop manager (source). */
 { 
     Token *tokenPtr = dndPtr->tokenPtr;
     int w, h;
@@ -1366,24 +1336,23 @@ FadeToken(dndPtr)
     }
     dx = (Tk_ReqWidth(tokenPtr->tkwin) - w) / 2;
     dy = (Tk_ReqHeight(tokenPtr->tkwin) - h) / 2;
-    window = Blt_GetRealWindowId(tokenPtr->tkwin);
+    window = Blt_GetWindowId(tokenPtr->tkwin);
     XMoveResizeWindow(dndPtr->display, window, tokenPtr->x + dx, 
 	     tokenPtr->y + dy, (unsigned int)w, (unsigned int)h);
     tokenPtr->width = w, tokenPtr->height = h;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  SnapToken --
  *
  *	Snaps the token back to the source.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-SnapToken(dndPtr)
-    Dnd *dndPtr;		/* drag&drop source window data */
+SnapToken(Dnd *dndPtr)
 { 
     Token *tokenPtr = dndPtr->tokenPtr;
 
@@ -1407,7 +1376,7 @@ SnapToken(dndPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  HideToken --
  *
@@ -1415,11 +1384,10 @@ SnapToken(dndPtr)
  *	successful communication, or after a delay if the communication
  *	fails (allowing the user to see a graphical picture of failure).
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-HideToken(dndPtr)
-    Dnd *dndPtr;
+HideToken(Dnd *dndPtr)
 {
     Token *tokenPtr = dndPtr->tokenPtr;
 
@@ -1437,7 +1405,7 @@ HideToken(dndPtr)
 	}
 	if (tokenPtr->tkwin != NULL) {
 	    Tk_UnmapWindow(tokenPtr->tkwin); 
-	    Blt_ResizeToplevel(tokenPtr->tkwin, 
+	    Blt_ResizeToplevelWindow(tokenPtr->tkwin, 
 			Tk_ReqWidth(tokenPtr->tkwin), 
 			Tk_ReqHeight(tokenPtr->tkwin));
 	}
@@ -1450,18 +1418,18 @@ HideToken(dndPtr)
     tokenPtr->status = DROP_CONTINUE;
 }
 
+#ifdef notdef
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  MorphToken --
  *
  *	Fades the token into the target.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MorphToken(dndPtr)
-    Dnd *dndPtr;		/* Drag-and-drop manager (source). */
+MorphToken(Dnd *dndPtr)		/* Drag-and-drop manager (source). */
 { 
     Token *tokenPtr = dndPtr->tokenPtr;
 
@@ -1504,18 +1472,17 @@ MorphToken(dndPtr)
 	}
 	dx = (Tk_ReqWidth(tokenPtr->tkwin) - w) / 2;
 	dy = (Tk_ReqHeight(tokenPtr->tkwin) - h) / 2;
-	window = Blt_GetRealWindowId(tokenPtr->tkwin);
+	window = Blt_GetWindowId(tokenPtr->tkwin);
 	XMoveResizeWindow(dndPtr->display, window, tokenPtr->x + dx, 
 			  tokenPtr->y + dy, (unsigned int)w, (unsigned int)h);
 	tokenPtr->width = w, tokenPtr->height = h;
     }
     RaiseToken(dndPtr);
 }
+#endif
 
 static void
-GetTokenPosition(dndPtr, x, y)
-    Dnd *dndPtr;
-    int x, y;
+GetTokenPosition(Dnd *dndPtr, int x, int y)
 { 
     Token *tokenPtr = dndPtr->tokenPtr;
     int maxX, maxY;
@@ -1546,18 +1513,17 @@ GetTokenPosition(dndPtr, x, y)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  MoveToken --
  *
  *	Invoked during "drag" operations to move a token window to its
  *	current "drag" coordinate.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MoveToken(dndPtr)
-    Dnd *dndPtr;		/* drag&drop source window data */
+MoveToken(Dnd *dndPtr)		/* drag&drop source window data */
 { 
     Token *tokenPtr = dndPtr->tokenPtr;
 
@@ -1570,7 +1536,7 @@ MoveToken(dndPtr)
 
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  ChangeToken --
  *
@@ -1578,12 +1544,10 @@ MoveToken(dndPtr)
  *	the current drag&drop token position is over another drag&drop
  *	target.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-ChangeToken(dndPtr, status)
-    Dnd *dndPtr;
-    int status;
+ChangeToken(Dnd *dndPtr, int status)
 {
     Token *tokenPtr = dndPtr->tokenPtr;
 
@@ -1598,7 +1562,7 @@ ChangeToken(dndPtr, status)
     if (dndPtr->siteCmd) {
 	Tcl_Interp *interp = dndPtr->interp;
 	Tcl_DString dString, savedResult;
-	char **p;
+	const char **p;
 	
 	Tcl_DStringInit(&dString);
 	for (p = dndPtr->siteCmd; *p != NULL; p++) {
@@ -1620,18 +1584,17 @@ ChangeToken(dndPtr, status)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DrawRejectSymbol --
  *
  *	Draws a rejection mark on the current drag&drop token, and arranges
  *	for the token to be unmapped after a small delay.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DrawRejectSymbol(dndPtr)
-    Dnd *dndPtr;
+DrawRejectSymbol(Dnd *dndPtr)
 {
     Token *tokenPtr = dndPtr->tokenPtr;
     int divisor = 6;		/* controls size of rejection symbol */
@@ -1687,7 +1650,7 @@ DrawRejectSymbol(dndPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  CreateToken --
  *
@@ -1695,11 +1658,10 @@ DrawRejectSymbol(dndPtr)
  *	widgets.  Creates a new record if the widget name is not already
  *	registered.  Returns a pointer to the desired record.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DestroyToken(data)
-    DestroyData data;
+DestroyToken(DestroyData data)
 {
     Dnd *dndPtr = (Dnd *)data;
     Token *tokenPtr = dndPtr->tokenPtr;
@@ -1711,7 +1673,7 @@ DestroyToken(data)
     if (tokenPtr->flags & TOKEN_REDRAW) {
 	Tcl_CancelIdleCall(DisplayToken, dndPtr);
     }
-    Tk_FreeOptions(tokenConfigSpecs, (char *)tokenPtr, dndPtr->display, 0);
+    Blt_FreeOptions(tokenConfigSpecs, (char *)tokenPtr, dndPtr->display, 0);
     if (tokenPtr->timerToken) {
 	Tcl_DeleteTimerHandler(tokenPtr->timerToken);
     }
@@ -1730,19 +1692,17 @@ DestroyToken(data)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  TokenEventProc --
  *
  *	Invoked by the Tk dispatcher to handle widget events.
  *	Manages redraws for the drag&drop token window.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-TokenEventProc(clientData, eventPtr)
-    ClientData clientData;	/* data associated with widget */
-    XEvent *eventPtr;		/* information about event */
+TokenEventProc(ClientData clientData, XEvent *eventPtr)
 {
     Dnd *dndPtr = clientData;
     Token *tokenPtr = dndPtr->tokenPtr;
@@ -1762,7 +1722,7 @@ TokenEventProc(clientData, eventPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  CreateToken --
  *
@@ -1770,20 +1730,19 @@ TokenEventProc(clientData, eventPtr)
  *	widgets.  Creates a new record if the widget name is not already
  *	registered.  Returns a pointer to the desired record.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-CreateToken(interp, dndPtr)
-    Tcl_Interp *interp;
-    Dnd *dndPtr;
+CreateToken(
+    Tcl_Interp *interp,
+    Dnd *dndPtr)
 {
     XSetWindowAttributes attrs;
     Tk_Window tkwin;
     unsigned int mask;
     Token *tokenPtr;
 
-    tokenPtr = Blt_Calloc(1, sizeof(Token));
-    assert(tokenPtr);
+    tokenPtr = Blt_AssertCalloc(1, sizeof(Token));
     tokenPtr->anchor = TK_ANCHOR_SE;
     tokenPtr->relief = TK_RELIEF_RAISED;
     tokenPtr->activeRelief = TK_RELIEF_SUNKEN;
@@ -1811,22 +1770,22 @@ CreateToken(interp, dndPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  ConfigureToken --
  *
- *	Called to process an (argc,argv) list to configure (or
+ *	Called to process an (objc,objv) list to configure (or
  *	reconfigure) a drag&drop source widget.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigureToken(interp, dndPtr, argc, argv, flags)
-    Tcl_Interp *interp;		/* current interpreter */
-    Dnd *dndPtr;		/* Drag&drop source widget record */
-    int argc;			/* number of arguments */
-    char **argv;		/* argument strings */
-    int flags;			/* flags controlling interpretation */
+ConfigureToken(
+    Tcl_Interp *interp,		/* current interpreter */
+    Dnd *dndPtr,		/* Drag&drop source widget record */
+    int objc,			/* number of arguments */
+    Tcl_Obj *const *objv,		/* argument strings */
+    int flags)			/* flags controlling interpretation */
 {
     GC newGC;
     Token *tokenPtr = dndPtr->tokenPtr;
@@ -1834,8 +1793,8 @@ ConfigureToken(interp, dndPtr, argc, argv, flags)
     unsigned long gcMask;
 
     Tk_MakeWindowExist(tokenPtr->tkwin);
-    if (Tk_ConfigureWidget(interp, tokenPtr->tkwin, tokenConfigSpecs, argc, 
-		argv, (char *)tokenPtr, flags) != TCL_OK) {
+    if (Blt_ConfigureWidgetFromObj(interp, tokenPtr->tkwin, tokenConfigSpecs, 
+		objc, objv, (char *)tokenPtr, flags) != TCL_OK) {
 	return TCL_ERROR;
     }
     /*
@@ -1885,11 +1844,11 @@ ConfigureToken(interp, dndPtr, argc, argv, flags)
 }
 
 static int
-GetFormattedData(dndPtr, format, timestamp, resultPtr)
-    Dnd *dndPtr;
-    char *format;
-    int timestamp;
-    Tcl_DString *resultPtr;
+GetFormattedData(
+    Dnd *dndPtr, 
+    char *format, 
+    int timestamp, 
+    Tcl_DString *resultPtr)
 {
     Tcl_Interp *interp = dndPtr->interp;
     Blt_HashEntry *hPtr;
@@ -1900,13 +1859,13 @@ GetFormattedData(dndPtr, format, timestamp, resultPtr)
     int x, y;
 
     /* Find the data converter for the prescribed format. */
-    hPtr = Blt_FindHashEntry(&(dndPtr->getDataTable), format);
+    hPtr = Blt_FindHashEntry(&dndPtr->getDataTable, format);
     if (hPtr == NULL) {
 	Tcl_AppendResult(interp, "can't find format \"", format, 
 	 "\" in source \"", Tk_PathName(dndPtr->tkwin), "\"", (char *)NULL);
 	return TCL_ERROR;
     }
-    formatCmd = (char **)Blt_GetHashValue(hPtr);
+    formatCmd = Blt_GetHashValue(hPtr);
     Tcl_DStringInit(&dString);
     for (p = formatCmd; *p != NULL; p++) {
 	Tcl_DStringAppendElement(&dString, *p);
@@ -1936,44 +1895,43 @@ GetFormattedData(dndPtr, format, timestamp, resultPtr)
     return TCL_OK;
 }
 
-
+
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DestroyDnd --
  *
  *	Free resources allocated for the drag&drop window.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DestroyDnd(data)
-    DestroyData data;
+DestroyDnd(DestroyData data)
 {
     Dnd *dndPtr = (Dnd *)data;
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
     char **cmd;
 
-    Tk_FreeOptions(configSpecs, (char *)dndPtr, dndPtr->display, 0);
+    Blt_FreeOptions(configSpecs, (char *)dndPtr, dndPtr->display, 0);
     Tk_DeleteGenericHandler(DndEventProc, dndPtr);
-    for (hPtr = Blt_FirstHashEntry(&(dndPtr->getDataTable), &cursor);
+    for (hPtr = Blt_FirstHashEntry(&dndPtr->getDataTable, &cursor);
 	hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	cmd = (char **)Blt_GetHashValue(hPtr);
+	cmd = Blt_GetHashValue(hPtr);
 	if (cmd != NULL) {
 	    Blt_Free(cmd);
 	}
     }
-    Blt_DeleteHashTable(&(dndPtr->getDataTable));
+    Blt_DeleteHashTable(&dndPtr->getDataTable);
 
-    for (hPtr = Blt_FirstHashEntry(&(dndPtr->setDataTable), &cursor);
+    for (hPtr = Blt_FirstHashEntry(&dndPtr->setDataTable, &cursor);
 	hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	cmd = (char **)Blt_GetHashValue(hPtr);
+	cmd = Blt_GetHashValue(hPtr);
 	if (cmd != NULL) {
 	    Blt_Free(cmd);
 	}
     }
-    Blt_DeleteHashTable(&(dndPtr->setDataTable));
+    Blt_DeleteHashTable(&dndPtr->setDataTable);
     if (dndPtr->rootPtr != NULL) {
 	FreeWinfo(dndPtr->rootPtr);
     }
@@ -2012,7 +1970,7 @@ DestroyDnd(data)
     }
 
     if (dndPtr->hashPtr != NULL) {
-	Blt_DeleteHashEntry(&(dndPtr->dataPtr->dndTable), dndPtr->hashPtr);
+	Blt_DeleteHashEntry(&dndPtr->dataPtr->dndTable, dndPtr->hashPtr);
     }
     if (dndPtr->tokenPtr != NULL) {
 	DestroyToken((DestroyData)dndPtr);
@@ -2028,42 +1986,45 @@ DestroyDnd(data)
 
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetDnd --
  *
  *	Looks for a Source record in the hash table for drag&drop source
  *	widgets.  Returns a pointer to the desired record.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-GetDnd(clientData, interp, pathName, dndPtrPtr)
-    ClientData clientData;
-    Tcl_Interp *interp;
-    char *pathName;		/* widget pathname for desired record */
-    Dnd **dndPtrPtr;
+GetDndFromObj(
+    ClientData clientData,
+    Tcl_Interp *interp,
+    Tcl_Obj *objPtr,		/* widget pathname for desired record */
+    Dnd **dndPtrPtr)
 {
     DndInterpData *dataPtr = clientData;
     Blt_HashEntry *hPtr;
     Tk_Window tkwin;
+    char *pathName;
 
-    tkwin = Tk_NameToWindow(interp, pathName, dataPtr->mainWindow);
+    pathName = Tcl_GetString(objPtr);
+    assert(interp != NULL);
+    tkwin = Tk_NameToWindow(interp, pathName, dataPtr->tkMain);
     if (tkwin == NULL) {
 	return TCL_ERROR;
     }
-    hPtr = Blt_FindHashEntry(&(dataPtr->dndTable), (char *)tkwin);
+    hPtr = Blt_FindHashEntry(&dataPtr->dndTable, (char *)tkwin);
     if (hPtr == NULL) {
 	Tcl_AppendResult(interp, "window \"", pathName,
 	     "\" is not a drag&drop source/target", (char *)NULL);
 	return TCL_ERROR;
     }
-    *dndPtrPtr = (Dnd *)Blt_GetHashValue(hPtr);
+    *dndPtrPtr = Blt_GetHashValue(hPtr);
     return TCL_OK;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  CreateDnd --
  *
@@ -2071,37 +2032,34 @@ GetDnd(clientData, interp, pathName, dndPtrPtr)
  *	widgets.  Creates a new record if the widget name is not already
  *	registered.  Returns a pointer to the desired record.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Dnd *
-CreateDnd(interp, tkwin)
-    Tcl_Interp *interp;
-    Tk_Window tkwin;		/* widget for desired record */
+CreateDnd(
+    Tcl_Interp *interp,
+    Tk_Window tkwin)		/* Widget for desired record */
 {
     Dnd *dndPtr;
 
-    dndPtr = Blt_Calloc(1, sizeof(Dnd));
-    assert(dndPtr);
+    dndPtr = Blt_AssertCalloc(1, sizeof(Dnd));
     dndPtr->interp = interp;
     dndPtr->display = Tk_Display(tkwin);
     dndPtr->tkwin = tkwin;
     Tk_MakeWindowExist(tkwin);
-    Blt_InitHashTable(&(dndPtr->setDataTable), BLT_STRING_KEYS);
-    Blt_InitHashTable(&(dndPtr->getDataTable), BLT_STRING_KEYS);
+    Blt_InitHashTable(&dndPtr->setDataTable, BLT_STRING_KEYS);
+    Blt_InitHashTable(&dndPtr->getDataTable, BLT_STRING_KEYS);
     Tk_CreateGenericHandler(DndEventProc, dndPtr);
     return dndPtr;
 }
 
 static int
-ConfigureDnd(interp, dndPtr)
-    Tcl_Interp *interp;
-    Dnd *dndPtr;
+ConfigureDnd(Tcl_Interp *interp, Dnd *dndPtr)
 {
     Tcl_CmdInfo cmdInfo;
     Tcl_DString dString;
     int button, result;
 
-    if (!Tcl_GetCommandInfo(interp, "blt::DndInit", &cmdInfo)) {
+    if (!Tcl_GetCommandInfo(interp, "::blt::DndInit", &cmdInfo)) {
 	static char cmd[] = "source [file join $blt_library dnd.tcl]";
 	/* 
 	 * If the "DndInit" routine hasn't been sourced, do it now.
@@ -2141,7 +2099,7 @@ ConfigureDnd(interp, dndPtr)
 	button = 0;
     }
     Tcl_DStringInit(&dString);
-    Blt_DStringAppendElements(&dString, "blt::DndInit", 
+    Blt_DStringAppendElements(&dString, "::blt::DndInit", 
 	Tk_PathName(dndPtr->tkwin), Blt_Itoa(button), (char *)NULL);
     result = Tcl_GlobalEval(interp, Tcl_DStringValue(&dString));
     Tcl_DStringFree(&dString);
@@ -2153,7 +2111,7 @@ ConfigureDnd(interp, dndPtr)
 
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * SendRestrictProc --
  *
@@ -2168,14 +2126,14 @@ ConfigureDnd(interp, dndPtr)
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 /* ARGSUSED */
 static Tk_RestrictAction
-SendRestrictProc(clientData, eventPtr)
-    ClientData clientData;		/* Drag-and-drop manager. */
-    register XEvent *eventPtr;		/* Event that just arrived. */
+SendRestrictProc(
+    ClientData clientData,	/* Drag-and-drop manager. */
+    XEvent *eventPtr)		/* Event that just arrived. */
 {
     Dnd *dndPtr = clientData;
 
@@ -2194,7 +2152,7 @@ SendRestrictProc(clientData, eventPtr)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * SendTimerProc --
  *
@@ -2207,11 +2165,10 @@ SendRestrictProc(clientData, eventPtr)
  * Side Effects:
  *	Sets a flag, indicating the timeout occurred.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-SendTimerProc(clientData)
-    ClientData clientData;
+SendTimerProc(ClientData clientData)
 {
     int *statusPtr = clientData;
 
@@ -2226,22 +2183,22 @@ SendTimerProc(clientData)
 #define WAIT_INTERVAL	2000	/* Twenty seconds. */
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  TargetPropertyEventProc --
  *
- *	Invoked by the Tk dispatcher to handle widget events.
- *	Manages redraws for the drag&drop token window.
+ *	Invoked by the Tk dispatcher to handle widget events.  Manages redraws
+ *	for the drag&drop token window.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-TargetPropertyEventProc(clientData, eventPtr)
-    ClientData clientData;	/* Data associated with transaction. */
-    XEvent *eventPtr;		/* information about event */
+TargetPropertyEventProc(
+    ClientData clientData,		/* Data associated with transaction. */
+    XEvent *eventPtr)			/* information about event */
 {
     DropPending *pendingPtr = clientData;
-    char *data;
+    unsigned char *data;
     int result, format;
     Atom typeAtom;
     unsigned long nItems, bytesAfter;
@@ -2260,15 +2217,19 @@ TargetPropertyEventProc(clientData, eventPtr)
         eventPtr->xproperty.display,	/* Display of window. */
 	eventPtr->xproperty.window,     /* Window holding the property. */
         eventPtr->xproperty.atom,	/* Name of property. */
-        0,			/* Offset of data (for multiple reads). */
-	pendingPtr->packetSize,	/* Maximum number of items to read. */
-	False,			/* If true, delete the property. */
-        XA_STRING,		/* Desired type of property. */
-        &typeAtom,		/* (out) Actual type of the property. */
-        &format,		/* (out) Actual format of the property. */
-        &nItems,		/* (out) # of items in specified format. */
-        &bytesAfter,		/* (out) # of bytes remaining to be read. */
-	(unsigned char **)&data);
+        0,				/* Offset of data (for multiple
+					 * reads). */
+	pendingPtr->packetSize,		/* Maximum number of items to read. */
+	False,				/* If true, delete the property. */
+        XA_STRING,			/* Desired type of property. */
+        &typeAtom,			/* (out) Actual type of the property. */
+        &format,			/* (out) Actual format of the
+					 * property. */
+        &nItems,			/* (out) # of items in specified
+					 * format. */
+        &bytesAfter,			/* (out) # of bytes remaining to be
+					 * read. */
+	&data);
 #ifdef notdef
     fprintf(stderr, 
 	"TargetPropertyEventProc: result=%d, typeAtom=%d, format=%d, nItems=%d\n",
@@ -2280,20 +2241,19 @@ TargetPropertyEventProc(clientData, eventPtr)
 #ifdef notdef
 	fprintf(stderr, "data found is (%s)\n", data);
 #endif
-	Tcl_DStringAppend(&(pendingPtr->dString), data, -1);
+	Tcl_DStringAppend(&pendingPtr->dString, (char *)data, -1);
 	XFree(data);
 	if (nItems == pendingPtr->packetSize) {
-	    /* Normally, we'll receive the data in one chunk. But if
-	     * more are required, reset the timer and go back into the 
-	     * wait loop again. */
+	    /* Normally, we'll receive the data in one chunk. But if more are
+	     * required, reset the timer and go back into the wait loop
+	     * again. */
 	    pendingPtr->timerToken = Tcl_CreateTimerHandler(WAIT_INTERVAL, 
 		SendTimerProc, &pendingPtr->status);
 	    pendingPtr->status = DROP_CONTINUE;
 	}
     } 
-    /* Set an empty, zero-length value on the source's property. This
-     * acts as a handshake, indicating that the target received the
-     * latest chunk. */
+    /* Set an empty, zero-length value on the source's property. This acts as a
+     * handshake, indicating that the target received the latest chunk. */
 #ifdef notdef
     fprintf(stderr, "TargetPropertyEventProc: set response property\n");
 #endif
@@ -2312,7 +2272,7 @@ XDndSelectionProc(clientData, interp, portion)
 {
     DropPending *pendingPtr = clientData;
 
-    Tcl_DStringAppend(&(pendingPtr->dString), portion, -1);
+    Tcl_DStringAppend(&pendingPtr->dString, portion, -1);
 #ifdef notdef
     fprintf(stderr, "-> XDndGetSelectionProc\n");
 #endif
@@ -2322,10 +2282,7 @@ XDndSelectionProc(clientData, interp, portion)
 #endif /* HAVE_XDND */
 
 static void
-CompleteDataTransaction(dndPtr, format, pendingPtr)
-    Dnd *dndPtr;
-    char *format;
-    DropPending *pendingPtr;
+CompleteDataTransaction(Dnd *dndPtr, char *format, DropPending *pendingPtr)
 {
     DndInterpData *dataPtr = dndPtr->dataPtr;
     Tk_Window tkwin;
@@ -2339,13 +2296,13 @@ CompleteDataTransaction(dndPtr, format, pendingPtr)
     if (tkwin != NULL) {
 	Blt_HashEntry *hPtr;
 
-	hPtr = Blt_FindHashEntry(&(dndPtr->dataPtr->dndTable), (char *)tkwin);
+	hPtr = Blt_FindHashEntry(&dndPtr->dataPtr->dndTable, (char *)tkwin);
 	if (hPtr != NULL) {
 	    Dnd *srcPtr;
 
-	    srcPtr = (Dnd *)Blt_GetHashValue(hPtr);
+	    srcPtr = Blt_GetHashValue(hPtr);
 	    GetFormattedData(srcPtr, format, pendingPtr->timestamp, 
-		&(pendingPtr->dString));
+		&pendingPtr->dString);
 	}
 	return;
     }
@@ -2380,21 +2337,16 @@ CompleteDataTransaction(dndPtr, format, pendingPtr)
 	Tk_CreateEventHandler(dndPtr->tkwin, PropertyChangeMask, 
 		TargetPropertyEventProc, pendingPtr);
 	pendingPtr->timerToken = Tcl_CreateTimerHandler(WAIT_INTERVAL, 
-	       SendTimerProc, &pendingPtr->status);
+		SendTimerProc, &pendingPtr->status);
 	/*  
-	 * ----------------------------------------------------------
-	 *
-	 * Enter a loop processing X events until the all the data is
-	 * received or the source is declared to be dead (i.e. we
-	 * timeout).  While waiting for a result, restrict handling to
-	 * just property-related events so that the transfer is
-	 * synchronous with respect to other events in the widget.
-	 *
-	 * ---------------------------------------------------------- 
+	 * Enter a loop processing X events until the all the data is received
+	 * or the source is declared to be dead (i.e. we timeout).  While
+	 * waiting for a result, restrict handling to just property-related
+	 * events so that the transfer is synchronous with respect to other
+	 * events in the widget.
 	 */
 	while (pendingPtr->status == DROP_CONTINUE) { 
-	    /* Wait for property event. */
-	    Tcl_DoOneEvent(TCL_ALL_EVENTS);
+	    Tcl_DoOneEvent(TCL_ALL_EVENTS);	/* Wait for property event. */
 	}
 	Tk_RestrictEvents(proc, arg, &arg);
 	Tcl_DeleteTimerHandler(pendingPtr->timerToken);
@@ -2407,32 +2359,31 @@ CompleteDataTransaction(dndPtr, format, pendingPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  SourcePropertyEventProc --
  *
- *	Invoked by the Tk dispatcher when a PropertyNotify event occurs
- *	on the source window.  The event acts as a handshake between the
- *	target and the source.  The source acknowledges the target has 
- *	received the last packet of data and sends the next packet.  
+ *	Invoked by the Tk dispatcher when a PropertyNotify event occurs on the
+ *	source window.  The event acts as a handshake between the target and the
+ *	source.  The source acknowledges the target has received the last packet
+ *	of data and sends the next packet.
  *
- *	Note a special case.  If the data is divisible by the packetsize,
- *	then an extra zero-length packet is sent to mark the end of the
- *	data.  A packetsize length packet indicates more is to follow.
+ *	Note a special case.  If the data is divisible by the packetsize, then
+ *	an extra zero-length packet is sent to mark the end of the data.  A
+ *	packetsize length packet indicates more is to follow.
  *
- *	Normally the property is empty (zero-length).  But if an
- *	errored occurred on the target, it will contain the error
- *	message.
+ *	Normally the property is empty (zero-length).  But if an errored
+ *	occurred on the target, it will contain the error message.
  *
  * ------------------------------------------------------------------------ 
  */
 static void
-SourcePropertyEventProc(clientData, eventPtr)
-    ClientData clientData;	/* data associated with widget */
-    XEvent *eventPtr;		/* information about event */
+SourcePropertyEventProc(
+    ClientData clientData,		/* data associated with widget */
+    XEvent *eventPtr)			/* information about event */
 {
     DropPending *pendingPtr = clientData;
-    char *data;
+    unsigned char *data;
     int result, format;
     Atom typeAtom;
     unsigned long nItems, bytesAfter;
@@ -2452,34 +2403,38 @@ SourcePropertyEventProc(clientData, eventPtr)
         eventPtr->xproperty.display,	/* Display of window. */
 	eventPtr->xproperty.window,     /* Window holding the property. */
         eventPtr->xproperty.atom,	/* Name of property. */
-        0,			/* Offset of data (for multiple reads). */
-	pendingPtr->packetSize,	/* Maximum number of items to read. */
-	True,			/* If true, delete the property. */
-        XA_STRING,		/* Desired type of property. */
-        &typeAtom,		/* (out) Actual type of the property. */
-        &format,		/* (out) Actual format of the property. */
-        &nItems,		/* (out) # of items in specified format. */
-        &bytesAfter,		/* (out) # of bytes remaining to be read. */
-	(unsigned char **)&data);
+        0,				/* Offset of data (for multiple
+					 * reads). */
+	pendingPtr->packetSize,		/* Maximum number of items to read. */
+	True,				/* If true, delete the property. */
+        XA_STRING,			/* Desired type of property. */
+        &typeAtom,			/* (out) Actual type of the property. */
+        &format,			/* (out) Actual format of the
+					 * property. */
+        &nItems,			/* (out) # of items in specified
+					 * format. */
+        &bytesAfter,			/* (out) # of bytes remaining to be
+					 * read. */
+	&data);
 
     if ((result != Success) || (typeAtom != XA_STRING) || (format != 8)) {
 	pendingPtr->status = DROP_FAIL;
 #ifdef notdef
     fprintf(stderr, "<- SourcePropertyEventProc: wrong format\n");
 #endif
-	return;			/* Wrong data format. */
+	return;				/* Wrong data format. */
     }
     if (nItems > 0) {
 	pendingPtr->status = DROP_FAIL;
-	Tcl_DStringFree(&(pendingPtr->dString));
-	Tcl_DStringAppend(&(pendingPtr->dString), data, -1);
+	Tcl_DStringFree(&pendingPtr->dString);
+	Tcl_DStringAppend(&pendingPtr->dString, (char *)data, -1);
 	XFree(data);
 #ifdef notdef
     fprintf(stderr, "<- SourcePropertyEventProc: error\n");
 #endif
-	return;			/* Error occurred on target. */
+	return;				/* Error occurred on target. */
     }    
-    bytesLeft = Tcl_DStringLength(&(pendingPtr->dString)) - pendingPtr->offset;
+    bytesLeft = Tcl_DStringLength(&pendingPtr->dString) - pendingPtr->offset;
     if (bytesLeft <= 0) {
 #ifdef notdef
 	fprintf(stderr, "<- SourcePropertyEventProc: done\n");
@@ -2490,7 +2445,7 @@ SourcePropertyEventProc(clientData, eventPtr)
 	size = MIN(bytesLeft, pendingPtr->packetSize);
 	pendingPtr->status = DROP_CONTINUE;
     }
-    p = (unsigned char *)Tcl_DStringValue(&(pendingPtr->dString)) + 
+    p = (unsigned char *)Tcl_DStringValue(&pendingPtr->dString) + 
 	pendingPtr->offset;
     XChangeProperty(pendingPtr->display, pendingPtr->window, 
 	pendingPtr->commAtom, XA_STRING, 8, PropModeReplace, p, size);
@@ -2504,9 +2459,7 @@ SourcePropertyEventProc(clientData, eventPtr)
 
 
 static void
-SendDataToTarget(dndPtr, pendingPtr)
-    Dnd *dndPtr;
-    DropPending *pendingPtr;
+SendDataToTarget(Dnd *dndPtr, DropPending *pendingPtr)
 {
     int size;
     Tk_RestrictProc *proc;
@@ -2524,20 +2477,19 @@ SendDataToTarget(dndPtr, pendingPtr)
     proc = Tk_RestrictEvents(SendRestrictProc, dndPtr, &arg);
 
     /* 
-     * Setting the property starts the process.  The target will
-     * see the PropertyChange event and respond accordingly.  
+     * Setting the property starts the process.  The target will see the
+     * PropertyChange event and respond accordingly.
      */
     XChangeProperty(dndPtr->display, pendingPtr->window, 
 	pendingPtr->commAtom, XA_STRING, 8, PropModeReplace, 
-	(unsigned char *)Tcl_DStringValue(&(pendingPtr->dString)), size);
+	(unsigned char *)Tcl_DStringValue(&pendingPtr->dString), size);
     pendingPtr->offset += size;
 
     /*
-     * Enter a loop processing X events until the result comes
-     * in or the target is declared to be dead.  While waiting
-     * for a result, look only at property-related events so that
-     * the handshake is synchronous with respect to other events in
-     * the application.
+     * Enter a loop processing X events until the result comes in or the target
+     * is declared to be dead.  While waiting for a result, look only at
+     * property-related events so that the handshake is synchronous with respect
+     * to other events in the application.
      */
     pendingPtr->status = DROP_CONTINUE;
     while (pendingPtr->status == DROP_CONTINUE) {
@@ -2554,18 +2506,16 @@ SendDataToTarget(dndPtr, pendingPtr)
 }
 
 static void
-DoDrop(dndPtr, eventPtr)
-    Dnd *dndPtr;
-    XEvent *eventPtr;
+DoDrop(Dnd *dndPtr, XEvent *eventPtr)
 {
     DndInterpData *dataPtr = dndPtr->dataPtr;
     Token *tokenPtr = dndPtr->tokenPtr;
     Tcl_Interp *interp = dndPtr->interp;
     struct DropRequest {
-	int mesg;		/* TS_DROP_RESULT message. */
-	Window window;		/* Target window. */
-	int timestamp;		/* Transaction timestamp. */
-	Atom formatAtom;	/* Format requested. */
+	int mesg;			/* TS_DROP_RESULT message. */
+	Window window;			/* Target window. */
+	int timestamp;			/* Transaction timestamp. */
+	Atom formatAtom;		/* Format requested. */
     } *dropPtr;
     char *format;
     DropPending pending;
@@ -2579,7 +2529,7 @@ DoDrop(dndPtr, eventPtr)
     fprintf(stderr, "DoDrop %s 0x%x\n", Tk_PathName(dndPtr->tkwin), 
 	    dropPtr->window);
 #endif
-    if (GetFormattedData(dndPtr, format, dropPtr->timestamp, &(pending.dString))
+    if (GetFormattedData(dndPtr, format, dropPtr->timestamp, &pending.dString)
 	!= TCL_OK) {
 	Tcl_BackgroundError(interp);
 	/* Send empty string to break target's wait loop. */
@@ -2593,26 +2543,24 @@ DoDrop(dndPtr, eventPtr)
     pending.offset = 0;
     pending.packetSize = GetMaxPropertySize(dndPtr->display);
     SendDataToTarget(dndPtr, &pending);
-    Tcl_DStringFree(&(pending.dString));
+    Tcl_DStringFree(&pending.dString);
 #ifdef notdef
     fprintf(stderr, "<- DoDrop\n");
 #endif
 }
 
 static void
-DropFinished(dndPtr, eventPtr)
-    Dnd *dndPtr;
-    XEvent *eventPtr;
+DropFinished(Dnd *dndPtr, XEvent *eventPtr)
 {
     Tcl_Interp *interp = dndPtr->interp;
     Tcl_DString dString, savedResult;
     int result;
-    char **p;
+    const char **p;
     struct DropResult {
-	int mesg;		/* TS_DROP_RESULT message. */
-	Window window;		/* Target window. */
-	int timestamp;		/* Transaction timestamp. */
-	int result;		/* Result of transaction. */
+	int mesg;			/* TS_DROP_RESULT message. */
+	Window window;			/* Target window. */
+	int timestamp;			/* Transaction timestamp. */
+	int result;			/* Result of transaction. */
     } *dropPtr;
 
 #ifdef notdef
@@ -2642,8 +2590,7 @@ DropFinished(dndPtr, eventPtr)
 
 
 static void
-FreeFormats(dndPtr) 
-    Dnd *dndPtr;
+FreeFormats(Dnd *dndPtr)
 {
     if (dndPtr->matchingFormats != NULL) {
 	Blt_Free(dndPtr->matchingFormats);
@@ -2652,20 +2599,17 @@ FreeFormats(dndPtr)
     dndPtr->lastId = None;
 }
 
-static char *
-GetSourceFormats(dndPtr, window, timestamp)
-    Dnd *dndPtr;
-    Window window;
-    int timestamp;
+static const char *
+GetSourceFormats(Dnd *dndPtr, Window window, int timestamp)
 {
     if (dndPtr->lastId != timestamp) {
-	char *data;
+	unsigned char *data;
 	
 	FreeFormats(dndPtr);
 	data = GetProperty(dndPtr->display, window, 
 		   dndPtr->dataPtr->formatsAtom);
 	if (data != NULL) {
-	    dndPtr->matchingFormats = Blt_Strdup(data);
+	    dndPtr->matchingFormats = Blt_AssertStrdup((char *)data);
 	    XFree(data);
 	}
 	dndPtr->lastId = timestamp;
@@ -2678,24 +2622,27 @@ GetSourceFormats(dndPtr, window, timestamp)
  
 
 static int
-InvokeCallback(dndPtr, cmd, x, y, formats, button, keyState, timestamp)
-    Dnd *dndPtr;
-    char **cmd;
-    int x, y;
-    char *formats;
-    int button, keyState, timestamp;
+InvokeCallback(
+    Dnd *dndPtr,
+    const char **cmd,
+    int x, int y,
+    const char *formats,
+    int button, 
+    int keyState, 
+    int timestamp)
 {
     Tcl_DString dString, savedResult;
     Tcl_Interp *interp = dndPtr->interp;
     int result;
-    char **p;
+    const char **p;
 
     Tcl_DStringInit(&dString);
     for (p = cmd; *p != NULL; p++) {
 	Tcl_DStringAppendElement(&dString, *p);
     }
     Tcl_DStringAppendElement(&dString, Tk_PathName(dndPtr->tkwin));
-    x -= Blt_RootX(dndPtr->tkwin); /* Send coordinates relative to target. */
+    /* Send coordinates relative to target. */
+    x -= Blt_RootX(dndPtr->tkwin);    
     y -= Blt_RootY(dndPtr->tkwin);
     Tcl_DStringAppendElement(&dString, "x");
     Tcl_DStringAppendElement(&dString, Blt_Itoa(x));
@@ -2729,14 +2676,14 @@ InvokeCallback(dndPtr, cmd, x, y, formats, button, keyState, timestamp)
 }
 
 /* 
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  AcceptDrop --
  *	
- *	Invokes a Tcl procedure to handle the target's side of the
- *	drop.  A Tcl procedure is invoked, either one designated for 
- *	this target by the user (-ondrop) or a default Tcl procedure. 
- *	It is passed the following arguments:
+ *	Invokes a TCL procedure to handle the target's side of the drop.  A Tcl
+ *	procedure is invoked, either one designated for this target by the user
+ *	(-ondrop) or a default TCL procedure.  It is passed the following
+ *	arguments:
  *
  *		widget		The path name of the target. 
  *		x		X-coordinate of the mouse relative to the 
@@ -2750,7 +2697,7 @@ InvokeCallback(dndPtr, cmd, x, y, formats, button, keyState, timestamp)
  *		timestamp	Timestamp of transaction.
  *		action		Requested action from source.
  *
- *	If the Tcl procedure returns "cancel", this indicates that the drop was
+ *	If the TCL procedure returns "cancel", this indicates that the drop was
  *	not accepted by the target and the reject symbol should be displayed.
  *	Otherwise one of the following strings may be recognized:
  *
@@ -2771,21 +2718,23 @@ InvokeCallback(dndPtr, cmd, x, y, formats, button, keyState, timestamp)
  *	None.
  *
  * Side Effects:
- *	A Tcl procedure is invoked in the target to handle the drop event.
+ *	A TCL procedure is invoked in the target to handle the drop event.
  *	The result of the drop is sent (via another ClientMessage) to the
  *	source.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-AcceptDrop(dndPtr, x, y, formats, button, keyState, timestamp) 
-    Dnd *dndPtr;		/* Target where the drop event occurred. */
-    int x, y;
-    char *formats;
-    int button, keyState, timestamp;
+AcceptDrop(
+    Dnd *dndPtr,		/* Target where the drop event occurred. */
+    int x, int y,
+    const char *formats,
+    int button, 
+    int keyState, 
+    int timestamp)
 {
     Tcl_Interp *interp = dndPtr->interp;
-    char **cmd;
+    const char **cmd;
     Tcl_DString dString, savedResult;
     int result;
     
@@ -2803,13 +2752,13 @@ AcceptDrop(dndPtr, x, y, formats, button, keyState, timestamp)
     Tcl_DStringInit(&dString);
     cmd = dndPtr->dropCmd;
     if (cmd != NULL) {
-	char **p;
+	const char **p;
 
 	for (p = cmd; *p != NULL; p++) {
 	    Tcl_DStringAppendElement(&dString, *p);
 	}
     } else {
-	Tcl_DStringAppendElement(&dString, "blt::DndStdDrop");
+	Tcl_DStringAppendElement(&dString, "::blt::DndStdDrop");
     }
     Tcl_DStringAppendElement(&dString, Tk_PathName(dndPtr->tkwin));
     dndPtr->dropX = x - Blt_RootX(dndPtr->tkwin);
@@ -2843,14 +2792,14 @@ AcceptDrop(dndPtr, x, y, formats, button, keyState, timestamp)
 }
 
 /* 
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  HandleDropEvent --
  *	
- *	Invokes a Tcl procedure to handle the target's side of the
- *	drop.  This routine is triggered via a client message from the
- *	drag source indicating that the token was dropped over this
- *	target. The fields of the incoming message are:
+ *	Invokes a TCL procedure to handle the target's side of the drop.  This
+ *	routine is triggered via a client message from the drag source
+ *	indicating that the token was dropped over this target. The fields of
+ *	the incoming message are:
  *
  *		data.l[0]	Message type.
  *		data.l[1]	Window Id of the source.
@@ -2858,9 +2807,9 @@ AcceptDrop(dndPtr, x, y, formats, button, keyState, timestamp)
  *		data.l[3]	Screen Y-coordinate of the pointer.
  *		data.l[4]	Id of the drag&drop transaction.
  *
- *	A Tcl procedure is invoked, either one designated for this 
- *	target by the user (-ondrop) or a default Tcl procedure. It
- *	is passed the following arguments:
+ *	A TCL procedure is invoked, either one designated for this target by the
+ *	user (-ondrop) or a default TCL procedure. It is passed the following
+ *	arguments:
  *
  *		widget		The path name of the target. 
  *		x		X-coordinate of the mouse relative to the 
@@ -2870,7 +2819,7 @@ AcceptDrop(dndPtr, x, y, formats, button, keyState, timestamp)
  *		formats		A list of data formats acceptable to both
  *				the source and target.
  *
- *	If the Tcl procedure returns "cancel", this indicates that the drop was
+ *	If the TCL procedure returns "cancel", this indicates that the drop was
  *	not accepted by the target and the reject symbol should be displayed.
  *	Otherwise one of the following strings may be recognized:
  *
@@ -2891,27 +2840,28 @@ AcceptDrop(dndPtr, x, y, formats, button, keyState, timestamp)
  *	None.
  *
  * Side Effects:
- *	A Tcl procedure is invoked in the target to handle the drop event.
+ *	A TCL procedure is invoked in the target to handle the drop event.
  *	The result of the drop is sent (via another ClientMessage) to the
  *	source.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-HandleDropEvent(dndPtr, eventPtr) 
-    Dnd *dndPtr;		/* Target where the drop event occurred. */
-    XEvent *eventPtr;		/* Message sent from the drag source. */
+HandleDropEvent(
+    Dnd *dndPtr,			/* Target where the drop event
+					 * occurred. */
+    XEvent *eventPtr)			/* Message sent from the drag source. */
 {
     int button, keyState;
     int x, y;
-    char *formats;
+    const char *formats;
     int result;
     struct DropInfo {
-	int mesg;		/* TS_DROP message. */
-	Window window;		/* Source window. */
-	int timestamp;		/* Transaction timestamp. */
-	int point;		/* Root X-Y coordinate of pointer. */
-	int flags;		/* Button/keystate information. */
+	int mesg;			/* TS_DROP message. */
+	Window window;			/* Source window. */
+	int timestamp;			/* Transaction timestamp. */
+	int point;			/* Root X-Y coordinate of pointer. */
+	int flags;			/* Button/keystate information. */
     } *dropPtr;
     DropPending pending;
 
@@ -2926,7 +2876,7 @@ HandleDropEvent(dndPtr, eventPtr)
     pending.timestamp = dropPtr->timestamp;
     pending.protocol = PROTO_BLT;
     pending.packetSize = GetMaxPropertySize(pending.display);
-    Tcl_DStringInit(&(pending.dString));
+    Tcl_DStringInit(&pending.dString);
 
     formats = GetSourceFormats(dndPtr, dropPtr->window, dropPtr->timestamp);
 
@@ -2943,16 +2893,16 @@ HandleDropEvent(dndPtr, eventPtr)
 }
 
 /* 
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  HandleDragEvent --
  *	
- *	Invokes one of 3 Tcl procedures to handle the target's side of 
- *	the drag operation.  This routine is triggered via a ClientMessage 
- *	from the drag source indicating that the token as either entered,
- *	moved, or left this target.  The source sends messages only if
- *	Tcl procedures on the target have been defined to watch the 
- *	events. The message_type field can be either 
+ *	Invokes one of 3 TCL procedures to handle the target's side of the drag
+ *	operation.  This routine is triggered via a ClientMessage from the drag
+ *	source indicating that the token as either entered, moved, or left this
+ *	target.  The source sends messages only if TCL procedures on the target
+ *	have been defined to watch the events. The message_type field can be
+ *	either
  *
  *	  ST_DRAG_ENTER		The mouse has entered the target.
  *	  ST_DRAG_MOTION	The mouse has moved within the target.
@@ -2965,8 +2915,7 @@ HandleDropEvent(dndPtr, eventPtr)
  *	  data.l[3]		Root X-Y coordinate of the pointer.
  *	  data.l[4]		Button and key state information.
  *
- *	For any of the 3 Tcl procedures, the following arguments
- *	are passed:
+ *	For any of the 3 TCL procedures, the following arguments are passed:
  *
  *	  widget		The path name of the target. 
  *	  x			X-coordinate of the mouse in the widget.
@@ -2974,49 +2923,50 @@ HandleDropEvent(dndPtr, eventPtr)
  *	  formats		A list of data formats acceptable to both
  *				the source and target.
  *
- *	If the Tcl procedure returns "cancel", this indicates that the drag 
+ *	If the TCL procedure returns "cancel", this indicates that the drag
  *	operation has been canceled and the reject symbol should be displayed.
  *	Otherwise it should return a boolean:
  *
  *	  true			Target will accept drop.
  *	  false			Target will not accept the drop.
  *
- *	The purpose of the Enter and Leave procedure is to allow the
- *	target to provide visual feedback that the drop can occur or not.
- *	The Motion procedure is for cases where the drop area is a smaller
- *	area within the target, such as a canvas item on a canvas. The 
- *	procedure can determine (based upon the X-Y coordinates) whether 
- *	the pointer is over the canvas item and return a value accordingly.
+ *	The purpose of the Enter and Leave procedure is to allow the target to
+ *	provide visual feedback that the drop can occur or not.  The Motion
+ *	procedure is for cases where the drop area is a smaller area within the
+ *	target, such as a canvas item on a canvas. The procedure can determine
+ *	(based upon the X-Y coordinates) whether the pointer is over the canvas
+ *	item and return a value accordingly.
  *
- *	The result of the Tcl procedure is then relayed back to the 
- *	source by a ClientMessage.  
+ *	The result of the TCL procedure is then relayed back to the source by a
+ *	ClientMessage.
  *
  * Results:
  *	None.
  *
  * Side Effects:
- *	A Tcl procedure is invoked in the target to handle the drag event.
+ *	A TCL procedure is invoked in the target to handle the drag event.
  *	The result of the drag is sent (via another ClientMessage) to the
  *	source.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-HandleDragEvent(dndPtr, eventPtr) 
-    Dnd *dndPtr;		/* Target where the drag event occurred. */
-    XEvent *eventPtr;		/* Message sent from the drag source. */
+HandleDragEvent(
+    Dnd *dndPtr,			/* Target where the drag event
+					 * occurred. */
+    XEvent *eventPtr)			/* Message sent from the drag source. */
 {
-    char **cmd;
+    const char **cmd;
     int resp;
     int x, y;
     int button, keyState;
-    char *formats;
+    const char *formats;
     struct DragInfo {
-	int mesg;		/* Drag-and-drop message type. */
-	Window window;		/* Source window. */
-	int timestamp;		/* Transaction timestamp. */
-	int point;		/* Root X-Y coordinate of pointer. */
-	int flags;		/* Button/keystate information. */
+	int mesg;			/* Drag-and-drop message type. */
+	Window window;			/* Source window. */
+	int timestamp;			/* Transaction timestamp. */
+	int point;			/* Root X-Y coordinate of pointer. */
+	int flags;			/* Button/keystate information. */
     } *dragPtr;
 
     dragPtr = (struct DragInfo *)eventPtr->xclient.data.l;
@@ -3034,7 +2984,7 @@ HandleDragEvent(dndPtr, eventPtr)
 	break;
     } 
     if (cmd == NULL) {
-	return;			/* Nothing to do. */
+	return;				/* Nothing to do. */
     }
     UNPACK(dragPtr->point, x, y);
     UNPACK(dragPtr->flags, button, keyState);
@@ -3049,19 +2999,19 @@ HandleDragEvent(dndPtr, eventPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DndEventProc --
  *
  *	Invoked by Tk_HandleEvent whenever a DestroyNotify event is received
  *	on a registered drag&drop source widget.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-DndEventProc(clientData, eventPtr)
-    ClientData clientData;	/* Drag&drop record. */
-    XEvent *eventPtr;		/* Event description. */
+DndEventProc(
+    ClientData clientData,		/* Drag&drop record. */
+    XEvent *eventPtr)			/* Event description. */
 {
     Dnd *dndPtr = clientData;
 
@@ -3129,11 +3079,11 @@ DndEventProc(clientData, eventPtr)
 }
 
 static void
-SendPointerMessage(dndPtr, eventType, windowPtr, x, y)
-    Dnd *dndPtr;		/* Source drag&drop manager. */
-    int eventType;		/* Type of event to relay. */
-    Winfo *windowPtr;		/* Generic window information. */
-    int x, y;			/* Root coordinates of mouse. */
+SendPointerMessage(
+    Dnd *dndPtr,		/* Source drag&drop manager. */
+    int eventType,		/* Type of event to relay. */
+    Winfo *windowPtr,		/* Generic window information. */
+    int x, int y)		/* Root coordinates of mouse. */
 {
     /* Source-to-Target: Pointer event messages. */
     SendClientMsg(
@@ -3149,10 +3099,7 @@ SendPointerMessage(dndPtr, eventType, windowPtr, x, y)
 }
 
 static void
-RelayEnterEvent(dndPtr, windowPtr, x, y)
-    Dnd *dndPtr;
-    Winfo *windowPtr;
-    int x, y;
+RelayEnterEvent(Dnd *dndPtr, Winfo *windowPtr, int x, int y)
 {
     if ((windowPtr != NULL) && (windowPtr->eventFlags & WATCH_ENTER)) {
 	SendPointerMessage(dndPtr, ST_DRAG_ENTER, windowPtr, x, y);
@@ -3160,10 +3107,7 @@ RelayEnterEvent(dndPtr, windowPtr, x, y)
 }
 
 static void
-RelayLeaveEvent(dndPtr, windowPtr, x, y)
-    Dnd *dndPtr;
-    Winfo *windowPtr;
-    int x, y;
+RelayLeaveEvent(Dnd *dndPtr, Winfo *windowPtr, int x, int y)
 { 
     if ((windowPtr != NULL) && (windowPtr->eventFlags & WATCH_LEAVE)) {
 	SendPointerMessage(dndPtr, ST_DRAG_LEAVE, windowPtr, x, y);
@@ -3171,10 +3115,7 @@ RelayLeaveEvent(dndPtr, windowPtr, x, y)
 }
 
 static void
-RelayMotionEvent(dndPtr, windowPtr, x, y)
-    Dnd *dndPtr;
-    Winfo *windowPtr;
-    int x, y;
+RelayMotionEvent(Dnd *dndPtr, Winfo *windowPtr, int x, int y)
 {
     if ((windowPtr != NULL) && (windowPtr->eventFlags & WATCH_MOTION)) {
 	SendPointerMessage(dndPtr, ST_DRAG_MOTION, windowPtr, x, y);
@@ -3182,42 +3123,38 @@ RelayMotionEvent(dndPtr, windowPtr, x, y)
 }
 
 static void
-RelayDropEvent(dndPtr, windowPtr, x, y)
-    Dnd *dndPtr;
-    Winfo *windowPtr;
-    int x, y;
+RelayDropEvent(Dnd *dndPtr, Winfo *windowPtr, int x, int y)
 {
     SendPointerMessage(dndPtr, ST_DROP, windowPtr, x, y);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  FreeWinfo --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-FreeWinfo(windowPtr)
-    Winfo *windowPtr;		/* window rep to be freed */
+FreeWinfo(Winfo *windowPtr)	/* Window rep to be freed */
 {
     Winfo *childPtr;
-    Blt_ChainLink *linkPtr;
+    Blt_ChainLink link;
 
-    for (linkPtr = Blt_ChainFirstLink(windowPtr->chainPtr); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	childPtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(windowPtr->chain); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	childPtr = Blt_Chain_GetValue(link);
 	FreeWinfo(childPtr);	/* Recursively free children. */
     }
     if (windowPtr->matches != NULL) {
 	Blt_Free(windowPtr->matches);
     }
-    Blt_ChainDestroy(windowPtr->chainPtr);
+    Blt_Chain_Destroy(windowPtr->chain);
     Blt_Free(windowPtr);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetWinfo --
  *
@@ -3230,12 +3167,10 @@ FreeWinfo(windowPtr)
  *	uninitialized Winfo structures are allocated.  Further queries 
  *	will cause these structures to be initialized in turn.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-GetWinfo(display, windowPtr)
-    Display *display;
-    Winfo *windowPtr;		/* window rep to be initialized */
+GetWinfo(Display *display, Winfo *windowPtr) /* window rep to be initialized */
 {
     int visible;
 
@@ -3243,10 +3178,10 @@ GetWinfo(display, windowPtr)
 	return;
     }
     /* Query for the window coordinates.  */
-    visible = GetWindowRegion(display, windowPtr);
+    visible = GetWindowArea(display, windowPtr);
     if (visible) {
-	Blt_ChainLink *linkPtr;
-	Blt_Chain *chainPtr;
+	Blt_ChainLink link;
+	Blt_Chain chain;
 	Winfo *childPtr;
 
 	/* Add offset from parent's origin to coordinates */
@@ -3260,29 +3195,28 @@ GetWinfo(display, windowPtr)
 	 * Collect a list of child windows, sorted in z-order.  The
 	 * topmost window will be first in the list.
 	 */
-	chainPtr = GetWindowZOrder(display, windowPtr->window);
+	chain = GetWindowZOrder(display, windowPtr->window);
 
 	/* Add and initialize extra slots if needed. */
-	for (linkPtr = Blt_ChainFirstLink(chainPtr); linkPtr != NULL;
-	    linkPtr = Blt_ChainNextLink(linkPtr)) {
-	    childPtr = Blt_Calloc(1, sizeof(Winfo));
-	    assert(childPtr);
+	for (link = Blt_Chain_FirstLink(chain); link != NULL;
+	    link = Blt_Chain_NextLink(link)) {
+	    childPtr = Blt_AssertCalloc(1, sizeof(Winfo));
 	    childPtr->initialized = FALSE;
-	    childPtr->window = (Window)Blt_ChainGetValue(linkPtr);
+	    childPtr->window = (Window)Blt_Chain_GetValue(link);
 	    childPtr->parentPtr = windowPtr;
-	    Blt_ChainSetValue(linkPtr, childPtr);
+	    Blt_Chain_SetValue(link, childPtr);
 	}
-	windowPtr->chainPtr = chainPtr;
+	windowPtr->chain = chain;
     } else {
 	/* If it's not viewable don't bother doing anything else. */
 	windowPtr->x1 = windowPtr->y1 = windowPtr->x2 = windowPtr->y2 = -1;
-	windowPtr->chainPtr = NULL;
+	windowPtr->chain = NULL;
     }
     windowPtr->initialized = TRUE;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  InitRoot --
  *
@@ -3298,16 +3232,14 @@ GetWinfo(display, windowPtr)
  *	Returns the record for the root window, which contains records
  *	for all other windows as children.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Winfo *
-InitRoot(dndPtr)
-    Dnd *dndPtr;
+InitRoot(Dnd *dndPtr)
 {
     Winfo *rootPtr;
 
-    rootPtr = Blt_Calloc(1, sizeof(Winfo));
-    assert(rootPtr);
+    rootPtr = Blt_AssertCalloc(1, sizeof(Winfo));
     rootPtr->window = DefaultRootWindow(dndPtr->display);
     dndPtr->windowPtr = NULL;
     GetWinfo(dndPtr->display, rootPtr);
@@ -3316,28 +3248,24 @@ InitRoot(dndPtr)
 
 
 static int
-ParseProperty(interp, dndPtr, windowPtr, data)
-    Tcl_Interp *interp;
-    Dnd *dndPtr;
-    Winfo *windowPtr;
-    char *data;
+ParseProperty(Tcl_Interp *interp, Dnd *dndPtr, Winfo *windowPtr, char *data)
 {
-    int nElems;
-    char **elemArr;
+    int argc;
+    const char **argv;
     int eventFlags;
     Tcl_DString dString;
     int count;
-    register int i;
+    int i;
     
-    if (Tcl_SplitList(interp, data, &nElems, &elemArr) != TCL_OK) {
+    if (Tcl_SplitList(interp, data, &argc, &argv) != TCL_OK) {
 	return TCL_ERROR;	/* Malformed property list. */
     }
-    if (nElems < 1) {
+    if (argc < 1) {
 	Tcl_AppendResult(interp, "Malformed property \"", data, "\"", 
 			 (char *)NULL);
 	goto error;
     }
-    if (Tcl_GetInt(interp, elemArr[PROP_WATCH_FLAGS], &eventFlags) != TCL_OK) {
+    if (Tcl_GetInt(interp, argv[PROP_WATCH_FLAGS], &eventFlags) != TCL_OK) {
 	goto error;
     }
 
@@ -3356,24 +3284,24 @@ ParseProperty(interp, dndPtr, windowPtr, data)
 	Blt_HashSearch cursor;
 	char *fmt;
 
-	for (i = 1; i < nElems; i++) {
-	    for(hPtr = Blt_FirstHashEntry(&(dndPtr->getDataTable), &cursor);
+	for (i = 1; i < argc; i++) {
+	    for(hPtr = Blt_FirstHashEntry(&dndPtr->getDataTable, &cursor);
 		hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-		fmt = Blt_GetHashKey(&(dndPtr->getDataTable), hPtr);
-		if ((*fmt == elemArr[i][0]) && (strcmp(fmt, elemArr[i]) == 0)) {
-		    Tcl_DStringAppendElement(&dString, elemArr[i]);
+		fmt = Blt_GetHashKey(&dndPtr->getDataTable, hPtr);
+		if ((*fmt == argv[i][0]) && (strcmp(fmt, argv[i]) == 0)) {
+		    Tcl_DStringAppendElement(&dString, argv[i]);
 		    count++;
 		    break;
 		}
 	    }
 	}
     } else {
-	register char **s;
+	const char **s;
 
-	for (i = 1; i < nElems; i++) {
+	for (i = 1; i < argc; i++) {
 	    for (s = dndPtr->reqFormats; *s != NULL; s++) {
-		if ((**s == elemArr[i][0]) && (strcmp(*s, elemArr[i]) == 0)) {
-		    Tcl_DStringAppendElement(&dString, elemArr[i]);
+		if ((**s == argv[i][0]) && (strcmp(*s, argv[i]) == 0)) {
+		    Tcl_DStringAppendElement(&dString, argv[i]);
 		    count++;
 		}
 	    }
@@ -3387,21 +3315,21 @@ ParseProperty(interp, dndPtr, windowPtr, data)
     } 
     if (eventFlags != 0) {
 	SetProperty(dndPtr->tkwin, dndPtr->dataPtr->formatsAtom, 
-		Tcl_DStringValue(&dString));
+		    Tcl_DStringValue(&dString));
 	windowPtr->matches = NULL;
     } else {
-	windowPtr->matches = Blt_Strdup(Tcl_DStringValue(&dString));
+	windowPtr->matches = Blt_AssertStrdup(Tcl_DStringValue(&dString));
     }
     Tcl_DStringFree(&dString);	
     windowPtr->eventFlags = eventFlags;
     return TCL_OK;
  error:
-    Blt_Free(elemArr);
+    Blt_Free(argv);
     return TCL_ERROR;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  OverTarget --
  *
@@ -3414,11 +3342,10 @@ ParseProperty(interp, dndPtr, windowPtr, data)
  *	Returns a pointer to a structure describing the target, or NULL
  *	if no compatible target is found.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Winfo *
-OverTarget(dndPtr)
-    Dnd *dndPtr;		/* drag&drop source window */
+OverTarget(Dnd *dndPtr)		/* drag&drop source window */
 {
     Tcl_Interp *interp = dndPtr->interp;
     int x, y;
@@ -3451,7 +3378,7 @@ OverTarget(dndPtr)
 				 *  drop onto itself.  */
     }
     if (!windowPtr->lookedForProperty) {
-	char *data;
+	unsigned char *data;
 	int result;
 
 	windowPtr->lookedForProperty = TRUE;
@@ -3464,7 +3391,7 @@ OverTarget(dndPtr)
 #endif
 	    return NULL;		/* No such property on window. */
 	}
-	result = ParseProperty(interp, dndPtr, windowPtr, data);
+	result = ParseProperty(interp, dndPtr, windowPtr, (char *)data);
 	XFree(data);
 	if (result == TCL_BREAK) {
 #ifdef notdef
@@ -3486,7 +3413,7 @@ OverTarget(dndPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  AddTargetProperty --
  *
@@ -3498,11 +3425,10 @@ OverTarget(dndPtr)
  *	is first registered or first exposed (so that the X-window
  *	really exists).
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-AddTargetProperty(dndPtr)
-    Dnd *dndPtr;		/* drag&drop target window data */
+AddTargetProperty(Dnd *dndPtr)	/* drag&drop target window data */
 {
     Tcl_DString dString;
     Blt_HashEntry *hPtr;
@@ -3529,22 +3455,21 @@ AddTargetProperty(dndPtr)
     if (dndPtr->motionCmd != NULL) {
 	eventFlags |= WATCH_MOTION;
     }
-    sprintf(string, "0x%x", eventFlags);
+    sprintf_s(string, 200, "0x%x", eventFlags);
     Tcl_DStringAppendElement(&dString, string);
-    for (hPtr = Blt_FirstHashEntry(&(dndPtr->setDataTable), &cursor);
+    for (hPtr = Blt_FirstHashEntry(&dndPtr->setDataTable, &cursor);
 	hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	fmt = Blt_GetHashKey(&(dndPtr->setDataTable), hPtr);
+	fmt = Blt_GetHashKey(&dndPtr->setDataTable, hPtr);
 	Tcl_DStringAppendElement(&dString, fmt);
     }
     SetProperty(dndPtr->tkwin, dndPtr->dataPtr->targetAtom, 
-	Tcl_DStringValue(&dString));
+		Tcl_DStringValue(&dString));
     dndPtr->targetPropertyExists = TRUE;
     Tcl_DStringFree(&dString);
 }
 
 static void
-CancelDrag(dndPtr)
-    Dnd *dndPtr;
+CancelDrag(Dnd *dndPtr)
 {
     if (dndPtr->flags & DND_INITIATED) {
 	dndPtr->tokenPtr->nSteps = 10;
@@ -3563,9 +3488,7 @@ CancelDrag(dndPtr)
 }
 
 static int
-DragInit(dndPtr, x, y)
-    Dnd *dndPtr;
-    int x, y;
+DragInit(Dnd *dndPtr, int x, int y)
 {
     Token *tokenPtr = dndPtr->tokenPtr;
     int result;
@@ -3587,7 +3510,7 @@ DragInit(dndPtr, x, y)
 	Tcl_DString dString, savedResult;
 	Tcl_Interp *interp = dndPtr->interp;
 	int status;
-	char **p;
+	const char **p;
 	int rx, ry;
 
 	Tcl_DStringInit(&dString);
@@ -3675,7 +3598,7 @@ DragInit(dndPtr, x, y)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  CancelOp --
  *
@@ -3687,25 +3610,25 @@ DragInit(dndPtr, x, y)
  *	Example: dnd cancel .widget
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side Effects:
  *	Hides the token and sets a flag indicating that further "drag"
  *	and "drop" operations should be ignored.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-CancelOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;			/* Not used. */
-    char **argv;
+CancelOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Dnd *dndPtr;
 
-    if (GetDnd(clientData, interp, argv[2], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[2], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (!dndPtr->isSource) {
@@ -3720,65 +3643,65 @@ CancelOp(clientData, interp, argc, argv)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  CgetOp --
  *
- *	Called to process an (argc,argv) list to configure (or
+ *	Called to process an (objc,objv) list to configure (or
  *	reconfigure) a drag&drop widget.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /* ARGSUSED*/
 static int
-CgetOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;			/* Not used. */
-    char **argv;
+CgetOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Dnd *dndPtr;
 
-    if (GetDnd(clientData, interp, argv[2], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[2], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    return Tk_ConfigureValue(interp, dndPtr->tkwin, configSpecs, (char *)dndPtr,
-	argv[3], 0);
+    return Blt_ConfigureValueFromObj(interp, dndPtr->tkwin, configSpecs, 
+	(char *)dndPtr, objv[3], 0);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  ConfigureOp --
  *
- *	Called to process an (argc,argv) list to configure (or
+ *	Called to process an (objc,objv) list to configure (or
  *	reconfigure) a drag&drop widget.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigureOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;		/* current interpreter */
-    int argc;			/* number of arguments */
-    char **argv;		/* argument strings */
+ConfigureOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,		/* current interpreter */
+    int objc,			/* number of arguments */
+    Tcl_Obj *const *objv)		/* argument strings */
 {
     Dnd *dndPtr;
     int flags;
 
-    if (GetDnd(clientData, interp, argv[2], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[2], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    flags = TK_CONFIG_ARGV_ONLY;
-    if (argc == 3) {
-	return Tk_ConfigureInfo(interp, dndPtr->tkwin, configSpecs, 
-		(char *)dndPtr, (char *)NULL, flags);
-    } else if (argc == 4) {
-	return Tk_ConfigureInfo(interp, dndPtr->tkwin, configSpecs,
-	    (char *)dndPtr, argv[3], flags);
+    flags = BLT_CONFIG_OBJV_ONLY;
+    if (objc == 3) {
+	return Blt_ConfigureInfoFromObj(interp, dndPtr->tkwin, configSpecs, 
+		(char *)dndPtr, (Tcl_Obj *)NULL, flags);
+    } else if (objc == 4) {
+	return Blt_ConfigureInfoFromObj(interp, dndPtr->tkwin, configSpecs,
+	    (char *)dndPtr, objv[3], flags);
     } 
-    if (Tk_ConfigureWidget(interp, dndPtr->tkwin, configSpecs, argc - 3,
-		   argv + 3, (char *)dndPtr, flags) != TCL_OK) {
+    if (Blt_ConfigureWidgetFromObj(interp, dndPtr->tkwin, configSpecs, objc - 3,
+		   objv + 3, (char *)dndPtr, flags) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (ConfigureDnd(interp, dndPtr) != TCL_OK) {
@@ -3788,7 +3711,7 @@ ConfigureOp(clientData, interp, argc, argv)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DeleteOp --
  *
@@ -3800,7 +3723,7 @@ ConfigureOp(clientData, interp, argc, argv)
  *	Example: dnd delete .widget
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side Effects:
  *	Deletes the drag&drop manager.  Also the source and target window 
@@ -3809,17 +3732,18 @@ ConfigureOp(clientData, interp, argc, argv)
  * ------------------------------------------------------------------------ 
  */
 static int
-DeleteOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+DeleteOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
-    Dnd *dndPtr;
-    register int i;
+    int i;
 
-    for(i = 3; i < argc; i++) {
-	if (GetDnd(clientData, interp, argv[i], &dndPtr) != TCL_OK) {
+    for(i = 3; i < objc; i++) {
+	Dnd *dndPtr;
+
+	if (GetDndFromObj(clientData, interp, objv[i], &dndPtr) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	dndPtr->flags |= DND_DELETED;
@@ -3829,7 +3753,7 @@ DeleteOp(clientData, interp, argc, argv)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  SelectOp --
  *
@@ -3841,28 +3765,28 @@ DeleteOp(clientData, interp, argc, argv)
  *	Example: dnd pickup .widget x y 
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side Effects:
  *	The token is initialized and displayed.  This may require invoking
  *	a user-defined package command.  The window information cache is
  *	also initialized.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-SelectOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;			/* Not used. */
-    char **argv;
+SelectOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Dnd *dndPtr;
     int x, y, timestamp;
     Token *tokenPtr;
 
-    if (GetDnd(clientData, interp, argv[2], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[2], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (!dndPtr->isSource) {
@@ -3873,14 +3797,14 @@ SelectOp(clientData, interp, argc, argv)
     tokenPtr = dndPtr->tokenPtr;
     if (tokenPtr == NULL) {
 	Tcl_AppendResult(interp, "no drag&drop token created for \"", 
-		 argv[2], "\"", (char *)NULL);
+		 objv[2], "\"", (char *)NULL);
 	return TCL_ERROR;
     }
-    if ((Tcl_GetInt(interp, argv[3], &x) != TCL_OK) ||
-	(Tcl_GetInt(interp, argv[4], &y) != TCL_OK)) {
+    if ((Tcl_GetIntFromObj(interp, objv[3], &x) != TCL_OK) ||
+	(Tcl_GetIntFromObj(interp, objv[4], &y) != TCL_OK)) {
 	return TCL_ERROR;
     }
-    if (Tcl_GetInt(interp, argv[5], &timestamp) != TCL_OK) {
+    if (Tcl_GetIntFromObj(interp, objv[5], &timestamp) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (dndPtr->flags & (DND_IN_PACKAGE | DND_ACTIVE | DND_VOIDED)) {
@@ -3909,7 +3833,7 @@ SelectOp(clientData, interp, argc, argv)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DragOp --
  *
@@ -3921,27 +3845,27 @@ SelectOp(clientData, interp, argc, argv)
  *	Example: dnd drag .widget x y 
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side Effects:
  *	Pointer events are relayed to the target (if the mouse is over
  *	one).
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-DragOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;			/* Not used. */
-    char **argv;
+DragOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Winfo *newPtr, *oldPtr;
     Dnd *dndPtr;
     int x, y;
 
-    if (GetDnd(clientData, interp, argv[2], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[2], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (!dndPtr->isSource) {
@@ -3951,11 +3875,11 @@ DragOp(clientData, interp, argc, argv)
     }
     if (dndPtr->tokenPtr == NULL) {
 	Tcl_AppendResult(interp, "no drag&drop token created for \"", 
-		 argv[2], "\"", (char *)NULL);
+		 objv[2], "\"", (char *)NULL);
 	return TCL_ERROR;
     }
-    if ((Tcl_GetInt(interp, argv[3], &x) != TCL_OK) ||
-	(Tcl_GetInt(interp, argv[4], &y) != TCL_OK)) {
+    if ((Tcl_GetIntFromObj(interp, objv[3], &x) != TCL_OK) ||
+	(Tcl_GetIntFromObj(interp, objv[4], &y) != TCL_OK)) {
 	return TCL_ERROR;
     }
 
@@ -4018,7 +3942,7 @@ DragOp(clientData, interp, argc, argv)
 
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DropOp --
  *
@@ -4031,26 +3955,26 @@ DragOp(clientData, interp, argc, argv)
  *	Example: dnd drop .widget x y 
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side Effects:
  *	The token is hidden and a drop message is sent to the target.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-DropOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;			/* Not used. */
-    char **argv;
+DropOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Winfo *windowPtr;
     Dnd *dndPtr;
     int x, y;
 
-    if (GetDnd(clientData, interp, argv[2], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[2], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (!dndPtr->isSource) {
@@ -4058,8 +3982,8 @@ DropOp(clientData, interp, argc, argv)
 	 "\" is not a registered drag&drop source.", (char *)NULL);
 	return TCL_ERROR;
     }
-    if ((Tcl_GetInt(interp, argv[3], &x) != TCL_OK) ||
-	(Tcl_GetInt(interp, argv[4], &y) != TCL_OK)) {
+    if ((Tcl_GetIntFromObj(interp, objv[3], &x) != TCL_OK) ||
+	(Tcl_GetIntFromObj(interp, objv[4], &y) != TCL_OK)) {
 	return TCL_ERROR;
     }
     dndPtr->x = x;	/* Save drag&drop location */
@@ -4091,16 +4015,16 @@ DropOp(clientData, interp, argc, argv)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  GetdataOp --
  *
  *	Registers one or more data formats with a drag&drop source.  
- *	Each format has a Tcl command associated with it.  This command
+ *	Each format has a TCL command associated with it.  This command
  *	is automatically invoked whenever data is pulled from the source
  *	to a target requesting the data in that particular format.  The 
- *	purpose of the Tcl command is to get the data from in the 
- *	application. When the Tcl command is invoked, special percent 
+ *	purpose of the TCL command is to get the data from in the 
+ *	application. When the TCL command is invoked, special percent 
  *	substitutions are made:
  *
  *		%#		Drag&drop transaction timestamp.
@@ -4112,71 +4036,82 @@ DropOp(clientData, interp, argc, argv)
  *	Example: dnd getdata .widget "color" { %W cget -bg }
  *
  * Results:
- *	A standard Tcl result.  
+ *	A standard TCL result.  
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-GetdataOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+GetdataOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     Dnd *dndPtr;
-    Blt_HashEntry *hPtr;
-    Blt_HashSearch cursor;
-    int isNew, nElem;
-    char **cmd;
-    register int i;
+    int i;
 
-    if (GetDnd(clientData, interp, argv[2], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[2], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    if (argc == 3) {
+    if (objc == 3) {
+	Blt_HashEntry *hPtr;
+	Blt_HashSearch cursor;
+
 	/* Return list of source data formats */
-	for (hPtr = Blt_FirstHashEntry(&(dndPtr->getDataTable), &cursor);
+	for (hPtr = Blt_FirstHashEntry(&dndPtr->getDataTable, &cursor);
 	    hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
 	    Tcl_AppendElement(interp,
-		Blt_GetHashKey(&(dndPtr->getDataTable), hPtr));
+		Blt_GetHashKey(&dndPtr->getDataTable, hPtr));
 	}
 	return TCL_OK;
     }
 
-    if (argc == 4) {
-	hPtr = Blt_FindHashEntry(&(dndPtr->getDataTable), argv[3]);
+    if (objc == 4) {
+	Blt_HashEntry *hPtr;
+	const char *string;
+	const char **argv;
+
+	string = Tcl_GetString(objv[3]);
+	hPtr = Blt_FindHashEntry(&dndPtr->getDataTable, string);
 	if (hPtr == NULL) {
 	    Tcl_AppendResult(interp, "can't find handler for format \"", 
-	     argv[3], "\" for source \"", Tk_PathName(dndPtr->tkwin), "\"",
+		string, "\" for source \"", Tk_PathName(dndPtr->tkwin), "\"",
 	     (char *)NULL);
 	    return TCL_ERROR;
 	}
-	cmd = (char **)Blt_GetHashValue(hPtr);
-	if (cmd == NULL) {
-	    Tcl_SetResult(interp, "", TCL_STATIC);
+	argv = Blt_GetHashValue(hPtr);
+	if (argv == NULL) {
+	    Tcl_SetStringObj(Tcl_GetObjResult(interp), "", -1);
 	} else {
-	    Tcl_SetResult(interp, PrintList(cmd), TCL_DYNAMIC);
+	    Tcl_SetObjResult(interp, PrintList(interp, argv));
 	}
 	return TCL_OK;
     }
 
-    for (i = 3; i < argc; i += 2) {
-	hPtr = Blt_CreateHashEntry(&(dndPtr->getDataTable), argv[i], &isNew);
+    for (i = 3; i < objc; i += 2) {
+	Blt_HashEntry *hPtr;
+	const char **argv;
+	int argc;
+	int isNew;
+
+	hPtr = Blt_CreateHashEntry(&dndPtr->getDataTable, 
+		Tcl_GetString(objv[i]), &isNew);
 	if (!isNew) {
-	    cmd = (char **)Blt_GetHashValue(hPtr);
-	    Blt_Free(cmd);
+	    argv = Blt_GetHashValue(hPtr);
+	    Blt_Free(argv);
 	}
-	if (Tcl_SplitList(interp, argv[i + 1], &nElem, &cmd) != TCL_OK) {
-	    Blt_DeleteHashEntry(&(dndPtr->getDataTable), hPtr);
+	if (Tcl_SplitList(interp, Tcl_GetString(objv[i + 1]), &argc, &argv) 
+	    != TCL_OK) {
+	    Blt_DeleteHashEntry(&dndPtr->getDataTable, hPtr);
 	    return TCL_ERROR;
 	}
-	Blt_SetHashValue(hPtr, cmd);
+	Blt_SetHashValue(hPtr, argv);
     }
     return TCL_OK;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  NamesOp --
  *
@@ -4191,51 +4126,105 @@ GetdataOp(clientData, interp, argc, argv)
  *		  dnd names -target
  *		  dnd names .*label
  * Results:
- *	A standard Tcl result.  A Tcl list of drag&drop manager
+ *	A standard TCL result.  A TCL list of drag&drop manager
  *	names is returned.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-NamesOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+NamesOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     DndInterpData *dataPtr = clientData;
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
     Dnd *dndPtr;
     int findSources, findTargets;
+    char *string;
+    Tcl_Obj *listObjPtr;
 
     findSources = findTargets = TRUE;
-    if (argc > 2) {
-	if ((argv[2][0] == '-') && (strcmp(argv[2], "-source") == 0)) {
+    if (objc > 2) {
+	string = Tcl_GetString(objv[2]);
+	if ((string[0] == '-') && (strcmp(string, "-source") == 0)) {
 	    findTargets = FALSE;
-	    argc--, argv++;
-	} else if ((argv[2][0] == '-') && (strcmp(argv[2], "-target") == 0)) {
+	    objc--, objv++;
+	} else if ((string[0] == '-') && (strcmp(string, "-target") == 0)) {
 	    findSources = FALSE;
-	    argc--, argv++;
+	    objc--, objv++;
 	}
     }
-    for (hPtr = Blt_FirstHashEntry(&(dataPtr->dndTable), &cursor); 
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    for (hPtr = Blt_FirstHashEntry(&dataPtr->dndTable, &cursor); 
 	 hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	dndPtr = (Dnd *)Blt_GetHashValue(hPtr);
-	if ((argc > 3) && 
-	    (!Tcl_StringMatch(Tk_PathName(dndPtr->tkwin), argv[3]))) {
-	    continue;
+	dndPtr = Blt_GetHashValue(hPtr);
+	if (objc > 3) {
+	    string = Tcl_GetString(objv[3]);
+	    if (!Tcl_StringMatch(Tk_PathName(dndPtr->tkwin), string)) {
+		continue;
+	    }
 	}
 	if (((findSources) && (dndPtr->isSource)) ||
 	    ((findTargets) && (dndPtr->isTarget))) {
-	    Tcl_AppendElement(interp, Tk_PathName(dndPtr->tkwin));
+	    Tcl_ListObjAppendElement(interp, listObjPtr,
+			Tcl_NewStringObj(Tk_PathName(dndPtr->tkwin), -1));
 	}
     }
+    Tcl_SetObjResult(interp, listObjPtr);
     return TCL_OK;
 }
 
+
+#ifdef notdef
+RunCommand(Dnd *dndPtr, char **formatCmd)
+{
+    Tcl_DString dString, savedResult;
+    Tcl_Obj **objv;
+    char **p;
+    
+    objc = 0;
+    for (objc = 0, p = formatCmd; *p != NULL; p++) {
+	objc++;
+    }
+    objc += 12;
+    objv = Blt_AssertMalloc(sizeof(Tcl_Obj *) * (objc + 1));
+    for (i = 0; p = formatCmd; *p != NULL; p++, i++) {
+	objv[i] = Tcl_NewStringObj(*p, -1);
+    }
+    objv[i++] = Tcl_NewStringObj(Tk_PathName(dndPtr->tkwin), -1);
+    objv[i++] = Tcl_NewStringObj("x", 1);
+    objv[i++] = Tcl_NewStringObj("x", 1);
+    objv[i++] = Tcl_NewIntObj(dndPtr->dropX);
+    objv[i++] = Tcl_NewStringObj("y", 1);
+    objv[i++] = Tcl_NewIntObj(dndPtr->dropY);
+    objv[i++] = Tcl_NewStringObj("timestamp", 9);
+    objv[i++] = Tcl_NewStringObj(Blt_Utoa(dndPtr->pendingPtr->timestamp), -1);
+    objv[i++] = Tcl_NewStringObj("format", 6);
+    objv[i++] = Tcl_NewStringObj(fmt, -1);
+    objv[i++] = Tcl_NewStringObj("value", 5);
+    objv[i++] = Tcl_NewStringObj(
+	Tcl_DStringValue(&dndPtr->pendingPtr->dString),
+	Tcl_DStringLength(&dndPtr->pendingPtr->dString));
+    for (i = 0; i < objc; i++) {
+	Tcl_IncrRefCount(objv[i]);
+    }
+    Tcl_DStringInit(&savedResult);
+    Tcl_DStringGetResult(interp, &savedResult);
+    if (Tcl_EvalObjv(interp, objc, objv, 0) != TCL_OK) {
+	Tcl_BackgroundError(interp);
+    }
+    Tcl_DStringResult(interp, &savedResult);
+    for (i = 0; i < objc; i++) {
+	Tcl_DecrRefCount(objv[i]);
+    }
+}
+#endif
+
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  PullOp --
  *
@@ -4245,27 +4234,28 @@ NamesOp(clientData, interp, argc, argv)
  *	dnd pull .widget format data
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side Effects:
  *	Invokes the target's data converter to store the data. 
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-PullOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;			/* Not used. */
-    char **argv;
+PullOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Dnd *dndPtr;		/* drag&drop source record */
     int result;
     char **formatCmd;
+    char *fmt;
     Blt_HashEntry *hPtr;
 
-    if (GetDnd(clientData, interp, argv[2], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[2], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (!dndPtr->isTarget) {
@@ -4273,21 +4263,22 @@ PullOp(clientData, interp, argc, argv)
 	 "\" is not a registered drag&drop target.", (char *)NULL);
 	return TCL_ERROR;
     }
-    hPtr = Blt_FindHashEntry(&(dndPtr->setDataTable), argv[3]);
+    fmt = Tcl_GetString(objv[3]);
+    hPtr = Blt_FindHashEntry(&dndPtr->setDataTable, fmt);
     if (hPtr == NULL) {
-	Tcl_AppendResult(interp, "can't find format \"", argv[3], 
+	Tcl_AppendResult(interp, "can't find format \"", fmt, 
 	 "\" in target \"", Tk_PathName(dndPtr->tkwin), "\"", (char *)NULL);
 	return TCL_ERROR;
     }
-    formatCmd = (char **)Blt_GetHashValue(hPtr);
+    formatCmd = Blt_GetHashValue(hPtr);
     if (dndPtr->pendingPtr == NULL) {
 	Tcl_AppendResult(interp, "no drop in progress", (char *)NULL);
 	return TCL_ERROR;
     }
 
-    CompleteDataTransaction(dndPtr, argv[3], dndPtr->pendingPtr);
+    CompleteDataTransaction(dndPtr, fmt, dndPtr->pendingPtr);
     result = TCL_OK;
-    if (Tcl_DStringLength(&(dndPtr->pendingPtr->dString)) > 0) {
+    if (Tcl_DStringLength(&dndPtr->pendingPtr->dString) > 0) {
 	Tcl_DString dString, savedResult;
 	char **p;
 
@@ -4304,10 +4295,10 @@ PullOp(clientData, interp, argc, argv)
 	Tcl_DStringAppendElement(&dString, 
 		Blt_Utoa(dndPtr->pendingPtr->timestamp));
 	Tcl_DStringAppendElement(&dString, "format");
-	Tcl_DStringAppendElement(&dString, argv[3]);
+	Tcl_DStringAppendElement(&dString, Tcl_GetString(objv[3]));
 	Tcl_DStringAppendElement(&dString, "value");
 	Tcl_DStringAppendElement(&dString, 
-		Tcl_DStringValue(&(dndPtr->pendingPtr->dString)));
+		Tcl_DStringValue(&dndPtr->pendingPtr->dString));
 	Tcl_DStringInit(&savedResult);
 	Tcl_DStringGetResult(interp, &savedResult);
 	if (Tcl_GlobalEval(interp, Tcl_DStringValue(&dString)) != TCL_OK) {
@@ -4320,16 +4311,16 @@ PullOp(clientData, interp, argc, argv)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  SetdataOp --
  *
  *	Registers one or more data formats with a drag&drop target.  
- *	Each format has a Tcl command associated with it.  This command
+ *	Each format has a TCL command associated with it.  This command
  *	is automatically invoked whenever data arrives from a source
  *	to be converted to that particular format.  The purpose of the 
  *	command is to set the data somewhere in the application (either 
- *	using a Tcl command or variable).   When the Tcl command is invoked, 
+ *	using a TCL command or variable).   When the TCL command is invoked, 
  *	special percent substitutions are made:
  *
  *		%#		Drag&drop transaction timestamp.
@@ -4343,82 +4334,87 @@ PullOp(clientData, interp, argc, argv)
  *	Example: dnd setdata .widget color { . configure -bg %v }
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-SetdataOp(clientData, interp, argc, argv)
-    ClientData clientData;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+SetdataOp(
+    ClientData clientData,
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     Dnd *dndPtr;
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
-    int isNew, nElem;
-    char **cmd;
     int i;
 
-    if (GetDnd(clientData, interp, argv[2], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[2], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    if (argc == 3) {
+    if (objc == 3) {
 	/* Show target handler data formats */
-	for (hPtr = Blt_FirstHashEntry(&(dndPtr->setDataTable), &cursor);
+	for (hPtr = Blt_FirstHashEntry(&dndPtr->setDataTable, &cursor);
 	    hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
 	    Tcl_AppendElement(interp,
-		Blt_GetHashKey(&(dndPtr->setDataTable), hPtr));
+		Blt_GetHashKey(&dndPtr->setDataTable, hPtr));
 	}
 	return TCL_OK;
     }
-    if (argc == 4) {
-	hPtr = Blt_FindHashEntry(&(dndPtr->setDataTable), argv[3]);
+    if (objc == 4) {
+	const char **argv;
+
+	hPtr = Blt_FindHashEntry(&dndPtr->setDataTable, objv[3]);
 	if (hPtr == NULL) {
 	    Tcl_AppendResult(interp, "can't find handler for format \"", 
-	     argv[3], "\" for target \"", Tk_PathName(dndPtr->tkwin), "\"",
+	     objv[3], "\" for target \"", Tk_PathName(dndPtr->tkwin), "\"",
 	     (char *)NULL);
 	    return TCL_ERROR;
 	}
-	cmd = (char **)Blt_GetHashValue(hPtr);
-	if (cmd == NULL) {
-	    Tcl_SetResult(interp, "", TCL_STATIC);
+	argv = Blt_GetHashValue(hPtr);
+	if (argv == NULL) {
+	    Tcl_SetStringObj(Tcl_GetObjResult(interp), "", -1);
 	} else {
-	    Tcl_SetResult(interp, PrintList(cmd), TCL_DYNAMIC);
+	    Tcl_SetObjResult(interp, PrintList(interp, argv));
 	}
 	return TCL_OK;
     }
-    for (i = 3; i < argc; i += 2) {
-	hPtr = Blt_CreateHashEntry(&(dndPtr->setDataTable), argv[i], &isNew);
+    for (i = 3; i < objc; i += 2) {
+	const char **argv;
+	int isNew, argc;
+
+	hPtr = Blt_CreateHashEntry(&dndPtr->setDataTable, 
+		Tcl_GetString(objv[i]), &isNew);
 	if (!isNew) {
-	    cmd = (char **)Blt_GetHashValue(hPtr);
-	    Blt_Free(cmd);
+	    argv = Blt_GetHashValue(hPtr);
+	    Blt_Free(argv);
 	}
-	if (Tcl_SplitList(interp, argv[i + 1], &nElem, &cmd) != TCL_OK) {
-	    Blt_DeleteHashEntry(&(dndPtr->setDataTable), hPtr);
+	if (Tcl_SplitList(interp, Tcl_GetString(objv[i + 1]), &argc, &argv) 
+	    != TCL_OK) {
+	    Blt_DeleteHashEntry(&dndPtr->setDataTable, hPtr);
 	    return TCL_ERROR;
 	}
-	Blt_SetHashValue(hPtr, cmd);
+	Blt_SetHashValue(hPtr, argv);
     }
     AddTargetProperty(dndPtr);
     return TCL_OK;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  RegisterOp --
  *
  *  dnd register .window 
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-RegisterOp(clientData, interp, argc, argv)
-    ClientData clientData;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+RegisterOp(
+    ClientData clientData,
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     DndInterpData *dataPtr = clientData;
     Tk_Window tkwin;
@@ -4426,11 +4422,11 @@ RegisterOp(clientData, interp, argc, argv)
     Dnd *dndPtr;
     int isNew;
 
-    tkwin = Tk_NameToWindow(interp, argv[2], dataPtr->mainWindow);
+    tkwin = Tk_NameToWindow(interp, Tcl_GetString(objv[2]), dataPtr->tkMain);
     if (tkwin == NULL) {
 	return TCL_ERROR;
     }
-    hPtr = Blt_CreateHashEntry(&(dataPtr->dndTable), (char *)tkwin, &isNew);
+    hPtr = Blt_CreateHashEntry(&dataPtr->dndTable, (char *)tkwin, &isNew);
     if (!isNew) {
 	Tcl_AppendResult(interp, "\"", Tk_PathName(tkwin), 
 	     "\" is already registered as a drag&drop manager", (char *)NULL);
@@ -4440,8 +4436,8 @@ RegisterOp(clientData, interp, argc, argv)
     dndPtr->hashPtr = hPtr;
     dndPtr->dataPtr = dataPtr;
     Blt_SetHashValue(hPtr, dndPtr);
-    if (Tk_ConfigureWidget(interp, dndPtr->tkwin, configSpecs, argc - 3,
-	   argv + 3, (char *)dndPtr, 0) != TCL_OK) {
+    if (Blt_ConfigureWidgetFromObj(interp, dndPtr->tkwin, configSpecs, objc - 3,
+	   objv + 3, (char *)dndPtr, 0) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (ConfigureDnd(interp, dndPtr) != TCL_OK) {
@@ -4451,23 +4447,23 @@ RegisterOp(clientData, interp, argc, argv)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  TokenWindowOp --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-TokenWindowOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+TokenWindowOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     Dnd *dndPtr;
     int flags;
 
-    if (GetDnd(clientData, interp, argv[3], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[3], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     flags = 0;
@@ -4476,173 +4472,177 @@ TokenWindowOp(clientData, interp, argc, argv)
 	    return TCL_ERROR;
 	}
     } else {
-	flags = TK_CONFIG_ARGV_ONLY;
+	flags = BLT_CONFIG_OBJV_ONLY;
     }
-    if (ConfigureToken(interp, dndPtr, argc - 4, argv + 4, flags) != TCL_OK) {
+    if (ConfigureToken(interp, dndPtr, objc - 4, objv + 4, flags) != TCL_OK) {
 	return TCL_ERROR;
     }
-    Tcl_SetResult(interp, Tk_PathName(dndPtr->tokenPtr->tkwin), TCL_VOLATILE);
+    Tcl_SetStringObj(Tcl_GetObjResult(interp), 
+		     Tk_PathName(dndPtr->tokenPtr->tkwin), -1);
     return TCL_OK;
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  TokenCgetOp --
  *
- *	Called to process an (argc,argv) list to configure (or
+ *	Called to process an (objc,objv) list to configure (or
  *	reconfigure) a drag&drop widget.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /* ARGSUSED*/
 static int
-TokenCgetOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;			/* Not used. */
-    char **argv;
+TokenCgetOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Dnd *dndPtr;
 
-    if (GetDnd(clientData, interp, argv[3], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[3], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (dndPtr->tokenPtr == NULL) {
-	Tcl_AppendResult(interp, "no token created for \"", argv[3], "\"",
+	Tcl_AppendResult(interp, "no token created for \"", objv[3], "\"",
 		 (char *)NULL);
 	return TCL_ERROR;
     }
-    return Tk_ConfigureValue(interp, dndPtr->tokenPtr->tkwin, tokenConfigSpecs, 
-	     (char *)dndPtr->tokenPtr, argv[4], TK_CONFIG_ARGV_ONLY);
+    return Blt_ConfigureValueFromObj(interp, dndPtr->tokenPtr->tkwin, 
+	tokenConfigSpecs, (char *)dndPtr->tokenPtr, objv[4], 
+	BLT_CONFIG_OBJV_ONLY);
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  TokenConfigureOp --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-TokenConfigureOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+TokenConfigureOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     Token *tokenPtr;
     Dnd *dndPtr;
     int flags;
 
-    if (GetDnd(clientData, interp, argv[3], &dndPtr) != TCL_OK) {
+    if (GetDndFromObj(clientData, interp, objv[3], &dndPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    flags = TK_CONFIG_ARGV_ONLY;
+    flags = BLT_CONFIG_OBJV_ONLY;
     if (dndPtr->tokenPtr == NULL) {
-	Tcl_AppendResult(interp, "no token created for \"", argv[3], "\"",
+	Tcl_AppendResult(interp, "no token created for \"", objv[3], "\"",
 		 (char *)NULL);
 	return TCL_ERROR;
     }
     tokenPtr = dndPtr->tokenPtr;
-    if (argc == 3) {
-	return Tk_ConfigureInfo(interp, tokenPtr->tkwin, tokenConfigSpecs,
-	    (char *)tokenPtr, (char *)NULL, flags);
-    } else if (argc == 4) {
-	return Tk_ConfigureInfo(interp, tokenPtr->tkwin, tokenConfigSpecs,
-	    (char *)tokenPtr, argv[3], flags);
+    if (objc == 3) {
+	return Blt_ConfigureInfoFromObj(interp, tokenPtr->tkwin, 
+		tokenConfigSpecs, (char *)tokenPtr, (Tcl_Obj *)NULL, flags);
+    } else if (objc == 4) {
+	return Blt_ConfigureInfoFromObj(interp, tokenPtr->tkwin, 
+		tokenConfigSpecs, (char *)tokenPtr, objv[3], flags);
     } 
-    return ConfigureToken(interp, dndPtr, argc - 4, argv + 4, flags);
+    return ConfigureToken(interp, dndPtr, objc - 4, objv + 4, flags);
 }
 
 static Blt_OpSpec tokenOps[] =
 {
-    {"cget", 2, (Blt_Op)TokenCgetOp, 5, 5, "widget option",},
-    {"configure", 2, (Blt_Op)TokenConfigureOp, 4, 0, 
+    {"cget", 2, TokenCgetOp, 5, 5, "widget option",},
+    {"configure", 2, TokenConfigureOp, 4, 0, 
 	"widget ?option value?...",},
-    {"window", 5, (Blt_Op)TokenWindowOp, 4, 0, 
+    {"window", 5, TokenWindowOp, 4, 0, 
 	"widget ?option value?...",},
 };
 
 static int nTokenOps = sizeof(tokenOps) / sizeof(Blt_OpSpec);
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  TokenOp --
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-TokenOp(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+TokenOp(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
-    Blt_Op proc;
+    Tcl_ObjCmdProc *proc;
     int result;
 
-    proc = Blt_GetOp(interp, nTokenOps, tokenOps, BLT_OP_ARG2, argc, argv, 0);
+    proc = Blt_GetOpFromObj(interp, nTokenOps, tokenOps, BLT_OP_ARG2, 
+	objc, objv, 0);
     if (proc == NULL) {
 	return TCL_ERROR;
     }
-    result = (*proc) (clientData, interp, argc, argv);
+    result = (*proc) (clientData, interp, objc, objv);
     return result;
 }
 
 static Blt_OpSpec dndOps[] =
 {
-    {"cancel", 2, (Blt_Op)CancelOp, 3, 3, "widget",},
-    {"cget", 2, (Blt_Op)CgetOp, 4, 4, "widget option",},
-    {"configure", 4, (Blt_Op)ConfigureOp, 3, 0, 
+    {"cancel", 2, CancelOp, 3, 3, "widget",},
+    {"cget", 2, CgetOp, 4, 4, "widget option",},
+    {"configure", 4, ConfigureOp, 3, 0, 
 	"widget ?option value?...",},
 #ifdef notdef
-    {"convert", 4, (Blt_Op)ConvertOp, 5, 5, "widget data format",},
+    {"convert", 4, ConvertOp, 5, 5, "widget data format",},
 #endif
-    {"delete", 2, (Blt_Op)DeleteOp, 3, 0,"?-source|-target? widget...",},
-    {"drag", 3, (Blt_Op)DragOp, 3, 0, "widget x y ?token?",},
-    {"drop", 3, (Blt_Op)DropOp, 3, 0, "widget x y ?token?",},
-    {"getdata", 1, (Blt_Op)GetdataOp, 3, 0, "widget ?format command?",},
-    {"names", 1, (Blt_Op)NamesOp, 2, 4, "?-source|-target? ?pattern?",},
-    {"pull", 1, (Blt_Op)PullOp, 4, 4, "widget format",},
-    {"register", 1, (Blt_Op)RegisterOp, 3, 0, "widget ?option value?...",},
-    {"select", 3, (Blt_Op)SelectOp, 6, 6, "widget x y timestamp",},
-    {"setdata", 3, (Blt_Op)SetdataOp, 3, 0, "widget ?format command?",},
-    {"token", 5, (Blt_Op)TokenOp, 3, 0, "args...",},
+    {"delete", 2, DeleteOp, 3, 0,"?-source|-target? widget...",},
+    {"drag", 3, DragOp, 3, 0, "widget x y ?token?",},
+    {"drop", 3, DropOp, 3, 0, "widget x y ?token?",},
+    {"getdata", 1, GetdataOp, 3, 0, "widget ?format command?",},
+    {"names", 1, NamesOp, 2, 4, "?-source|-target? ?pattern?",},
+    {"pull", 1, PullOp, 4, 4, "widget format",},
+    {"register", 1, RegisterOp, 3, 0, "widget ?option value?...",},
+    {"select", 3, SelectOp, 6, 6, "widget x y timestamp",},
+    {"setdata", 3, SetdataOp, 3, 0, "widget ?format command?",},
+    {"token", 5, TokenOp, 3, 0, "args...",},
 };
 
 static int nDndOps = sizeof(dndOps) / sizeof(Blt_OpSpec);
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  DndCmd --
  *
  *	Invoked by TCL whenever the user issues a drag&drop command.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-DndCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;		/* current interpreter */
-    int argc;			/* number of arguments */
-    char **argv;		/* argument strings */
+DndCmd(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp,		/* current interpreter */
+    int objc,			/* number of arguments */
+    Tcl_Obj *const *objv)	/* Argument strings */
 {
-    Blt_Op proc;
+    Tcl_ObjCmdProc *proc;
     int result;
 
-    proc = Blt_GetOp(interp, nDndOps, dndOps, BLT_OP_ARG1, argc, argv, 0);
+    proc = Blt_GetOpFromObj(interp, nDndOps, dndOps, BLT_OP_ARG1, 
+	objc, objv, 0);
     if (proc == NULL) {
 	return TCL_ERROR;
     }
-    result = (*proc) (clientData, interp, argc, argv);
+    result = (*proc) (clientData, interp, objc, objv);
     return result;
 }
 
 /*
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DndInterpDeleteProc --
  *
@@ -4655,33 +4655,32 @@ DndCmd(clientData, interp, argc, argv)
  * Side effects:
  *	Destroys the hash table containing the drag&drop managers.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /* ARGSUSED */
 static void
-DndInterpDeleteProc(clientData, interp)
-    ClientData clientData;	/* Thread-specific data. */
-    Tcl_Interp *interp;
+DndInterpDeleteProc(
+    ClientData clientData,	/* Thread-specific data. */
+    Tcl_Interp *interp)
 {
     DndInterpData *dataPtr = clientData;
     Dnd *dndPtr;
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
 
-    for (hPtr = Blt_FirstHashEntry(&(dataPtr->dndTable), &cursor);
+    for (hPtr = Blt_FirstHashEntry(&dataPtr->dndTable, &cursor);
 	 hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	dndPtr = (Dnd *)Blt_GetHashValue(hPtr);
+	dndPtr = Blt_GetHashValue(hPtr);
 	dndPtr->hashPtr = NULL;
 	DestroyDnd((DestroyData)dndPtr);
     }
-    Blt_DeleteHashTable(&(dataPtr->dndTable));
+    Blt_DeleteHashTable(&dataPtr->dndTable);
     Tcl_DeleteAssocData(interp, DND_THREAD_KEY);
     Blt_Free(dataPtr);
 }
 
 static DndInterpData *
-GetDndInterpData(interp)
-     Tcl_Interp *interp;
+GetDndInterpData(Tcl_Interp *interp)
 {
     DndInterpData *dataPtr;
     Tcl_InterpDeleteProc *proc;
@@ -4691,15 +4690,14 @@ GetDndInterpData(interp)
 	Display *display;
 	Tk_Window tkwin;
 
-	dataPtr = Blt_Malloc(sizeof(DndInterpData));
-	assert(dataPtr);
+	dataPtr = Blt_AssertMalloc(sizeof(DndInterpData));
 	tkwin = Tk_MainWindow(interp);
 	display = Tk_Display(tkwin);
-	dataPtr->mainWindow = tkwin;
+	dataPtr->tkMain = tkwin;
 	dataPtr->display = display;
 	Tcl_SetAssocData(interp, DND_THREAD_KEY, DndInterpDeleteProc,
 		dataPtr);
-	Blt_InitHashTable(&(dataPtr->dndTable), BLT_ONE_WORD_KEYS);
+	Blt_InitHashTable(&dataPtr->dndTable, BLT_ONE_WORD_KEYS);
 	dataPtr->mesgAtom = XInternAtom(display, "BLT Dnd Message", False);
 	dataPtr->targetAtom = XInternAtom(display, "BLT Dnd Target", False);
 	dataPtr->formatsAtom = XInternAtom(display, "BLT Dnd Formats",False);
@@ -4723,34 +4721,25 @@ GetDndInterpData(interp)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- *  Blt_DndInit --
+ *  Blt_DndCmdInitProc --
  *
  *	Adds the drag&drop command to the given interpreter.  Should
  *	be invoked to properly install the command whenever a new
  *	interpreter is created.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_DndInit(interp)
-    Tcl_Interp *interp;		/* interpreter to be updated */
+Blt_DndCmdInitProc(Tcl_Interp *interp) /* Interpreter to be updated */
 {
-    static Blt_CmdSpec cmdSpec =
-    {
-	"dnd", DndCmd
-    };
-    DndInterpData *dataPtr;
+    static Blt_InitCmdSpec cmdSpec = { "dnd", DndCmd };
 
-    dataPtr = GetDndInterpData(interp);
-    cmdSpec.clientData = dataPtr;
-    if (Blt_InitCmd(interp, "blt", &cmdSpec) == NULL) {
-	return TCL_ERROR;
-    }
-    return TCL_OK;
+    cmdSpec.clientData = GetDndInterpData(interp);
+    return Blt_InitCmd(interp, "::blt", &cmdSpec);
 }
-
+
 #ifdef notdef
 /*
  * Registers bitmap outline of dragged data, used to indicate
@@ -4758,10 +4747,7 @@ Blt_DndInit(interp)
  * is moved around the screen.
  */
 static void
-Blt_DndSetOutlineBitmap(tkwin, bitmap, x, y)
-    Tk_Window tkwin;
-    Pixmap bitmap;
-    int x, y;
+Blt_DndSetOutlineBitmap(Tk_Window tkwin, Pixmap bitmap, int x, int y)
 {
     
 }
@@ -4770,8 +4756,7 @@ Blt_DndSetOutlineBitmap(tkwin, bitmap, x, y)
 #ifdef HAVE_XDND
 
 static void
-XDndFreeFormats(handlerPtr) 
-    XDndHandler *handlerPtr;
+XDndFreeFormats(XDndHandler *handlerPtr)
 {
     if (handlerPtr->formatArr != NULL) {
 	char **p;
@@ -4785,9 +4770,7 @@ XDndFreeFormats(handlerPtr)
 }
 
 static char **
-XDndGetFormats(handlerPtr, eventPtr)
-    XDndHandler *handlerPtr;
-    XEvent *eventPtr;
+XDndGetFormats(XDndHandler *handlerPtr, XEvent *eventPtr)
 {
     int flags;
     Window window;
@@ -4830,7 +4813,7 @@ XDndGetFormats(handlerPtr, eventPtr)
 	atomArr = &(eventPtr->xclient.data.l[2]);
 	nAtoms = 3;
     }
-    formatArr = Blt_Calloc(nAtoms + 1, sizeof(char *));
+    formatArr = Blt_AssertCalloc(nAtoms + 1, sizeof(char *));
     for (i = 0; (i < nAtoms) && (atomArr[i] != None); i++) {
 	formatArr[i] = XGetAtomName(display, atomArr[i]);
     }
@@ -4841,18 +4824,16 @@ XDndGetFormats(handlerPtr, eventPtr)
 }
 
 static char *
-GetMatchingFormats(dndPtr, formatArr)
-    Dnd *dndPtr;
-    char **formatArr;
+GetMatchingFormats(Dnd *dndPtr, char **formatArr)
 {
     int nMatches;
 
     nMatches = 0;
     Tcl_DStringInit(&dString);
     for (p = formatArr; *p != NULL; p++) {
-	for(hPtr = Blt_FirstHashEntry(&(dndPtr->setDataTable), &cursor);
+	for(hPtr = Blt_FirstHashEntry(&dndPtr->setDataTable, &cursor);
 	    hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	    fmt = Blt_GetHashKey(&(dndPtr->setDataTable), hPtr);
+	    fmt = Blt_GetHashKey(&dndPtr->setDataTable, hPtr);
 	    if ((*fmt == **p) && (strcmp(fmt, *p) == 0)) {
 		Tcl_DStringAppendElement(&dString, *p);
 		nMatches++;
@@ -4863,7 +4844,7 @@ GetMatchingFormats(dndPtr, formatArr)
     if (nMatches > 0) {
 	char *string;
 
-	string = Blt_Strdup(Tcl_DStringValue(&dString));
+	string = Blt_AssertStrdup(Tcl_DStringValue(&dString));
 	Tcl_DStringFree(&dString);
 	return string;
     }
@@ -4871,9 +4852,7 @@ GetMatchingFormats(dndPtr, formatArr)
 }
 
 static void
-XDndPointerEvent(handlerPtr, eventPtr)
-    XDndHandler *handlerPtr;
-    XEvent *eventPtr;
+XDndPointerEvent(XDndHandler *handlerPtr, XEvent *eventPtr)
 {
     Tk_Window tkwin;
     int flags;
@@ -4883,9 +4862,10 @@ XDndPointerEvent(handlerPtr, eventPtr)
     flags = 0;
     action = None;
     window = eventPtr->xclient.data.l[MESG_XDND_WINDOW];
+
     /* 
-     * If the XDND source has no formats specified, don't process any further.
-     * Simply send a "no accept" action with the message.
+     * If the XDND source has no formats specified, don't process any
+     * further.  Simply send a "no accept" action with the message.
      */
     if (handlerPtr->formatArr != NULL) { 
 	Dnd *newPtr, *oldPtr;
@@ -4907,10 +4887,10 @@ XDndPointerEvent(handlerPtr, eventPtr)
 	if (tkwin != NULL) {
 	    Blt_HashEntry *hPtr;
 	    
-	    hPtr = Blt_FindHashEntry(&(handlerPtr->dataPtr->dndTable), 
-		(char *)tkwin);
+	    hPtr = Blt_FindHashEntry(&handlerPtr->dataPtr->dndTable, 
+				     (char *)tkwin);
 	    if (hPtr != NULL) {
-		newPtr = (Dnd *)Blt_GetHashValue(hPtr);
+		newPtr = Blt_GetHashValue(hPtr);
 		if (!newPtr->isTarget) {
 		    newPtr = NULL; /* Not a DND target. */
 		}
@@ -4961,9 +4941,7 @@ XDndPointerEvent(handlerPtr, eventPtr)
 }
 
 static void
-XDndDropEvent(handlerPtr, eventPtr)
-    XDndHandler *handlerPtr;
-    XEvent *eventPtr;
+XDndDropEvent(XDndHandler *handlerPtr, XEvent *eventPtr)
 {
     Tk_Window tkwin;
     int flags;
@@ -4988,7 +4966,8 @@ XDndDropEvent(handlerPtr, eventPtr)
 	DropPending pending;
 	int resp;
 
-	button = keyState = 0;	/* Protocol doesn't supply this information. */
+	button = keyState = 0;		/* Protocol doesn't supply this
+					 * information. */
 
 	/* Set up temporary bookkeeping for the drop transaction */
 	memset (&pending, 0, sizeof(pending));
@@ -4997,7 +4976,7 @@ XDndDropEvent(handlerPtr, eventPtr)
 	pending.timestamp = timestamp;
 	pending.protocol = PROTO_XDND;
 	pending.packetSize = GetMaxPropertySize(pending.display);
-	Tcl_DStringInit(&(pending.dString));
+	Tcl_DStringInit(&pending.dString);
 	
 	formats = GetMatchingFormats(handlerPtr->dndPtr, handlerPtr->formatArr);
 	if (formats == NULL) {
@@ -5018,19 +4997,19 @@ XDndDropEvent(handlerPtr, eventPtr)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  XDndProtoEventProc --
  *
  *	Invoked by Tk_HandleEvent whenever a DestroyNotify event is received
  *	on a registered drag&drop source widget.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-XDndProtoEventProc(clientData, eventPtr)
-    ClientData clientData;	/* Drag&drop record. */
-    XEvent *eventPtr;		/* Event description. */
+XDndProtoEventProc(
+    ClientData clientData,		/* Drag&drop record. */
+    XEvent *eventPtr)			/* Event description. */
 {
     DndInterpData *dataPtr = clientData;
     Tk_Window tkwin;
@@ -5041,15 +5020,15 @@ XDndProtoEventProc(clientData, eventPtr)
     Atom mesg;
 
     if (eventPtr->type != ClientMessage) {
-	return 0;		/* Not a ClientMessage event. */
+	return 0;			/* Not a ClientMessage event. */
     }
     /* Was the recipient a registered toplevel window? */
-    hPtr = Blt_FindHashEntry(&(dataPtr->handlerTable), 
+    hPtr = Blt_FindHashEntry(&dataPtr->handlerTable, 
 	     (char *)eventPtr->xclient.window);
     if (hPtr == NULL) {
-	return 0;		/* No handler registered with window. */
+	return 0;			/* No handler registered with window. */
     }
-    handlerPtr = (XDndHandler *)Blt_GetHashValue(hPtr);
+    handlerPtr = Blt_GetHashValue(hPtr);
     mesg = eventPtr->xclient.message_type;
     if (mesg == dataPtr->XdndEnterAtom) {
 	XDndGetFormats(handlerPtr, eventPtr);
@@ -5067,14 +5046,13 @@ XDndProtoEventProc(clientData, eventPtr)
 	XDndDropEvent(handlerPtr, eventPtr);
     } else {
 	fprintf(stderr, "Unknown client message type = 0x%x\n", mesg);
-	return 0;		/* Unknown message type.  */
+	return 0;			/* Unknown message type.  */
     }
     return 1;
 }
 
 static XDndHandler *
-XDndCreateHandler(dndPtr) 
-    Dnd *dndPtr;
+XDndCreateHandler(Dnd *dndPtr)
 {
     Tk_Window tkwin;
     Window window;
@@ -5083,19 +5061,19 @@ XDndCreateHandler(dndPtr)
     XDndHandler *handlerPtr;
 
     /* 
-     * Find the containing toplevel of this window. See if an XDND 
-     * handler is already registered for it.  
+     * Find the containing toplevel of this window. See if an XDND handler is
+     * already registered for it.
      */
-    tkwin = Blt_GetToplevel(dndPtr->tkwin);
-    window = Blt_GetRealWindowId(tkwin); /* Use the wrapper window as
-					  * the real toplevel window. */
-    hPtr = Blt_CreateHashEntry(&(dataPtr->XDndHandlerTable), (char *)window, 
+    tkwin = Blt_GetToplevelWindow(dndPtr->tkwin);
+    window = Blt_GetWindowId(tkwin);	/* Use the wrapper window as
+					 * the real toplevel window. */
+    hPtr = Blt_CreateHashEntry(&dataPtr->XDndHandlerTable, (char *)window, 
 	&isNew);
     if (!isNew) {
 	handlerPtr = (XDndHandler *)Blt_GetHashEntry(hPtr);
 	handlerPtr->refCount++;
     } else {
-	handlerPtr = Blt_Malloc(sizeof(XDndHandler));
+	handlerPtr = Blt_AssertMalloc(sizeof(XDndHandler));
 	handlerPtr->tkwin = tkwin;
 	handlerPtr->dndPtr = NULL;
 	handlerPtr->refCount = 1;
@@ -5108,17 +5086,16 @@ XDndCreateHandler(dndPtr)
 }
 
 static void
-XDndDeleteHandler(dndPtr) 
-    Dnd *dndPtr;
+XDndDeleteHandler(Dnd *dndPtr)
 {
     Tk_Window tkwin;
     Window window;
     Blt_HashEntry *hPtr;
 
-    tkwin = Blt_GetToplevel(dndPtr->tkwin);
-    window = Blt_GetRealWindowId(tkwin); /* Use the wrapper window as the real 
-					  * toplevel window. */
-    hPtr = Blt_FindHashEntry(&(dataPtr->XDndHandlerTable), (char *)window);
+    tkwin = Blt_GetToplevelWindow(dndPtr->tkwin);
+    window = Blt_GetWindowId(tkwin);	/* Use the wrapper window as the real
+					 * toplevel window. */
+    hPtr = Blt_FindHashEntry(&dataPtr->XDndHandlerTable, (char *)window);
     if (hPtr != NULL) {
 	XDndHandler *handlerPtr;
 
@@ -5128,7 +5105,7 @@ XDndDeleteHandler(dndPtr)
 	    XDndFreeFormats(handlerPtr); 
 	    XDeleteProperty(dndPtr->display, window, 
 		dndPtr->dataPtr->XdndAwareAtom);
-	    Blt_DeleteHashEntry(&(dataPtr->XDndHandlerTable), hPtr);
+	    Blt_DeleteHashEntry(&dataPtr->XDndHandlerTable, hPtr);
 	    Blt_Free(handlerPtr);
 	}
     }

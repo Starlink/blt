@@ -1,25 +1,30 @@
+
 /*
  * bltPool.c --
  *
- * Copyright 2001 Silicon Metrics, Inc.
+ *	Copyright 2001-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Silicon Metrics disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltInt.h"
@@ -63,7 +68,7 @@
  *
  *      A freelist of unused items also maintained. Each freed item
  *	is prepended to a free list.  Before allocating new chunks
- *	the freelist is examined to see if an unused items exist.
+ *	the freelist is examined to see if any unused items exist.
  *
  *               chunk1       chunk2       chunk3
  *            +---------+  +---------+  +---------+  
@@ -79,12 +84,29 @@
  *                                      +---------+  
  */
 
-#define POOL_MAX_CHUNK_SIZE      ((1<<16) - sizeof(Blt_PoolChain))
+#define POOL_MAX_CHUNK_SIZE      ((1<<16) - sizeof(PoolChain))
 
 #ifndef ALIGN
 #define ALIGN(a) \
 	(((size_t)a + (sizeof(void *) - 1)) & (~(sizeof(void *) - 1)))
 #endif /* ALIGN */
+
+typedef struct _PoolChain {
+   struct _PoolChain *nextPtr;
+} PoolChain;
+
+typedef struct {
+    Blt_PoolAllocProc *allocProc;
+    Blt_PoolFreeProc *freeProc;
+
+    PoolChain *headPtr;		/* Chain of malloc'ed chunks. */
+    PoolChain *freePtr; 	/* List of deleted items. This is only used
+				 * for fixed size items. */
+    size_t poolSize;		/* Log2 of # of items in the current block. */
+    size_t itemSize;		/* Size of an item. */
+    size_t bytesLeft;		/* # of bytes left in the current chunk. */
+    size_t waste;
+} Pool;
 
 static Blt_PoolAllocProc VariablePoolAllocItem;
 static Blt_PoolFreeProc  VariablePoolFreeItem;
@@ -94,7 +116,7 @@ static Blt_PoolAllocProc StringPoolAllocItem;
 static Blt_PoolFreeProc  StringPoolFreeItem;
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * VariablePoolAllocItem --
  *
@@ -109,15 +131,16 @@ static Blt_PoolFreeProc  StringPoolFreeItem;
  * Side Effects:
  *	A new memory chunk may be allocated.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void *
-VariablePoolAllocItem(poolPtr, size)
-    struct Blt_PoolStruct *poolPtr;
-    size_t size;		/* Number of bytes to allocate. */
+VariablePoolAllocItem(
+    Blt_Pool pool,		      
+    size_t size)		/* Number of bytes to allocate. */
 {
-    Blt_PoolChain *chainPtr;
-    void *memPtr;
+    Pool *poolPtr = (Pool *)pool;
+    PoolChain *chainPtr;
+    void *memory;
 
     size = ALIGN(size);
     if (size >= POOL_MAX_CHUNK_SIZE) {
@@ -125,36 +148,36 @@ VariablePoolAllocItem(poolPtr, size)
 	 * Handle oversized requests by allocating a chunk to hold the
 	 * single item and immediately placing it into the in-use list.
 	 */
-	chainPtr = Blt_Malloc(sizeof(Blt_PoolChain) + size);
+	chainPtr = Blt_AssertMalloc(sizeof(PoolChain) + size);
         if (poolPtr->headPtr == NULL) {
 	    poolPtr->headPtr = chainPtr;
 	} else {
 	    chainPtr->nextPtr = poolPtr->headPtr->nextPtr;
 	    poolPtr->headPtr->nextPtr = chainPtr;
 	}
-	memPtr = (void *)chainPtr;
+	memory = (void *)chainPtr;
     } else {
 	if (poolPtr->bytesLeft >= size) {
 	    poolPtr->bytesLeft -= size;
-	    memPtr = (char *)(poolPtr->headPtr + 1) + poolPtr->bytesLeft;
+	    memory = (char *)(poolPtr->headPtr + 1) + poolPtr->bytesLeft;
 	} else {
 	    poolPtr->waste += poolPtr->bytesLeft;
 	    /* Create a new block of items and prepend it to the in-use list */
 	    poolPtr->bytesLeft = POOL_MAX_CHUNK_SIZE;
 	    /* Allocate the requested chunk size, plus the header */
-	    chainPtr = Blt_Malloc(sizeof(Blt_PoolChain) + poolPtr->bytesLeft);
+	    chainPtr = Blt_AssertMalloc(sizeof(PoolChain) + poolPtr->bytesLeft);
 	    chainPtr->nextPtr = poolPtr->headPtr;
 	    poolPtr->headPtr = chainPtr;
 	    /* Peel off a new item. */
 	    poolPtr->bytesLeft -= size;
-	    memPtr = (char *)(chainPtr + 1) + poolPtr->bytesLeft;
+	    memory = (char *)(chainPtr + 1) + poolPtr->bytesLeft;
 	}
     }
-    return memPtr;
+    return memory;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * VariablePoolFreeItem --
  *
@@ -164,19 +187,17 @@ VariablePoolAllocItem(poolPtr, size)
  * Results:
  *      None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static void
-VariablePoolFreeItem(poolPtr, item) 
-    struct Blt_PoolStruct *poolPtr;
-    void *item;
+VariablePoolFreeItem(Blt_Pool pool, void *item)
 {
     /* Does nothing */
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * StringPoolAllocItem --
  *
@@ -191,52 +212,51 @@ VariablePoolFreeItem(poolPtr, item)
  * Side Effects:
  *	A new memory chunk may be allocated.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void *
-StringPoolAllocItem(poolPtr, size)
-    struct Blt_PoolStruct *poolPtr;
-    size_t size;		/* Number of bytes to allocate. */
+StringPoolAllocItem(Blt_Pool pool, size_t size)
 {
-    Blt_PoolChain *chainPtr;
-    void *memPtr;
+    Pool *poolPtr = (Pool *)pool;
+    PoolChain *chainPtr;
+    void *memory;
 
     if (size >= POOL_MAX_CHUNK_SIZE) {
 	/* 
 	 * Handle oversized requests by allocating a chunk to hold the
 	 * single item and immediately placing it into the in-use list.
 	 */
-	chainPtr = Blt_Malloc(sizeof(Blt_PoolChain) + size);
+	chainPtr = Blt_AssertMalloc(sizeof(PoolChain) + size);
         if (poolPtr->headPtr == NULL) {
 	    poolPtr->headPtr = chainPtr;
 	} else {
 	    chainPtr->nextPtr = poolPtr->headPtr->nextPtr;
 	    poolPtr->headPtr->nextPtr = chainPtr;
 	}
-	memPtr = (void *)chainPtr;
+	memory = (void *)chainPtr;
     } else {
 	if (poolPtr->bytesLeft >= size) {
 	    poolPtr->bytesLeft -= size;
-	    memPtr = (char *)(poolPtr->headPtr + 1) + poolPtr->bytesLeft;
+	    memory = (char *)(poolPtr->headPtr + 1) + poolPtr->bytesLeft;
 	} else {
 	    poolPtr->waste += poolPtr->bytesLeft;
 	    /* Create a new block of items and prepend it to the
 	     * in-use list */
 	    poolPtr->bytesLeft = POOL_MAX_CHUNK_SIZE;
 	    /* Allocate the requested chunk size, plus the header */
-	    chainPtr = Blt_Malloc(sizeof(Blt_PoolChain) + poolPtr->bytesLeft);
+	    chainPtr = Blt_AssertMalloc(sizeof(PoolChain) + poolPtr->bytesLeft);
 	    chainPtr->nextPtr = poolPtr->headPtr;
 	    poolPtr->headPtr = chainPtr;
 	    /* Peel off a new item. */
 	    poolPtr->bytesLeft -= size;
-	    memPtr = (char *)(chainPtr + 1) + poolPtr->bytesLeft;
+	    memory = (char *)(chainPtr + 1) + poolPtr->bytesLeft;
 	}
     }
-    return memPtr;
+    return memory;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * StringPoolFreeItem --
  *
@@ -246,13 +266,11 @@ StringPoolAllocItem(poolPtr, size)
  * Results:
  *      None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static void
-StringPoolFreeItem(poolPtr, item) 
-    struct Blt_PoolStruct *poolPtr;
-    void *item;
+StringPoolFreeItem(Blt_Pool pool, void *item) 
 {
     /* Does nothing */
 }
@@ -298,7 +316,7 @@ StringPoolFreeItem(poolPtr, item)
  */
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * FixedPoolFreeItem --
  *
@@ -313,14 +331,13 @@ StringPoolFreeItem(poolPtr, item)
  * Side Effects:
  *	A new memory chunk may be allocated.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void *
-FixedPoolAllocItem(poolPtr, size)
-    struct Blt_PoolStruct *poolPtr;
-    size_t size;
+FixedPoolAllocItem(Blt_Pool pool, size_t size)
 {
-    Blt_PoolChain *chainPtr;
+    Pool *poolPtr = (Pool *)pool;
+    PoolChain *chainPtr;
     void *newPtr;
 
     size = ALIGN(size);
@@ -346,7 +363,7 @@ FixedPoolAllocItem(poolPtr, size)
 				  * chunk up to a maximum size. */
 	}
 	/* Allocate the requested chunk size, plus the header */
-	chainPtr = Blt_Malloc(sizeof(Blt_PoolChain) + poolPtr->bytesLeft);
+	chainPtr = Blt_AssertMalloc(sizeof(PoolChain) + poolPtr->bytesLeft);
 	chainPtr->nextPtr = poolPtr->headPtr;
 	poolPtr->headPtr = chainPtr;
 
@@ -358,7 +375,7 @@ FixedPoolAllocItem(poolPtr, size)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * FixedPoolFreeItem --
  *
@@ -372,14 +389,13 @@ FixedPoolAllocItem(poolPtr, size)
  * Side Effects:
  *	Item is placed on the pool's free list.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-FixedPoolFreeItem(poolPtr, item) 
-    struct Blt_PoolStruct *poolPtr;
-    void *item;
+FixedPoolFreeItem(Blt_Pool pool, void *item) 
 {
-    Blt_PoolChain *chainPtr = (Blt_PoolChain *)item;
+    Pool *poolPtr = (Pool *)pool;
+    PoolChain *chainPtr = (PoolChain *)item;
     
     /* Prepend the newly deallocated item to the free list. */
     chainPtr->nextPtr = poolPtr->freePtr;
@@ -387,7 +403,7 @@ FixedPoolFreeItem(poolPtr, item)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_PoolCreate --
  *
@@ -397,16 +413,15 @@ FixedPoolFreeItem(poolPtr, item)
  * Results:
  *      Returns a pointer to the newly allocated pool.
  *
- *---------------------------------------------------------------------- 
+ *---------------------------------------------------------------------------
  */
 
 Blt_Pool
-Blt_PoolCreate(type)
-    int type;
+Blt_PoolCreate(int type)
 {
-    struct Blt_PoolStruct *poolPtr;
+    Pool *poolPtr;
 
-    poolPtr = Blt_Malloc(sizeof(struct Blt_PoolStruct));
+    poolPtr = Blt_AssertMalloc(sizeof(Pool));
     switch (type) {
     case BLT_VARIABLE_SIZE_ITEMS:
 	poolPtr->allocProc = VariablePoolAllocItem;
@@ -424,11 +439,11 @@ Blt_PoolCreate(type)
     poolPtr->headPtr = poolPtr->freePtr = NULL;
     poolPtr->waste = poolPtr->bytesLeft = 0;
     poolPtr->poolSize = poolPtr->itemSize = 0;
-    return poolPtr;
+    return (Blt_Pool)poolPtr;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_PoolDestroy --
  *
@@ -441,13 +456,13 @@ Blt_PoolCreate(type)
  * Side Effects:
  *	All memory used by the pool is freed.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void  
-Blt_PoolDestroy(poolPtr)
-    struct Blt_PoolStruct *poolPtr;
+Blt_PoolDestroy(Blt_Pool pool)
 {
-    register Blt_PoolChain *chainPtr, *nextPtr;
+    Pool *poolPtr = (Pool *)pool;
+    PoolChain *chainPtr, *nextPtr;
     
     for (chainPtr = poolPtr->headPtr; chainPtr != NULL; chainPtr = nextPtr) {
 	nextPtr = chainPtr->nextPtr;

@@ -2,29 +2,35 @@
 /*
  * bltWin.h --
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_WIN_H
 #define _BLT_WIN_H
+
+#define _CRT_SECURE_NO_DEPRECATE
 
 #define STRICT
 #define WIN32_LEAN_AND_MEAN
@@ -32,7 +38,6 @@
 #undef STRICT
 #undef WIN32_LEAN_AND_MEAN
 #include <windowsx.h>
-
 
 #undef STD_NORMAL_BACKGROUND
 #undef STD_NORMAL_FOREGROUND
@@ -74,6 +79,7 @@ typedef struct {
     DWORD tiffLength;		/* Length of TIFF section. */
     WORD checksum;		/* Checksum of header. If FFFF, ignore. */
 } DOSEPSHEADER;
+
 #pragma pack()
 
 /* Aldus Portable Metafile Header */
@@ -88,31 +94,21 @@ typedef struct {
 } APMHEADER;
 #pragma pack()
 
-extern double hypot(double x, double y);
-extern int Blt_AsyncRead(int fd, char *buffer, unsigned int size);
-extern int Blt_AsyncWrite(int fd, char *buffer, unsigned int size);
-extern void Blt_CreateFileHandler(int fd, int flags, Tcl_FileProc * proc,
-    ClientData clientData);
-extern void Blt_DeleteFileHandler(int fd);
-extern int Blt_GetPlatformId(void);
-extern char *Blt_LastError(void);
-extern int Blt_GetOpenPrinter(Tcl_Interp *interp, const char *id,
-    Drawable *drawablePtr);
-extern int Blt_PrintDialog(Tcl_Interp *interp, Drawable *drawablePtr);
-extern int Blt_OpenPrinterDoc(Tcl_Interp *interp, const char *id);
-extern int Blt_ClosePrinterDoc(Tcl_Interp *interp, const char *id);
-extern void Blt_GetPrinterScale(HDC dc, double *xRatio, double *yRatio);
-extern int Blt_StartPrintJob(Tcl_Interp *interp, Drawable drawable);
-extern int Blt_EndPrintJob(Tcl_Interp *interp, Drawable drawable);
+#undef Blt_Export
+#define Blt_Export __declspec(dllexport)
 
-#undef EXPORT
-#define EXPORT __declspec(dllexport)
-
+#if defined(_MSC_VER) || defined(__BORLANDC__)
+#define fstat	 _fstat
+#define stat	 _stat
 #ifdef _MSC_VER
-#define strncasecmp(s1,s2,n)	_strnicmp(s1,s2,n)
-#define strcasecmp(s1,s2)	_stricmp(s1,s2)
+#define fileno	 _fileno
+#endif
 #define isnan(x)		_isnan(x)
-#endif /* _MSC_VER */
+#define strcasecmp(s1,s2)	_stricmp(s1,s2)
+#define strncasecmp(s1,s2,n)	_strnicmp(s1,s2,n)
+#define vsnprintf		_vsnprintf
+#define isascii(c)		__isascii(c)
+#endif /* _MSC_VER || __BORLANDC__ */
 
 #ifdef __BORLANDC__
 #define isnan(x)		_isnan(x)
@@ -137,91 +133,133 @@ extern int Blt_EndPrintJob(Tcl_Interp *interp, Drawable drawable);
 #include <missing.h> 
 #endif /* __GNUC__ */
 
+#undef XCopyArea		
 #define XCopyArea		Blt_EmulateXCopyArea
+#undef XCopyPlane		
 #define XCopyPlane		Blt_EmulateXCopyPlane
+#undef XDrawArcs		
 #define XDrawArcs		Blt_EmulateXDrawArcs
+#undef XDrawLine		
 #define XDrawLine		Blt_EmulateXDrawLine
+#undef XDrawLines		
 #define XDrawLines		Blt_EmulateXDrawLines
+#undef XDrawPoints		
 #define XDrawPoints		Blt_EmulateXDrawPoints
+#undef XDrawRectangle		
 #define XDrawRectangle		Blt_EmulateXDrawRectangle
+#undef XDrawRectangles		
 #define XDrawRectangles		Blt_EmulateXDrawRectangles
+#undef XDrawSegments		
 #define XDrawSegments		Blt_EmulateXDrawSegments
+#undef XDrawString		
 #define XDrawString		Blt_EmulateXDrawString
+#undef XFillArcs		
 #define XFillArcs		Blt_EmulateXFillArcs
+#undef XFillPolygon		
 #define XFillPolygon		Blt_EmulateXFillPolygon
+#undef XFillRectangle		
 #define XFillRectangle		Blt_EmulateXFillRectangle
+#undef XFillRectangles		
 #define XFillRectangles		Blt_EmulateXFillRectangles
+#undef XFree			
 #define XFree			Blt_EmulateXFree
+#undef XGetWindowAttributes	
 #define XGetWindowAttributes	Blt_EmulateXGetWindowAttributes
+#undef XLowerWindow		
 #define XLowerWindow		Blt_EmulateXLowerWindow
+#undef XMaxRequestSize		
 #define XMaxRequestSize		Blt_EmulateXMaxRequestSize
+#undef XRaiseWindow		
 #define XRaiseWindow		Blt_EmulateXRaiseWindow
+#undef XReparentWindow		
 #define XReparentWindow		Blt_EmulateXReparentWindow
+#undef XSetDashes		
 #define XSetDashes		Blt_EmulateXSetDashes
+#undef XUnmapWindow		
 #define XUnmapWindow		Blt_EmulateXUnmapWindow
+#undef XWarpPointer		
 #define XWarpPointer		Blt_EmulateXWarpPointer
 
-EXTERN GC Blt_EmulateXCreateGC(Display *display, Drawable drawable,
+BLT_EXTERN GC Blt_EmulateXCreateGC(Display *display, Drawable drawable,
     unsigned long mask, XGCValues *valuesPtr);
-EXTERN void Blt_EmulateXCopyArea(Display *display, Drawable src, Drawable dest,
+BLT_EXTERN void Blt_EmulateXCopyArea(Display *display, Drawable src, Drawable dest,
     GC gc, int src_x, int src_y, unsigned int width, unsigned int height,
     int dest_x, int dest_y);
-EXTERN void Blt_EmulateXCopyPlane(Display *display, Drawable src,
+BLT_EXTERN void Blt_EmulateXCopyPlane(Display *display, Drawable src,
     Drawable dest, GC gc, int src_x, int src_y, unsigned int width,
     unsigned int height, int dest_x, int dest_y, unsigned long plane);
-EXTERN void Blt_EmulateXDrawArcs(Display *display, Drawable drawable, GC gc,
+BLT_EXTERN void Blt_EmulateXDrawArcs(Display *display, Drawable drawable, GC gc,
     XArc *arcArr, int nArcs);
-EXTERN void Blt_EmulateXDrawLine(Display *display, Drawable drawable, GC gc,
+BLT_EXTERN void Blt_EmulateXDrawLine(Display *display, Drawable drawable, GC gc,
     int x1, int y1, int x2, int y2);
-EXTERN void Blt_EmulateXDrawLines(Display *display, Drawable drawable, GC gc,
+BLT_EXTERN void Blt_EmulateXDrawLines(Display *display, Drawable drawable, GC gc,
     XPoint *pointArr, int nPoints, int mode);
-EXTERN void Blt_EmulateXDrawPoints(Display *display, Drawable drawable, GC gc,
+BLT_EXTERN void Blt_EmulateXDrawPoints(Display *display, Drawable drawable, GC gc,
     XPoint *pointArr, int nPoints, int mode);
-EXTERN void Blt_EmulateXDrawRectangle(Display *display, Drawable drawable,
+BLT_EXTERN void Blt_EmulateXDrawRectangle(Display *display, Drawable drawable,
     GC gc, int x, int y, unsigned int width, unsigned int height);
-EXTERN void Blt_EmulateXDrawRectangles(Display *display, Drawable drawable,
+BLT_EXTERN void Blt_EmulateXDrawRectangles(Display *display, Drawable drawable,
     GC gc, XRectangle *rectArr, int nRects);
-EXTERN void Blt_EmulateXDrawSegments(Display *display, Drawable drawable,
+BLT_EXTERN void Blt_EmulateXDrawSegments(Display *display, Drawable drawable,
     GC gc, XSegment *segArr, int nSegments);
-EXTERN void Blt_EmulateXDrawSegments(Display *display, Drawable drawable,
+BLT_EXTERN void Blt_EmulateXDrawSegments(Display *display, Drawable drawable,
     GC gc, XSegment *segArr, int nSegments);
-EXTERN void Blt_EmulateXDrawString(Display *display, Drawable drawable, GC gc,
+BLT_EXTERN void Blt_EmulateXDrawString(Display *display, Drawable drawable, GC gc,
     int x, int y, _Xconst char *string, int length);
-EXTERN void Blt_EmulateXFillArcs(Display *display, Drawable drawable, GC gc,
+BLT_EXTERN void Blt_EmulateXFillArcs(Display *display, Drawable drawable, GC gc,
     XArc *arcArr, int nArcs);
-EXTERN void Blt_EmulateXFillPolygon(Display *display, Drawable drawable,
+BLT_EXTERN void Blt_EmulateXFillPolygon(Display *display, Drawable drawable,
     GC gc, XPoint *points, int nPoints,  int shape, int mode);
-EXTERN void Blt_EmulateXFillRectangle(Display *display, Drawable drawable,
+BLT_EXTERN void Blt_EmulateXFillRectangle(Display *display, Drawable drawable,
     GC gc, int x, int y, unsigned int width, unsigned int height);
-EXTERN void Blt_EmulateXFillRectangles(Display *display, Drawable drawable,
+BLT_EXTERN void Blt_EmulateXFillRectangles(Display *display, Drawable drawable,
     GC gc, XRectangle *rectArr, int nRects);
-EXTERN void Blt_EmulateXFree(void *ptr);
-EXTERN int Blt_EmulateXGetWindowAttributes(Display *display, Window window,
+BLT_EXTERN void Blt_EmulateXFree(void *ptr);
+BLT_EXTERN int Blt_EmulateXGetWindowAttributes(Display *display, Window window,
     XWindowAttributes * attrsPtr);
-EXTERN void Blt_EmulateXLowerWindow(Display *display, Window window);
-EXTERN void Blt_EmulateXMapWindow(Display *display, Window window);
-EXTERN long Blt_EmulateXMaxRequestSize(Display *display);
-EXTERN void Blt_EmulateXRaiseWindow(Display *display, Window window);
-EXTERN void Blt_EmulateXReparentWindow(Display *display, Window window,
+BLT_EXTERN void Blt_EmulateXLowerWindow(Display *display, Window window);
+BLT_EXTERN void Blt_EmulateXMapWindow(Display *display, Window window);
+BLT_EXTERN long Blt_EmulateXMaxRequestSize(Display *display);
+BLT_EXTERN void Blt_EmulateXRaiseWindow(Display *display, Window window);
+BLT_EXTERN void Blt_EmulateXReparentWindow(Display *display, Window window,
     Window parent, int x, int y);
-EXTERN void Blt_EmulateXSetDashes(Display *display, GC gc, int dashOffset,
+BLT_EXTERN void Blt_EmulateXSetDashes(Display *display, GC gc, int dashOffset,
     _Xconst char *dashList, int n);
-EXTERN void Blt_EmulateXUnmapWindow(Display *display, Window window);
-EXTERN void Blt_EmulateXWarpPointer(Display *display, Window srcWindow,
+BLT_EXTERN void Blt_EmulateXUnmapWindow(Display *display, Window window);
+BLT_EXTERN void Blt_EmulateXWarpPointer(Display *display, Window srcWindow,
     Window destWindow, int srcX, int srcY, unsigned int srcWidth,
     unsigned int srcHeight, int destX, int destY);
 
-EXTERN void Blt_DrawLine2D(Display *display, Drawable drawable, GC gc,
+BLT_EXTERN void Blt_DrawLine2D(Display *display, Drawable drawable, GC gc,
     POINT *screenPts, int nScreenPts);
 
-extern unsigned char *Blt_GetBitmapData _ANSI_ARGS_((Display *display,
-	Pixmap bitmap, int width, int height, int *pitchPtr));
+BLT_EXTERN unsigned char *Blt_GetBitmapData(Display *display, Pixmap bitmap, 
+	int width, int height, int *pitchPtr);
 
-extern HFONT Blt_CreateRotatedFont _ANSI_ARGS_((Tk_Window tkwin,
-	unsigned long font, double theta));
+BLT_EXTERN HFONT Blt_CreateRotatedFont(Tk_Window tkwin, unsigned long font, 
+	float angle);
 
-extern HPALETTE Blt_GetSystemPalette _ANSI_ARGS_((void));
+BLT_EXTERN HPALETTE Blt_GetSystemPalette(void);
 
-extern HPEN Blt_GCToPen _ANSI_ARGS_((HDC dc, GC gc));
+BLT_EXTERN HPEN Blt_GCToPen(HDC dc, GC gc);
+
+BLT_EXTERN double hypot(double x, double y);
+BLT_EXTERN int Blt_AsyncRead(int fd, char *buffer, unsigned int size);
+BLT_EXTERN int Blt_AsyncWrite(int fd, const char *buffer, unsigned int size);
+BLT_EXTERN void Blt_CreateFileHandler(int fd, int flags, 
+	Tcl_FileProc * proc, ClientData clientData);
+BLT_EXTERN void Blt_DeleteFileHandler(int fd);
+BLT_EXTERN int Blt_GetPlatformId(void);
+BLT_EXTERN const char *Blt_LastError(void);
+BLT_EXTERN const char *Blt_PrintError(int error);
+
+BLT_EXTERN int Blt_GetOpenPrinter(Tcl_Interp *interp, const char *id,
+    Drawable *drawablePtr);
+BLT_EXTERN int Blt_PrintDialog(Tcl_Interp *interp, Drawable *drawablePtr);
+BLT_EXTERN int Blt_OpenPrinterDoc(Tcl_Interp *interp, const char *id);
+BLT_EXTERN int Blt_ClosePrinterDoc(Tcl_Interp *interp, const char *id);
+BLT_EXTERN void Blt_GetPrinterScale(HDC dc, double *xRatio, double *yRatio);
+BLT_EXTERN int Blt_StartPrintJob(Tcl_Interp *interp, Drawable drawable);
+BLT_EXTERN int Blt_EndPrintJob(Tcl_Interp *interp, Drawable drawable);
 
 #endif /*_BLT_WIN_H*/

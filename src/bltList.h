@@ -1,108 +1,116 @@
+
 /*
  * bltList.h --
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #ifndef _BLT_LIST_H
 #define _BLT_LIST_H
 
-typedef struct Blt_ListStruct *Blt_List;
-typedef struct Blt_ListNodeStruct *Blt_ListNode;
+/*
+ * Acceptable key types for hash tables:
+ */
+#ifndef BLT_STRING_KEYS
+#define BLT_STRING_KEYS		0
+#endif
+#ifndef BLT_ONE_WORD_KEYS
+#define BLT_ONE_WORD_KEYS	((size_t)-1)
+#endif
+
+typedef struct _Blt_List *Blt_List;
+typedef struct _Blt_ListNode *Blt_ListNode;
+
+typedef union {			/* Key has one of these forms: */
+    const void *oneWordValue;	/* One-word value for key. */
+    unsigned int words[1];	/* Multiple integer words for key.  The actual
+				 * size will be as large as necessary for this
+				 * table's keys. */
+    char string[4];		/* String for key.  The actual size will be as
+				 * large as needed to hold the key. */
+} Blt_ListKey;
 
 /*
  * A Blt_ListNode is the container structure for the Blt_List.
  */
-struct Blt_ListNodeStruct {
-    struct Blt_ListNodeStruct *prevPtr; /* Link to the previous node */
-    struct Blt_ListNodeStruct *nextPtr; /* Link to the next node */
+struct _Blt_ListNode {
+    Blt_ListNode prev;		/* Link to the previous node */
+    Blt_ListNode next;		/* Link to the next node */
+    Blt_List list;		/* List to eventually insert node */
     ClientData clientData;	/* Pointer to the data object */
-    struct Blt_ListStruct *listPtr; /* List to eventually insert node */
-    union {			/* Key has one of these forms: */
-	CONST char *oneWordValue; /* One-word value for key. */
-	int *words[1];		/* Multiple integer words for key.
-				 * The actual size will be as large
-				 * as necessary for this table's
-				 * keys. */
-	char string[4];		/* String for key.  The actual size
-				 * will be as large as needed to hold
-				 * the key. */
-    } key;			/* MUST BE LAST FIELD IN RECORD!! */
+    Blt_ListKey key;		/* MUST BE LAST FIELD IN RECORD!! */
 };
 
-typedef int (Blt_ListCompareProc) _ANSI_ARGS_((Blt_ListNode *node1Ptr, 
-	Blt_ListNode *node2Ptr));
+typedef int (Blt_ListCompareProc)(Blt_ListNode *node1Ptr, 
+	Blt_ListNode *node2Ptr);
 
 /*
  * A Blt_List is a doubly chained list structure.
  */
-struct Blt_ListStruct {
-    struct Blt_ListNodeStruct *headPtr;	/* Pointer to first element in list */
-    struct Blt_ListNodeStruct *tailPtr;	/* Pointer to last element in list */
-    int nNodes;			/* Number of node currently in the list. */
-    int type;			/* Type of keys in list. */
+struct _Blt_List {
+    Blt_ListNode head;		/* Pointer to first element in list */
+    Blt_ListNode tail;		/* Pointer to last element in list */
+    size_t nNodes;		/* Number of node currently in the list. */
+    size_t type;		/* Type of keys in list. */
 };
 
-EXTERN void Blt_ListInit _ANSI_ARGS_((Blt_List list, int type));
-EXTERN void Blt_ListReset _ANSI_ARGS_((Blt_List list));
-EXTERN Blt_List Blt_ListCreate _ANSI_ARGS_((int type));
-EXTERN void Blt_ListDestroy _ANSI_ARGS_((Blt_List list));
-EXTERN Blt_ListNode Blt_ListCreateNode _ANSI_ARGS_((Blt_List list, 
-	CONST char *key));
-EXTERN void Blt_ListDeleteNode _ANSI_ARGS_((Blt_ListNode node));
+BLT_EXTERN void Blt_List_Init(Blt_List list, size_t type);
+BLT_EXTERN void Blt_List_Reset(Blt_List list);
+BLT_EXTERN Blt_List Blt_List_Create(size_t type);
+BLT_EXTERN void Blt_List_Destroy(Blt_List list);
+BLT_EXTERN Blt_ListNode Blt_List_CreateNode(Blt_List list, const char *key);
+BLT_EXTERN void Blt_List_DeleteNode(Blt_ListNode node);
 
-EXTERN Blt_ListNode Blt_ListAppend _ANSI_ARGS_((Blt_List list, CONST char *key,
-	ClientData clientData));
-EXTERN Blt_ListNode Blt_ListPrepend _ANSI_ARGS_((Blt_List list, CONST char *key,
-	ClientData clientData));
-EXTERN void Blt_ListLinkAfter _ANSI_ARGS_((Blt_List list, Blt_ListNode node, 
-	Blt_ListNode afterNode));
-EXTERN void Blt_ListLinkBefore _ANSI_ARGS_((Blt_List list, Blt_ListNode node, 
-	Blt_ListNode beforeNode));
-EXTERN void Blt_ListUnlinkNode _ANSI_ARGS_((Blt_ListNode node));
-EXTERN Blt_ListNode Blt_ListGetNode _ANSI_ARGS_((Blt_List list, 
-	CONST char *key));
-EXTERN void Blt_ListDeleteNodeByKey _ANSI_ARGS_((Blt_List list, 
-	CONST char *key));
-EXTERN Blt_ListNode Blt_ListGetNthNode _ANSI_ARGS_((Blt_List list,
-	int position, int direction));
-EXTERN void Blt_ListSort _ANSI_ARGS_((Blt_List list,
-	Blt_ListCompareProc * proc));
+BLT_EXTERN Blt_ListNode Blt_List_Append(Blt_List list, const char *key, 
+	ClientData clientData);
+BLT_EXTERN Blt_ListNode Blt_List_Prepend(Blt_List list, const char *key, 
+	ClientData clientData);
+BLT_EXTERN void Blt_List_LinkAfter(Blt_List list, Blt_ListNode node, 
+	Blt_ListNode afterNode);
+BLT_EXTERN void Blt_List_LinkBefore(Blt_List list, Blt_ListNode node, 
+	Blt_ListNode beforeNode);
+BLT_EXTERN void Blt_List_UnlinkNode(Blt_ListNode node);
+BLT_EXTERN Blt_ListNode Blt_List_GetNode(Blt_List list, const char *key);
+BLT_EXTERN void Blt_List_DeleteNodeByKey(Blt_List list, const char *key);
+BLT_EXTERN Blt_ListNode Blt_List_GetNthNode(Blt_List list, long position, 
+	int direction);
+BLT_EXTERN void Blt_List_Sort(Blt_List list, Blt_ListCompareProc *proc);
 
-#define Blt_ListGetLength(list) \
-	(((list) == NULL) ? 0 : ((struct Blt_ListStruct *)list)->nNodes)
-#define Blt_ListFirstNode(list) \
-	(((list) == NULL) ? NULL : ((struct Blt_ListStruct *)list)->headPtr)
-#define Blt_ListLastNode(list)	\
-	(((list) == NULL) ? NULL : ((struct Blt_ListStruct *)list)->tailPtr)
-#define Blt_ListPrevNode(node)	((node)->prevPtr)
-#define Blt_ListNextNode(node) 	((node)->nextPtr)
-#define Blt_ListGetKey(node)	\
-	(((node)->listPtr->type == BLT_STRING_KEYS) \
+#define Blt_List_GetLength(list) \
+	(((list) == NULL) ? 0 : ((struct _Blt_List *)list)->nNodes)
+#define Blt_List_FirstNode(list) \
+	(((list) == NULL) ? NULL : ((struct _Blt_List *)list)->head)
+#define Blt_List_LastNode(list)	\
+	(((list) == NULL) ? NULL : ((struct _Blt_List *)list)->tail)
+#define Blt_List_PrevNode(node)	((node)->prev)
+#define Blt_List_NextNode(node) 	((node)->next)
+#define Blt_List_GetKey(node)	\
+	(((node)->list->type == BLT_STRING_KEYS) \
 		 ? (node)->key.string : (node)->key.oneWordValue)
-#define Blt_ListGetValue(node)  	((node)->clientData)
-#define Blt_ListSetValue(node, value) \
+#define Blt_List_GetValue(node)  	((node)->clientData)
+#define Blt_List_SetValue(node, value) \
 	((node)->clientData = (ClientData)(value))
-#define Blt_ListAppendNode(list, node) \
-	(Blt_ListLinkBefore((list), (node), (Blt_ListNode)NULL))
-#define Blt_ListPrependNode(list, node) \
-	(Blt_ListLinkAfter((list), (node), (Blt_ListNode)NULL))
+#define Blt_List_AppendNode(list, node) \
+	(Blt_List_LinkBefore((list), (node), (Blt_ListNode)NULL))
+#define Blt_List_PrependNode(list, node) \
+	(Blt_List_LinkAfter((list), (node), (Blt_ListNode)NULL))
 
 #endif /* _BLT_LIST_H */

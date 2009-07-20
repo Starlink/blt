@@ -1,195 +1,276 @@
+
 /*
  * bltSwitch.c --
  *
- *	This module implements command/argument switch parsing 
- *	procedures for the BLT toolkit.
+ * This module implements command/argument switch parsing procedures for the
+ * BLT toolkit.
  *
- * Copyright 1991-1998 Lucent Technologies, Inc.
+ *	Copyright 1991-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltInt.h"
-#if defined(__STDC__)
 #include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
 
 #include "bltSwitch.h"
 
+static void
+DoHelp(Tcl_Interp *interp, Blt_SwitchSpec *specs)
+{
+    Tcl_DString ds;
+    Blt_SwitchSpec *sp;
+
+    Tcl_DStringInit(&ds);
+    Tcl_DStringAppend(&ds, "following switches are available:", -1);
+    for (sp = specs; sp->type != BLT_SWITCH_END; sp++) {
+	Tcl_DStringAppend(&ds, "\n    ", 4);
+	Tcl_DStringAppend(&ds, sp->switchName, -1);
+	Tcl_DStringAppend(&ds, " ", 1);
+	Tcl_DStringAppend(&ds, sp->help, -1);
+    }
+    Tcl_AppendResult(interp, Tcl_DStringValue(&ds), (char *)NULL);
+    Tcl_DStringFree(&ds);
+}
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * FindSwitchSpec --
  *
- *	Search through a table of configuration specs, looking for
- *	one that matches a given argvName.
+ *	Search through a table of configuration specs, looking for one that
+ *	matches a given argvName.
  *
  * Results:
- *	The return value is a pointer to the matching entry, or NULL
- *	if nothing matched.  In that case an error message is left
- *	in the interp's result.
+ *	The return value is a pointer to the matching entry, or NULL if
+ *	nothing matched.  In that case an error message is left in the
+ *	interp's result.
  *
  * Side effects:
  *	None.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Blt_SwitchSpec *
-FindSwitchSpec(interp, specs, name, needFlags, hateFlags)
-    Tcl_Interp *interp;		/* Used for reporting errors. */
-    Blt_SwitchSpec *specs;	/* Pointer to table of configuration
+FindSwitchSpec(
+    Tcl_Interp *interp,		/* Used for reporting errors. */
+    Blt_SwitchSpec *specs,	/* Pointer to table of configuration
 				 * specifications for a widget. */
-    char *name;			/* Name (suitable for use in a "switch"
-				 * command) identifying particular option. */
-    int needFlags;		/* Flags that must be present in matching
+    const char *name,		/* Name identifying a particular switch. */
+    int length,			/* Length of name. */
+    int needFlags,		/* Flags that must be present in matching
 				 * entry. */
-    int hateFlags;		/* Flags that must NOT be present in
-				 * matching entry. */
+    int hateFlags)		/* Flags that must NOT be present in matching
+				 * entry. */
 {
-    register Blt_SwitchSpec *specPtr;
-    register char c;		/* First character of current argument. */
+    Blt_SwitchSpec *sp;
+    char c;			/* First character of current argument. */
     Blt_SwitchSpec *matchPtr;	/* Matching spec, or NULL. */
-    size_t length;
 
     c = name[1];
-    length = strlen(name);
     matchPtr = NULL;
-    
-    for (specPtr = specs; specPtr->type != BLT_SWITCH_END; specPtr++) {
-	if (specPtr->switchName == NULL) {
+    for (sp = specs; sp->type != BLT_SWITCH_END; sp++) {
+	if (sp->switchName == NULL) {
 	    continue;
 	}
-	if ((specPtr->switchName[1] != c) 
-	    || (strncmp(specPtr->switchName, name, length) != 0)) {
+	if (((sp->flags & needFlags) != needFlags) || (sp->flags & hateFlags)) {
 	    continue;
 	}
-	if (((specPtr->flags & needFlags) != needFlags)
-	    || (specPtr->flags & hateFlags)) {
+	if ((sp->switchName[1] != c) || 
+	    (strncmp(sp->switchName, name, length) != 0)) {
 	    continue;
 	}
-	if (specPtr->switchName[length] == 0) {
-	    return specPtr;	/* Stop on a perfect match. */
+	if (sp->switchName[length] == '\0') {
+	    return sp;		/* Stop on a perfect match. */
 	}
 	if (matchPtr != NULL) {
-	    Tcl_AppendResult(interp, "ambiguous option \"", name, "\"", 
+	    Tcl_AppendResult(interp, "ambiguous switch \"", name, "\"\n", 
 		(char *) NULL);
-	    return (Blt_SwitchSpec *) NULL;
+	    DoHelp(interp, specs);
+	    return NULL;
 	}
-	matchPtr = specPtr;
+	matchPtr = sp;
     }
-
+    if (strcmp(name, "-help") == 0) {
+	DoHelp(interp, specs);
+	return NULL;
+    }
     if (matchPtr == NULL) {
-	Tcl_AppendResult(interp, "unknown option \"", name, "\"", (char *)NULL);
-	return (Blt_SwitchSpec *) NULL;
+	Tcl_AppendResult(interp, "unknown switch \"", name, "\"\n", 
+			 (char *)NULL);
+	DoHelp(interp, specs);
+	return NULL;
     }
     return matchPtr;
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DoSwitch --
  *
- *	This procedure applies a single configuration option
- *	to a widget record.
+ *	This procedure applies a single configuration switch to a widget
+ *	record.
  *
  * Results:
- *	A standard Tcl return value.
+ *	A standard TCL return value.
  *
  * Side effects:
- *	WidgRec is modified as indicated by specPtr and value.
- *	The old value is recycled, if that is appropriate for
- *	the value type.
+ *	WidgRec is modified as indicated by specPtr and value.  The old value
+ *	is recycled, if that is appropriate for the value type.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-DoSwitch(interp, specPtr, string, record)
-    Tcl_Interp *interp;		/* Interpreter for error reporting. */
-    Blt_SwitchSpec *specPtr;	/* Specifier to apply. */
-    char *string;		/* Value to use to fill in widgRec. */
-    ClientData record;		/* Record whose fields are to be
-				 * modified.  Values must be properly
-				 * initialized. */
+DoSwitch(
+    Tcl_Interp *interp,		/* Interpreter for error reporting. */
+    Blt_SwitchSpec *sp,		/* Specifier to apply. */
+    Tcl_Obj *objPtr,		/* Value to use to fill in widgRec. */
+    void *record)		/* Record whose fields are to be modified.
+				 * Values must be properly initialized. */
 {
-    char *ptr;
-    int isNull;
-    int count;
-
-    isNull = ((*string == '\0') && (specPtr->flags & BLT_SWITCH_NULL_OK));
     do {
-	ptr = (char *)record + specPtr->offset;
-	switch (specPtr->type) {
+	char *ptr;
+
+	ptr = (char *)record + sp->offset;
+	switch (sp->type) {
 	case BLT_SWITCH_BOOLEAN:
-	    if (Tcl_GetBoolean(interp, string, (int *)ptr) != TCL_OK) {
+	    {
+		int bool;
+
+		if (Tcl_GetBooleanFromObj(interp, objPtr, &bool) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		if (sp->mask > 0) {
+		    if (bool) {
+			*((int *)ptr) |= sp->mask;
+		    } else {
+			*((int *)ptr) &= ~sp->mask;
+		    }
+		} else {
+		    *((int *)ptr) = bool;
+		}
+	    }
+	    break;
+
+	case BLT_SWITCH_DOUBLE:
+	    if (Tcl_GetDoubleFromObj(interp, objPtr, (double *)ptr) != TCL_OK) {
 		return TCL_ERROR;
+	    }
+	    break;
+
+	case BLT_SWITCH_OBJ:
+	    *(Tcl_Obj **)ptr = objPtr;
+	    break;
+
+	case BLT_SWITCH_FLOAT:
+	    {
+		double value;
+
+		if (Tcl_GetDoubleFromObj(interp, objPtr, &value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(float *)ptr = (float)value;
 	    }
 	    break;
 
 	case BLT_SWITCH_INT:
-	    if (Tcl_GetInt(interp, string, (int *)ptr) != TCL_OK) {
+	    if (Tcl_GetIntFromObj(interp, objPtr, (int *)ptr) != TCL_OK) {
 		return TCL_ERROR;
 	    }
 	    break;
 
-	case BLT_SWITCH_INT_NONNEGATIVE:
-	    if (Tcl_GetInt(interp, string, &count) != TCL_OK) {
-		return TCL_ERROR;
+	case BLT_SWITCH_INT_NNEG:
+	    {
+		long value;
+		
+		if (Blt_GetCountFromObj(interp, objPtr, COUNT_NNEG, 
+			&value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = (int)value;
 	    }
-	    if (count < 0) {
-		Tcl_AppendResult(interp, "bad value \"", string, "\": ",
-				 "can't be negative", (char *)NULL);
-		return TCL_ERROR;
-	    }
-	    *((int *)ptr) = count;
 	    break;
 
-	case BLT_SWITCH_INT_POSITIVE:
-	    if (Tcl_GetInt(interp, string, &count) != TCL_OK) {
-		return TCL_ERROR;
+	case BLT_SWITCH_INT_POS:
+	    {
+		long value;
+		
+		if (Blt_GetCountFromObj(interp, objPtr, COUNT_POS, 
+			&value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = (int)value;
 	    }
-	    if (count <= 0) {
-		Tcl_AppendResult(interp, "bad value \"", string, "\": ",
-			"must be positive", (char *)NULL);
-		return TCL_ERROR;
-	    }
-	    *((int *)ptr) = count;
 	    break;
 
-	case BLT_SWITCH_DOUBLE:
-	    if (Tcl_GetDouble(interp, string, (double *)ptr) != TCL_OK) {
+	case BLT_SWITCH_LIST:
+	    {
+		int argc;
+
+		if (Tcl_SplitList(interp, Tcl_GetString(objPtr), &argc, 
+				  (const char ***)ptr) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+	    }
+	    break;
+
+	case BLT_SWITCH_LONG:
+	    if (Tcl_GetLongFromObj(interp, objPtr, (long *)ptr) != TCL_OK) {
 		return TCL_ERROR;
+	    }
+	    break;
+
+	case BLT_SWITCH_LONG_NNEG:
+	    {
+		long value;
+		
+		if (Blt_GetCountFromObj(interp, objPtr, COUNT_NNEG, 
+			&value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(long *)ptr = value;
+	    }
+	    break;
+
+	case BLT_SWITCH_LONG_POS:
+	    {
+		long value;
+		
+		if (Blt_GetCountFromObj(interp, objPtr, COUNT_POS, &value)
+			!= TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(long *)ptr = value;
 	    }
 	    break;
 
 	case BLT_SWITCH_STRING: 
 	    {
 		char *old, *new, **strPtr;
-		
+		char *string;
+
+		string = Tcl_GetString(objPtr);
 		strPtr = (char **)ptr;
-		if (isNull) {
-		    new = NULL;
-		} else {
-		    new = Blt_Strdup(string);
-		}
+		new = ((*string == '\0') && (sp->flags & BLT_SWITCH_NULL_OK))
+		    ? NULL : Blt_AssertStrdup(string);
 		old = *strPtr;
 		if (old != NULL) {
 		    Blt_Free(old);
@@ -198,75 +279,62 @@ DoSwitch(interp, specPtr, string, record)
 	    }
 	    break;
 
-	case BLT_SWITCH_LIST:
-	    if (Tcl_SplitList(interp, string, &count, (char ***)ptr) 
-		!= TCL_OK) {
-		return TCL_ERROR;
-	    }
-	    break;
-
 	case BLT_SWITCH_CUSTOM:
-	    if ((*specPtr->customPtr->parseProc) \
-		(specPtr->customPtr->clientData, interp, specPtr->switchName,
-			string, record, specPtr->offset) != TCL_OK) {
+	    assert(sp->customPtr != NULL);
+	    if ((*sp->customPtr->parseProc)(sp->customPtr->clientData, interp,
+		sp->switchName, objPtr, (char *)record, sp->offset, sp->flags) 
+		!= TCL_OK) {
 		return TCL_ERROR;
 	    }
 	    break;
 
 	default: 
 	    Tcl_AppendResult(interp, "bad switch table: unknown type \"",
-		 Blt_Itoa(specPtr->type), "\"", (char *)NULL);
+		 Blt_Itoa(sp->type), "\"", (char *)NULL);
 	    return TCL_ERROR;
 	}
-	specPtr++;
-    } while ((specPtr->switchName == NULL) && 
-	     (specPtr->type != BLT_SWITCH_END));
+	sp++;
+    } while ((sp->switchName == NULL) && (sp->type != BLT_SWITCH_END));
     return TCL_OK;
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Blt_ProcessSwitches --
+ * Blt_ParseSwitches --
  *
- *	Process command-line options and database options to
- *	fill in fields of a widget record with resources and
- *	other parameters.
+ *	Process command-line switches to fill in fields of a record with
+ *	resources and other parameters.
  *
  * Results:
- *	Returns the number of arguments comsumed by parsing the
- *	command line.  If an error occurred, -1 will be returned
- *	and an error messages can be found as the interpreter
- *	result.
+ *	Returns the number of arguments comsumed by parsing the command line.
+ *	If an error occurred, -1 will be returned and an error messages can be
+ *	found as the interpreter result.
  *
  * Side effects:
- *	The fields of widgRec get filled in with information
- *	from argc/argv and the option database.  Old information
- *	in widgRec's fields gets recycled.
+ *	The fields of widgRec get filled in with information from argc/argv.
+ *	Old information in widgRec's fields gets recycled.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_ProcessSwitches(interp, specs, argc, argv, record, flags)
-    Tcl_Interp *interp;		/* Interpreter for error reporting. */
-    Blt_SwitchSpec *specs;	/* Describes legal options. */
-    int argc;			/* Number of elements in argv. */
-    char **argv;		/* Command-line options. */
-    char *record;		/* Record whose fields are to be
-				 * modified.  Values must be properly
-				 * initialized. */
-    int flags;			/* Used to specify additional flags
-				 * that must be present in switch specs
-				 * for them to be considered.  Also,
-				 * may have BLT_SWITCH_ARGV_ONLY set. */
+Blt_ParseSwitches(
+    Tcl_Interp *interp,		/* Interpreter for error reporting. */
+    Blt_SwitchSpec *specs,	/* Describes legal switches. */
+    int objc,			/* Number of elements in argv. */
+    Tcl_Obj *const *objv,	/* Command-line switches. */
+    void *record,		/* Record whose fields are to be modified.
+				 * Values must be properly initialized. */
+    int flags)			/* Used to specify additional flags that must
+				 * be present in switch specs for them to be
+				 * considered.  */
 {
-    register int count;
-    char *arg;
-    register Blt_SwitchSpec *specPtr;
-    int needFlags;		/* Specs must contain this set of flags
-				 * or else they are not considered. */
-    int hateFlags;		/* If a spec contains any bits here, it's
-				 * not considered. */
+    Blt_SwitchSpec *sp;
+    int count;
+    int needFlags;		/* Specs must contain this set of flags or
+				 * else they are not considered. */
+    int hateFlags;		/* If a spec contains any bits here, it's not
+				 * considered. */
 
     needFlags = flags & ~(BLT_SWITCH_USER_BIT - 1);
     hateFlags = 0;
@@ -275,114 +343,8 @@ Blt_ProcessSwitches(interp, specs, argc, argv, record, flags)
      * Pass 1:  Clear the change flags on all the specs so that we 
      *          can check it later.
      */
-    for (specPtr = specs; specPtr->type != BLT_SWITCH_END; specPtr++) {
-	specPtr->flags &= ~BLT_SWITCH_SPECIFIED;
-    }
-    /*
-     * Pass 2:  Process the arguments that match entries in the specs.
-     *		It's an error if the argument doesn't match anything.
-     */
-    for (count = 0; count < argc; count++) {
-	arg = argv[count];
-	if (flags & BLT_SWITCH_OBJV_PARTIAL) {
-	    if ((arg[0] != '-') || ((arg[1] == '-') && (argv[2] == '\0'))) {
-		/* 
-		 * If the argument doesn't start with a '-' (not a switch)
-		 * or is '--', stop processing and return the number of
-		 * arguments comsumed. 
-		 */
-		return count;
-	    }
-	}
-	specPtr = FindSwitchSpec(interp, specs, arg, needFlags, hateFlags);
-	if (specPtr == NULL) {
-	    return -1;
-	}
-	if (specPtr->type == BLT_SWITCH_FLAG) {
-	    char *ptr;
-	    
-	    ptr = record + specPtr->offset;
-	    *((int *)ptr) |= specPtr->value;
-	} else if (specPtr->type == BLT_SWITCH_VALUE) {
-	    char *ptr;
-	    
-	    ptr = record + specPtr->offset;
-	    *((int *)ptr) = specPtr->value;
-	} else {
-	    if ((count + 1) == argc) {
-		Tcl_AppendResult(interp, "value for \"", arg, "\" missing", 
-			(char *) NULL);
-		return -1;
-	    }
-	    count++;
-	    if (DoSwitch(interp, specPtr, argv[count], record) != TCL_OK) {
-		char msg[100];
-
-		sprintf(msg, "\n    (processing \"%.40s\" option)", 
-			specPtr->switchName);
-		Tcl_AddErrorInfo(interp, msg);
-		return -1;
-	    }
-	}
-	specPtr->flags |= BLT_SWITCH_SPECIFIED;
-    }
-    return count;
-}
-
-#if (TCL_VERSION_NUMBER >= _VERSION(8,0,0)) 
-
-/*
- *--------------------------------------------------------------
- *
- * Blt_ProcessObjSwitches --
- *
- *	Process command-line options and database options to
- *	fill in fields of a widget record with resources and
- *	other parameters.
- *
- * Results:
- *	Returns the number of arguments comsumed by parsing the
- *	command line.  If an error occurred, -1 will be returned
- *	and an error messages can be found as the interpreter
- *	result.
- *
- * Side effects:
- *	The fields of widgRec get filled in with information
- *	from argc/argv and the option database.  Old information
- *	in widgRec's fields gets recycled.
- *
- *--------------------------------------------------------------
- */
-int
-Blt_ProcessObjSwitches(interp, specs, objc, objv, record, flags)
-    Tcl_Interp *interp;		/* Interpreter for error reporting. */
-    Blt_SwitchSpec *specs;	/* Describes legal options. */
-    int objc;			/* Number of elements in argv. */
-    Tcl_Obj *CONST *objv;	/* Command-line options. */
-    char *record;		/* Record whose fields are to be
-				 * modified.  Values must be properly
-				 * initialized. */
-    int flags;			/* Used to specify additional flags
-				 * that must be present in switch specs
-				 * for them to be considered.  Also,
-				 * may have BLT_SWITCH_ARGV_ONLY set. */
-{
-    register Blt_SwitchSpec *specPtr;
-    register int count;
-    int needFlags;		/* Specs must contain this set of flags
-				 * or else they are not considered. */
-    int hateFlags;		/* If a spec contains any bits here, it's
-				 * not considered. */
-
-    needFlags = flags & ~(BLT_SWITCH_USER_BIT - 1);
-    hateFlags = 0;
-
-    /*
-     * Pass 1:  Clear the change flags on all the specs so that we 
-     *          can check it later.
-     */
-    for (specPtr = specs; specPtr->type != BLT_SWITCH_END; specPtr++) {
-	specPtr->flags &= ~BLT_SWITCH_SPECIFIED;
+    for (sp = specs; sp->type != BLT_SWITCH_END; sp++) {
+	sp->flags &= ~BLT_SWITCH_SPECIFIED;
     }
     /*
      * Pass 2:  Process the arguments that match entries in the specs.
@@ -390,32 +352,41 @@ Blt_ProcessObjSwitches(interp, specs, objc, objv, record, flags)
      */
     for (count = 0; count < objc; count++) {
 	char *arg;
+	int length;
 
-	arg = Tcl_GetString(objv[count]);
+	arg = Tcl_GetStringFromObj(objv[count], &length);
 	if (flags & BLT_SWITCH_OBJV_PARTIAL) {
-	    if ((arg[0] != '-') || ((arg[1] == '-') && (arg[2] == '\0'))) {
-		/* 
-		 * If the argument doesn't start with a '-' (not a switch)
-		 * or is '--', stop processing and return the number of
-		 * arguments comsumed. 
-		 */
+	    /* 
+	     * If the argument doesn't start with a '-' (not a switch) or is
+	     * '--', stop processing and return the number of arguments
+	     * comsumed.
+	     */
+	    if (arg[0] != '-') {
 		return count;
 	    }
+	    if ((arg[1] == '-') && (arg[2] == '\0')) {
+		return count + 1; /* include the "--" in the count. */
+	    }
 	}
-	specPtr = FindSwitchSpec(interp, specs, arg, needFlags, hateFlags);
-	if (specPtr == NULL) {
+	sp = FindSwitchSpec(interp, specs, arg, length, needFlags, hateFlags);
+	if (sp == NULL) {
 	    return -1;
 	}
-	if (specPtr->type == BLT_SWITCH_FLAG) {
+	if (sp->type == BLT_SWITCH_BITMASK) {
+	    char *ptr;
+
+	    ptr = (char *)record + sp->offset;
+	    *((int *)ptr) |= sp->mask;
+	} else if (sp->type == BLT_SWITCH_BITMASK_NEG) {
 	    char *ptr;
 	    
-	    ptr = record + specPtr->offset;
-	    *((int *)ptr) |= specPtr->value;
-	} else if (specPtr->type == BLT_SWITCH_VALUE) {
+	    ptr = (char *)record + sp->offset;
+	    *((int *)ptr) &= ~sp->mask;
+	} else if (sp->type == BLT_SWITCH_VALUE) {
 	    char *ptr;
 	    
-	    ptr = record + specPtr->offset;
-	    *((int *)ptr) = specPtr->value;
+	    ptr = (char *)record + sp->offset;
+	    *((int *)ptr) = sp->mask;
 	} else {
 	    count++;
 	    if (count == objc) {
@@ -423,53 +394,50 @@ Blt_ProcessObjSwitches(interp, specs, objc, objv, record, flags)
 				 (char *) NULL);
 		return -1;
 	    }
-	    arg = Tcl_GetString(objv[count]);
-	    if (DoSwitch(interp, specPtr, arg, record) != TCL_OK) {
-		char msg[100];
+	    if (DoSwitch(interp, sp, objv[count], record) != TCL_OK) {
+		char msg[200];
 
-		sprintf(msg, "\n    (processing \"%.40s\" option)", 
-			specPtr->switchName);
+		sprintf_s(msg, 200, "\n    (processing \"%.40s\" switch)", 
+			sp->switchName);
 		Tcl_AddErrorInfo(interp, msg);
 		return -1;
 	    }
 	}
-	specPtr->flags |= BLT_SWITCH_SPECIFIED;
+	sp->flags |= BLT_SWITCH_SPECIFIED;
     }
     return count;
 }
-#endif
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_FreeSwitches --
  *
- *	Free up all resources associated with switch options.
+ *	Free up all resources associated with switches.
  *
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-
 /* ARGSUSED */
 void
-Blt_FreeSwitches(specs, record, needFlags)
-    Blt_SwitchSpec *specs;	/* Describes legal options. */
-    char *record;		/* Record whose fields contain current
-				 * values for options. */
-    int needFlags;		/* Used to specify additional flags
-				 * that must be present in config specs
-				 * for them to be considered. */
+Blt_FreeSwitches(
+    Blt_SwitchSpec *specs,	/* Describes legal switches. */
+    void *record,		/* Record whose fields contain current values
+				 * for switches. */
+    int needFlags)		/* Used to specify additional flags that must
+				 * be present in config specs for them to be
+				 * considered. */
 {
-    register Blt_SwitchSpec *specPtr;
+    Blt_SwitchSpec *sp;
 
-    for (specPtr = specs; specPtr->type != BLT_SWITCH_END; specPtr++) {
-	if ((specPtr->flags & needFlags) == needFlags) {
+    for (sp = specs; sp->type != BLT_SWITCH_END; sp++) {
+	if ((sp->flags & needFlags) == needFlags) {
 	    char *ptr;
 
-	    ptr = record + specPtr->offset;
-	    switch (specPtr->type) {
+	    ptr = (char *)record + sp->offset;
+	    switch (sp->type) {
 	    case BLT_SWITCH_STRING:
 	    case BLT_SWITCH_LIST:
 		if (*((char **) ptr) != NULL) {
@@ -479,10 +447,11 @@ Blt_FreeSwitches(specs, record, needFlags)
 		break;
 
 	    case BLT_SWITCH_CUSTOM:
+		assert(sp->customPtr != NULL);
 		if ((*(char **)ptr != NULL) && 
-		    (specPtr->customPtr->freeProc != NULL)) {
-		    (*specPtr->customPtr->freeProc)(*(char **)ptr);
-		    *((char **) ptr) = NULL;
+		    (sp->customPtr->freeProc != NULL)) {
+		    (*sp->customPtr->freeProc)((char *)record, sp->offset, 
+			sp->flags);
 		}
 		break;
 
@@ -493,34 +462,33 @@ Blt_FreeSwitches(specs, record, needFlags)
     }
 }
 
-
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_SwitchModified --
  *
- *      Given the configuration specifications and one or more option
- *	patterns (terminated by a NULL), indicate if any of the matching
- *	configuration options has been reset.
+ *      Given the configuration specifications and one or more switch patterns
+ *      (terminated by a NULL), indicate if any of the matching switches has
+ *      been reset.
  *
  * Results:
- *      Returns 1 if one of the options has changed, 0 otherwise.
+ *      Returns 1 if one of the switches have changed, 0 otherwise.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-int Blt_SwitchChanged
-TCL_VARARGS_DEF(Blt_SwitchSpec *, arg1)
+int 
+Blt_SwitchChanged TCL_VARARGS_DEF(Blt_SwitchSpec *, arg1)
 {
     va_list argList;
     Blt_SwitchSpec *specs;
-    register Blt_SwitchSpec *specPtr;
-    register char *switchName;
+    Blt_SwitchSpec *sp;
+    char *switchName;
 
     specs = TCL_VARARGS_START(Blt_SwitchSpec *, arg1, argList);
     while ((switchName = va_arg(argList, char *)) != NULL) {
-	for (specPtr = specs; specPtr->type != BLT_SWITCH_END; specPtr++) {
-	    if ((Tcl_StringMatch(specPtr->switchName, switchName)) &&
-		(specPtr->flags & BLT_SWITCH_SPECIFIED)) {
+	for (sp = specs; sp->type != BLT_SWITCH_END; sp++) {
+	    if ((Tcl_StringMatch(sp->switchName, switchName)) &&
+		(sp->flags & BLT_SWITCH_SPECIFIED)) {
 		va_end(argList);
 		return 1;
 	    }
@@ -529,3 +497,38 @@ TCL_VARARGS_DEF(Blt_SwitchSpec *, arg1)
     va_end(argList);
     return 0;
 }
+
+int 
+Blt_ExprDoubleFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, double *valuePtr)
+{
+    /* First try to extract the value as a double precision number. */
+    if (Tcl_GetDoubleFromObj((Tcl_Interp *)NULL, objPtr, valuePtr) == TCL_OK) {
+	return TCL_OK;
+    }
+    /* Then try to parse it as an expression. */
+    if (Tcl_ExprDouble(interp, Tcl_GetString(objPtr), valuePtr) == TCL_OK) {
+	return TCL_OK;
+    }
+    return TCL_ERROR;
+}
+
+int 
+Blt_ExprIntFromObj(
+    Tcl_Interp *interp, 
+    Tcl_Obj *objPtr, 
+    int *valuePtr)
+{
+    long lvalue;
+
+    /* First try to extract the value as a simple integer. */
+    if (Tcl_GetIntFromObj((Tcl_Interp *)NULL, objPtr, valuePtr) == TCL_OK) {
+	return TCL_OK;
+    }
+    /* Otherwise try to parse it as an expression. */
+    if (Tcl_ExprLong(interp, Tcl_GetString(objPtr), &lvalue) == TCL_OK) {
+	*valuePtr = lvalue;
+	return TCL_OK;
+    }
+    return TCL_ERROR;
+}
+
