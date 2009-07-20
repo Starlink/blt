@@ -343,6 +343,191 @@ WarpToOp(Tk_Window tkMain, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     return QueryOp(tkMain, interp, 0, (Tcl_Obj **)NULL);
 }
 
+/* ----------------------------------------------------------------  */
+/* PWD: need the snap command back -- picture version not completed. */
+/* ----------------------------------------------------------------  */
+
+#include <X11/Xutil.h>
+#include <X11/Xproto.h>
+#define PIXELS_POSITIVE         1
+
+static int
+XGeometryErrorProc(clientData, errEventPtr)
+    ClientData clientData;
+    XErrorEvent *errEventPtr;
+{
+    int *errorPtr = clientData;
+
+    *errorPtr = TCL_ERROR;
+    return 0;
+}
+
+static int
+GetWindowSize(interp, window, widthPtr, heightPtr)
+    Tcl_Interp *interp;
+    Window window;
+    int *widthPtr, *heightPtr;
+{
+    int result;
+    int any = -1;
+    int x, y, borderWidth, depth;
+    Window root;
+    Tk_ErrorHandler handler;
+    Tk_Window tkwin;
+    
+    tkwin = Tk_MainWindow(interp);
+    handler = Tk_CreateErrorHandler(Tk_Display(tkwin), any, X_GetGeometry, 
+	    any, XGeometryErrorProc, &result);
+    result = XGetGeometry(Tk_Display(tkwin), window, &root, &x, &y, 
+	  (unsigned int *)widthPtr, (unsigned int *)heightPtr,
+	  (unsigned int *)&borderWidth, (unsigned int *)&depth);
+    Tk_DeleteErrorHandler(handler);
+    XSync(Tk_Display(tkwin), False);
+    if (result) {
+	return TCL_OK;
+    }
+    return TCL_ERROR;
+}
+
+Window
+Blt_GetParent(display, window)
+    Display *display;
+    Window window;
+{
+    Window root, parent;
+    Window *dummy;
+    unsigned int count;
+
+    if (XQueryTree(display, window, &root, &parent, &dummy, &count) > 0) {
+        XFree(dummy);
+        return parent;
+    }
+    return None;
+}
+
+static Window
+GetWindowId(tkwin)
+    Tk_Window tkwin;
+{
+    Window window;
+
+    Tk_MakeWindowExist(tkwin);
+    window = Tk_WindowId(tkwin);
+    if (Tk_IsTopLevel(tkwin)) {
+        Window parent;
+
+        parent = Blt_GetParent(Tk_Display(tkwin), window);
+        if (parent != None) {
+            window = parent;
+        }
+        window = parent;
+    }
+    return window;
+}
+
+static Window
+Blt_GetRealWindowId(tkwin)
+    Tk_Window tkwin;
+{
+    return GetWindowId(tkwin);
+}
+
+static int
+GetRealizedWindow(interp, string, tkwinPtr)
+    Tcl_Interp *interp;
+    char *string;
+    Tk_Window *tkwinPtr;
+{
+    Tk_Window tkwin;
+
+    tkwin = Tk_NameToWindow(interp, string, Tk_MainWindow(interp));
+    if (tkwin == NULL) {
+	return TCL_ERROR;
+    }
+    if (Tk_WindowId(tkwin) == None) {
+	Tk_MakeWindowExist(tkwin);
+    }
+    *tkwinPtr = tkwin;
+    return TCL_OK;
+}
+
+static Window
+StringToWindow(interp, string)
+    Tcl_Interp *interp;
+    char *string;
+{
+    int xid;
+
+    if (string[0] == '.') {
+	Tk_Window tkwin;
+
+	if (GetRealizedWindow(interp, string, &tkwin) != TCL_OK) {
+	    return None;
+	}
+	if (Tk_IsTopLevel(tkwin)) {
+	    return Blt_GetRealWindowId(tkwin);
+	} else {
+	    return Tk_WindowId(tkwin);
+	}
+    } else if (Tcl_GetInt(interp, string, &xid) == TCL_OK) {
+	return (Window)xid;
+    }
+    return None;
+}
+
+/*
+ * --------------------------------------------------------------------------
+ *
+ * SnapOp --
+ *
+ *      Snaps a picture of a window and stores it in a designated
+ *      photo image.  The window must be completely visible or
+ *      the snap will fail.
+ *
+ * Results:
+ *      Returns a standard Tcl result.  interp->result contains
+ *      the list of the graph coordinates. If an error occurred
+ *      while parsing the window positions, TCL_ERROR is returned,
+ *      then interp->result will contain an error message.
+ *
+ * -------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+SnapOp(Tk_Window tkMain, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+{
+    Tk_Window tkwin;
+    int width, height, destWidth, destHeight;
+    Window window;
+
+    tkwin = Tk_MainWindow(interp);
+    window = StringToWindow(interp, Tcl_GetString( objv[2] ) );
+    if (window == None) {
+        return TCL_ERROR;
+    }
+    if (GetWindowSize(interp, window, &width, &height) != TCL_OK) {
+        Tcl_AppendResult(interp, "can't get window geometry of \"", 
+                         Tcl_GetString(objv[2]),
+                         "\"", (char *)NULL);
+        return TCL_ERROR;
+    }
+    destWidth = width, destHeight = height;
+    if ((objc > 4) && (Blt_GetPixels(interp, tkwin, Tcl_GetString(objv[4]), PIXELS_POSITIVE,
+                                      &destWidth) != TCL_OK)) {
+        return TCL_ERROR;
+    }
+    if ((objc > 5) && (Blt_GetPixels(interp, tkwin, Tcl_GetString(objv[5]), PIXELS_POSITIVE,
+                                     &destHeight) != TCL_OK)) {
+        return TCL_ERROR;
+    }
+    return Blt_SnapPhoto(interp, tkwin, window, 0, 0, width, height, destWidth,
+                         destHeight, Tcl_GetString(objv[3]), GAMMA);
+}
+
+/* ----------------------------------------------------------------  */
+/* PWD: end of need the snap command back                            */
+/* ----------------------------------------------------------------  */
+
 static Blt_OpSpec winOps[] =
 {
     {"changes", 1, ChangesOp, 3, 3, "window",},
@@ -351,6 +536,7 @@ static Blt_OpSpec winOps[] =
     {"move",    2, MoveOp,    5, 5, "window x y",},
     {"query",   1, QueryOp,   2, 2, "",},
     {"raise",   1, RaiseOp,   2, 0, "window ?window?...",},
+    {"snap",    1, SnapOp,    4, 6, "window photoName ?width height?",},
     {"tree",    1, TreeOp,    3, 3, "window",},
     {"unmap",   1, UnmapOp,   2, 0, "window ?window?...",},
     {"warpto",  1, WarpToOp,  2, 5, "?window?",},
@@ -384,5 +570,7 @@ Blt_WinopCmdInitProc(Tcl_Interp *interp)
 
     return Blt_InitCmd(interp, "::blt", &cmdSpec);
 }
+
+
 
 #endif /* NO_WINOP */

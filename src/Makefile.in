@@ -332,6 +332,7 @@ BLT_X_SO_OBJS =		$(GRAPH_OBJS) \
 			bltUnixWindow.o \
 			bltWindow.o \
 			bltWinop.o  \
+			bltWinPrnt.o \
 			bltExtInit.o \
 			$(TK_OBJS) $(N_OBJS) 
 
