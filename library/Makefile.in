@@ -2,13 +2,18 @@
 # 	Makefile for library files and directories of BLT library
 # ------------------------------------------------------------------------
 
-prefix       = @prefix@
+datadir =	@datadir@
+datarootdir = 	@datarootdir@
 exec_prefix  = @exec_prefix@
-version      = @BLT_VERSION@
-lib_prefix    = @BLT_LIB_PREFIX@
-srcdir       = @srcdir@
 libdir       = @libdir@
-scriptdir    = @BLT_LIBRARY@
+prefix =	@prefix@
+srcdir =	@srcdir@
+
+version =	@BLT_VERSION@
+so_prefix =	@BLT_SO_PREFIX@
+so_ext =	@BLT_SO_EXT@
+lib_suffix =	@BLT_LIB_SUFFIX@
+pkgdir =	@BLT_LIBRARY@
 
 INSTALL      = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
@@ -19,13 +24,24 @@ SHELL        = /bin/sh
 cursors = 	treeview.xbm \
 		treeview_m.xbm
 
+WIN32 = 	@WIN32@
+ifneq ("$(WIN32)", "")
+cursors += 	treeview.cur
+endif
+
 miscFiles     = \
 		bltCanvEps.pro \
 		bltGraph.pro \
+		combobutton.tcl \
+		comboentry.tcl \
+		combomenu.tcl \
+		combotree.tcl \
 		dnd.tcl \
 		dragdrop.tcl \
 		graph.tcl \
 		hierbox.tcl \
+		scrollbar.tcl \
+		scrollset.tcl \
 		tabnotebook.tcl \
 		tabset.tcl \
 		treeview.tcl \
@@ -39,26 +55,28 @@ ddFiles      =  dd-color.tcl \
 		tclIndex
 
 instdirs     =  $(prefix) $(exec_prefix) \
-		$(libdir) $(prefix)/lib $(scriptdir) $(scriptdir)/dd_protocols
+		$(libdir) $(prefix)/lib $(pkgdir) $(pkgdir)/dd_protocols
 
 all: pkgIndex
 
 pkgIndex: 
 	rm -f pkgIndex.tcl
 	sed -e 's/%VERSION%/$(version)/' $(srcdir)/pkgIndex.tcl.in | \
-	sed -e 's/%LIB_PREFIX%/$(lib_prefix)/' | \
+	sed -e 's/%SO_PREFIX%/$(so_prefix)/' | \
+	sed -e 's/%LIB_SUFFIX%/$(lib_suffix)/' | \
+	sed -e 's/%SO_EXT%/$(so_ext)/' | \
 	sed -e 's;%LIB_DIR%;$(libdir);' > pkgIndex.tcl
 
 
 install: mkdirs pkgIndex
 	for i in $(ddFiles) ; do \
 	    $(INSTALL_DATA) $(srcdir)/dd_protocols/$$i \
-			$(INSTALL_ROOT)$(scriptdir)/dd_protocols ; \
+			$(INSTALL_ROOT)$(pkgdir)/dd_protocols ; \
 	done 
 	for i in $(miscFiles) ; do \
-	    $(INSTALL_DATA) $(srcdir)/$$i $(INSTALL_ROOT)$(scriptdir) ; \
+	    $(INSTALL_DATA) $(srcdir)/$$i $(INSTALL_ROOT)$(pkgdir) ; \
 	done 
-	$(INSTALL_DATA) pkgIndex.tcl $(INSTALL_ROOT)$(scriptdir)
+	$(INSTALL_DATA) pkgIndex.tcl $(pkgdir)
 
 mkdirs:
 	@for i in $(instdirs) ; do \

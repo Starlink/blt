@@ -1,46 +1,22 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
-#bltdebug 100
+#blt::bltdebug 100
 
 source scripts/stipples.tcl
 
-tabset .t \
-    -samewidth yes \
+blt::tabset .t \
+    -tabwidth same \
     -side left \
     -textside bottom \
     -textside top \
-    -bg red \
     -tiers 1 \
     -scrollincrement 10 \
     -scrollcommand { .s set } \
     -rotate 0 \
-    -selectcommand {  MakePhoto %W %n } 
-
+    -selectcommand {  MakePicture .t }  \
+-width 500 -height 500
 
 scrollbar .s -command { .t view } -orient horizontal
  
@@ -49,59 +25,64 @@ option add *Tabset.Tab.font -*-helvetica-bold-r-*-*-10-*-*-*-*-*-*-*
 
 set files [glob ./images/*.gif]
 set files [lsort $files]
-#set vertFilter sinc
-#set horzFilter sinc
-set vertFilter none
-set horzFilter none
+set vertFilter sinc
+set horzFilter sinc
+#set vertFilter none
+#set horzFilter none
 
 
-proc ResizePhoto { src dest maxSize } {
+proc ResizePicture { src dest maxSize } {
+    puts stderr "maxSize=$maxSize"
     set maxSize [winfo fpixels . $maxSize]
     set w [image width $src]
     set h [image height $src]
+    puts stderr "width=$w, height=$h"
     set sw [expr double($maxSize) / $w]
     set sh [expr double($maxSize) / $h]
+    puts stderr "sw=$sw,sh=$sh"
     set s [expr min($sw, $sh)]
     set w [expr round($s * $w)]
     set h [expr round($s * $h)]
+    puts stderr "[$src configure]"
     $dest configure -width $w -height $h
     
     global horzFilter vertFilter
-    winop resample $src $dest $horzFilter $vertFilter
+    $dest resize $src -filter $horzFilter 
 }
 
-image create photo src
-image create photo dest
+image create picture src
+image create picture dest
 
-label .t.label -image dest -bg purple
+label .t.label -image dest  -width 500 -height 500
 
-proc MakePhoto { w name } {
-    set file ./images/$name.gif
-    src configure -file $file
+proc MakePicture { w index } {
+    set file [$w tab cget $index -text]
+    src configure -file ./images/$file.gif
 
-    set width [$w tab pagewidth]
-    set height [$w tab pageheight]
+    set width [$w cget -pagewidth]
+    set height [$w cget -pageheight]
+    puts stderr "pagewidth=$width, pageheight=$height"
     if { $width < $height } {
-	ResizePhoto src dest $width
+	ResizePicture src dest $width
     } else {
-	ResizePhoto src dest $height
+	ResizePicture src dest $height
     }
-    .t tab dockall
-    .t tab configure $name -window .t.label -padx 4m -pady 4m -fill both
+    .t dockall
+    .t tab configure $index -window .t.label -padx 4m -pady 4m -fill both
 }
 
-table . \
+blt::table . \
     .t 0,0 -fill both \
     .s 1,0 -fill x 
 
-table configure . r1 -resize none
+blt::table configure . r1 -resize none 
 focus .t
 
 foreach f $files {
     src configure -file $f
     set f [file tail [file root $f]]
-    set thumb [image create photo]
-    ResizePhoto src $thumb 0.5i
+    set thumb [image create picture]
+    ResizePicture src $thumb .5i
     .t insert end $f -image $thumb -fill both
 }
 

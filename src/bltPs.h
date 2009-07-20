@@ -1,154 +1,205 @@
+
 /*
  * bltPs.h --
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_PS_H
 #define _BLT_PS_H
 
-#include "bltImage.h"
+#include "bltPicture.h"
 
-typedef enum {
-    PS_MODE_MONOCHROME,
-    PS_MODE_GREYSCALE,
-    PS_MODE_COLOR
-} PsColorMode;
+/*
+ * PageSetup --
+ *
+ * 	Structure contains information specific to the layout of the page for
+ * 	printing the graph.
+ *
+ */
+typedef struct  {
+    /* User configurable fields */
 
-typedef struct PsTokenStruct *PsToken;
+    int reqWidth, reqHeight;	/* If greater than zero, represents the
+				 * requested dimensions of the printed graph */
+    int reqPaperWidth;
+    int reqPaperHeight;		/* Requested dimensions for the PostScript
+				 * page. Can constrain the size of the graph
+				 * if the graph (plus padding) is larger than
+				 * the size of the page. */
+    Blt_Pad xPad, yPad;		/* Requested padding on the exterior of the
+				 * graph. This forms the bounding box for
+				 * the page. */
+    const char *colorVarName;	/* If non-NULL, is the name of a TCL array
+				 * variable containing X to output device color
+				 * translations */
+    const char *fontVarName;	/* If non-NULL, is the name of a TCL array
+				 * variable containing X to output device font
+				 * translations */
+    int level;			/* PostScript Language level 1-3 */
+    unsigned int flags;
 
-struct PsTokenStruct {
-    Tcl_Interp *interp;		/* Interpreter to report errors to. */
+    const char **comments;	/* User supplied comments to be added. */
 
-    Tk_Window tkwin;		/* Tk_Window used to get font and color
-				 * information */
+    /* Computed fields */
 
-    Tcl_DString dString;	/* Dynamic string used to contain the
-				 * PostScript generated. */
+    short int left, bottom;	/* Bounding box of the plot in the page. */
+    short int right, top;
 
-    char *fontVarName;		/* Name of a Tcl array variable to convert
-				 * X font names to PostScript fonts. */
+    float scale;		/* Scale of page. Set if "-maxpect" option
+				 * is set, otherwise 1.0. */
 
-    char *colorVarName;		/* Name of a Tcl array variable to convert
-				 * X color names to PostScript. */
+    int paperHeight;
+    int paperWidth;
 
-    PsColorMode colorMode;	/* Mode: color or greyscale */
+} PageSetup;
 
-#define PSTOKEN_BUFSIZ	((BUFSIZ*2)-1)
-    /*
-     * Utility space for building strings.  Currently used to create
-     * PostScript output for the "postscript" command.
-     */
-    char scratchArr[PSTOKEN_BUFSIZ+1];
-};
+#define PS_GREYSCALE	(1<<0)
+#define PS_LANDSCAPE	(1<<2)
+#define PS_CENTER	(1<<3)
+#define PS_MAXPECT	(1<<4)
+#define PS_DECORATIONS	(1<<5)
+#define PS_FOOTER	(1<<6)
+#define PS_FMT_NONE	0
+#define PS_FMT_MASK	(PS_FMT_WMF|PS_FMT_EPSI|PS_FMT_TIFF)
+#define PS_FMT_WMF	(1<<8)
+#define PS_FMT_EPSI	(1<<9)
+#define PS_FMT_TIFF	(1<<10)
 
-extern PsToken Blt_GetPsToken _ANSI_ARGS_((Tcl_Interp *interp, 
-			   Tk_Window tkwin));
+typedef struct _Blt_Ps *Blt_Ps;
 
-extern void Blt_ReleasePsToken _ANSI_ARGS_((PsToken psToken));
+BLT_EXTERN Blt_Ps Blt_Ps_Create(Tcl_Interp *interp, PageSetup *setupPtr);
 
-extern char *Blt_PostScriptFromToken _ANSI_ARGS_((PsToken psToken));
-extern char *Blt_ScratchBufferFromToken _ANSI_ARGS_((PsToken psToken));
+BLT_EXTERN void Blt_Ps_Free(Blt_Ps ps);
 
-extern void Blt_AppendToPostScript _ANSI_ARGS_(TCL_VARARGS(PsToken, psToken));
+BLT_EXTERN const char *Blt_Ps_GetValue(Blt_Ps ps, int *lengthPtr);
 
-extern void Blt_FormatToPostScript _ANSI_ARGS_(TCL_VARARGS(PsToken, psToken));
+BLT_EXTERN Tcl_Interp *Blt_Ps_GetInterp(Blt_Ps ps);
 
-extern void Blt_Draw3DRectangleToPostScript _ANSI_ARGS_((PsToken psToken,
-	Tk_3DBorder border, double x, double y, int width, int height,
-	int borderWidth, int relief));
+BLT_EXTERN Tcl_DString *Blt_Ps_GetDString(Blt_Ps ps);
 
-extern void Blt_Fill3DRectangleToPostScript _ANSI_ARGS_((PsToken psToken,
-	Tk_3DBorder border, double x, double y, int width, int height,
-	int borderWidth, int relief));
+BLT_EXTERN char *Blt_Ps_GetScratchBuffer(Blt_Ps ps);
 
-extern void Blt_BackgroundToPostScript _ANSI_ARGS_((PsToken psToken,
-	XColor *colorPtr));
+BLT_EXTERN void Blt_Ps_SetInterp(Blt_Ps ps, Tcl_Interp *interp);
 
-extern void Blt_BitmapDataToPostScript _ANSI_ARGS_((PsToken psToken,
-	Display *display, Pixmap bitmap, int width, int height));
+BLT_EXTERN void Blt_Ps_Append(Blt_Ps ps, const char *string);
 
-extern void Blt_ClearBackgroundToPostScript _ANSI_ARGS_((PsToken psToken));
+BLT_EXTERN void Blt_Ps_AppendBytes(Blt_Ps ps, const char *string, int nBytes);
 
-extern int Blt_ColorImageToPsData _ANSI_ARGS_((Blt_ColorImage image,
-	int nComponents, Tcl_DString * resultPtr, char *prefix));
+BLT_EXTERN void Blt_Ps_VarAppend TCL_VARARGS(Blt_Ps, ps);
 
-extern void Blt_ColorImageToPostScript _ANSI_ARGS_((PsToken psToken,
-	Blt_ColorImage image, double x, double y));
+BLT_EXTERN void Blt_Ps_Format TCL_VARARGS(Blt_Ps, ps);
 
-extern void Blt_ForegroundToPostScript _ANSI_ARGS_((PsToken psToken,
-	XColor *colorPtr));
+BLT_EXTERN void Blt_Ps_SetClearBackground(Blt_Ps ps);
 
-extern void Blt_FontToPostScript _ANSI_ARGS_((PsToken psToken, Tk_Font font));
+BLT_EXTERN int Blt_Ps_IncludeFile(Tcl_Interp *interp, Blt_Ps ps, 
+	const char *fileName);
 
-extern void Blt_WindowToPostScript _ANSI_ARGS_((PsToken psToken,
-	Tk_Window tkwin, double x, double y));
+BLT_EXTERN int Blt_Ps_GetPicaFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, 
+	int *picaPtr);
 
-extern void Blt_LineDashesToPostScript _ANSI_ARGS_((PsToken psToken,
-	Blt_Dashes *dashesPtr));
+BLT_EXTERN int Blt_Ps_GetPadFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, 
+	Blt_Pad *padPtr);
 
-extern void Blt_LineWidthToPostScript _ANSI_ARGS_((PsToken psToken,
-	int lineWidth));
+BLT_EXTERN int Blt_Ps_ComputeBoundingBox(PageSetup *setupPtr, int *w, int *h);
 
-extern void Blt_PathToPostScript _ANSI_ARGS_((PsToken psToken,
-	Point2D *screenPts, int nScreenPts));
+BLT_EXTERN void Blt_Ps_DrawPicture(Blt_Ps ps, Blt_Picture picture, 
+	double x, double y);
 
-extern void Blt_PhotoToPostScript _ANSI_ARGS_((PsToken psToken,
-	Tk_PhotoHandle photoToken, double x, double y));
+BLT_EXTERN void Blt_Ps_Rectangle(Blt_Ps ps, int x, int y, int w, int h);
 
-extern void Blt_PolygonToPostScript _ANSI_ARGS_((PsToken psToken,
-	Point2D *screenPts, int nScreenPts));
 
-extern void Blt_LineToPostScript _ANSI_ARGS_((PsToken psToken, 
-	XPoint *pointArr, int nPoints));
+BLT_EXTERN int Blt_Ps_SaveFile(Tcl_Interp *interp, Blt_Ps ps, 
+	const char *fileName);
 
-extern void Blt_TextToPostScript _ANSI_ARGS_((PsToken psToken, char *string,
-	TextStyle *attrPtr, double x, double y));
+#ifdef _TK
 
-extern void Blt_RectangleToPostScript _ANSI_ARGS_((PsToken psToken, double x,
-	double y, int width, int height));
+#include "bltFont.h"
+#include "bltText.h"
 
-extern void Blt_RegionToPostScript _ANSI_ARGS_((PsToken psToken, double x,
-	double y, int width, int height));
+BLT_EXTERN void Blt_Ps_XSetLineWidth(Blt_Ps ps, int lineWidth);
 
-extern void Blt_RectanglesToPostScript _ANSI_ARGS_((PsToken psToken,
-	XRectangle *rectArr, int nRects));
+BLT_EXTERN void Blt_Ps_XSetBackground(Blt_Ps ps, XColor *colorPtr);
 
-extern void Blt_BitmapToPostScript _ANSI_ARGS_((PsToken psToken, 
-	Display *display, Pixmap bitmap, double scaleX, double scaleY));
+BLT_EXTERN void Blt_Ps_XSetBitmapData(Blt_Ps ps, Display *display, 
+	Pixmap bitmap, int width, int height);
 
-extern void Blt_SegmentsToPostScript _ANSI_ARGS_((PsToken psToken,
-	XSegment *segArr, int nSegs));
+BLT_EXTERN void Blt_Ps_XSetForeground(Blt_Ps ps, XColor *colorPtr);
 
-extern void Blt_StippleToPostScript _ANSI_ARGS_((PsToken psToken,
-	Display *display, Pixmap bitmap));
+BLT_EXTERN void Blt_Ps_XSetFont(Blt_Ps ps, Blt_Font font);
 
-extern void Blt_LineAttributesToPostScript _ANSI_ARGS_((PsToken psToken,
-	XColor *colorPtr, int lineWidth, Blt_Dashes *dashesPtr, int capStyle,
-	int joinStyle));
+BLT_EXTERN void Blt_Ps_XSetDashes(Blt_Ps ps, Blt_Dashes *dashesPtr);
 
-extern int Blt_FileToPostScript _ANSI_ARGS_((PsToken psToken,
-	char *fileName));
+BLT_EXTERN void Blt_Ps_XSetLineAttributes(Blt_Ps ps, XColor *colorPtr,
+	int lineWidth, Blt_Dashes *dashesPtr, int capStyle, int joinStyle);
 
-extern void Blt_2DSegmentsToPostScript _ANSI_ARGS_((PsToken psToken, 
-	Segment2D *segments, int nSegments));
+BLT_EXTERN void Blt_Ps_XSetStipple(Blt_Ps ps, Display *display, Pixmap bitmap);
+
+BLT_EXTERN void Blt_Ps_Polyline(Blt_Ps ps, Point2d *screenPts, int nScreenPts);
+
+BLT_EXTERN void Blt_Ps_XDrawLines(Blt_Ps ps, XPoint *points, int n);
+
+BLT_EXTERN void Blt_Ps_XDrawSegments(Blt_Ps ps, XSegment *segments, 
+	int nSegments);
+
+BLT_EXTERN void Blt_Ps_DrawPolyline(Blt_Ps ps, Point2d *points, int n);
+
+BLT_EXTERN void Blt_Ps_Draw2DSegments(Blt_Ps ps, Segment2d *segments,
+	int nSegments);
+
+BLT_EXTERN void Blt_Ps_Draw3DRectangle(Blt_Ps ps, Tk_3DBorder border, 
+	double x, double y, int width, int height, int borderWidth, int relief);
+
+BLT_EXTERN void Blt_Ps_Fill3DRectangle(Blt_Ps ps, Tk_3DBorder border, double x,
+	 double y, int width, int height, int borderWidth, int relief);
+
+BLT_EXTERN void Blt_Ps_XFillRectangle(Blt_Ps ps, double x, double y, 
+	int width, int height);
+
+BLT_EXTERN void Blt_Ps_XFillRectangles(Blt_Ps ps, XRectangle *rects, int n);
+
+BLT_EXTERN void Blt_Ps_XFillPolygon(Blt_Ps ps, Point2d *screenPts, 
+	int nScreenPts);
+
+BLT_EXTERN void Blt_Ps_DrawPhoto(Blt_Ps ps, Tk_PhotoHandle photoToken,
+	double x, double y);
+
+BLT_EXTERN void Blt_Ps_XDrawWindow(Blt_Ps ps, Tk_Window tkwin, 
+	double x, double y);
+
+BLT_EXTERN void Blt_Ps_DrawText(Blt_Ps ps, const char *string, 
+	TextStyle *attrPtr, double x, double y);
+
+BLT_EXTERN void Blt_Ps_DrawBitmap(Blt_Ps ps, Display *display, Pixmap bitmap, 
+	double scaleX, double scaleY);
+
+BLT_EXTERN void Blt_Ps_XSetCapStyle(Blt_Ps ps, int capStyle);
+
+BLT_EXTERN void Blt_Ps_XSetJoinStyle(Blt_Ps ps, int joinStyle);
+
+BLT_EXTERN void Blt_Ps_PolylineFromXPoints(Blt_Ps ps, XPoint *points, int n);
+
+BLT_EXTERN void Blt_Ps_Polygon(Blt_Ps ps, Point2d *screenPts, int nScreenPts);
+
+#endif /* _TK */
 
 #endif /* BLT_PS_H */

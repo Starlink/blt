@@ -1,38 +1,13 @@
 #!../src/bltwish
 
+
 set blt_library ../library
 package require BLT
 set blt_library ../library
 set auto_path [linsert $auto_path 0 ../library]
-
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
-
 source scripts/demo.tcl
 
-image create photo bgTexture -file ./images/buckskin.gif
+image create picture bgTexture -file ./images/buckskin.gif
 
 option add *Graph.Tile			bgTexture
 option add *Label.Tile			bgTexture
@@ -60,23 +35,35 @@ proc FormatLabel { w value } {
 
 set graph .graph
 
-set length 250000
-graph $graph -title "Scatter Plot\n$length points" 
-$graph xaxis configure \
-	-loose no \
-	-title "X Axis Label"
-$graph yaxis configure \
-	-title "Y Axis Label" 
-$graph legend configure \
-	-activerelief sunken \
-	-background ""
+set s1 [image create picture -width 25 -height 25]
+$s1 blank 0x00000000
+$s1 draw circle 12 12 5 -shadow 0 -linewidth 1 \
+	-fill 0x90FF0000 -antialias yes 
 
-$graph element create line3 -symbol square -color green4 -fill green2 \
+set length 250000
+blt::graph $graph -title "Scatter Plot\n$length points"  -font Arial \
+    -plotborderwidth 1 -plotrelief solid  -plotpadx 0 -plotpady 0
+$graph xaxis configure \
+    -loose no \
+    -title "X Axis Label" \
+    -tickinterior yes 
+$graph yaxis configure \
+    -title "Y Axis Label"  \
+    -tickinterior yes 
+$graph y2axis configure \
+    -title "Y2 Axis Label"  \
+    -tickinterior yes \
+    -hide no
+$graph legend configure \
+    -activerelief sunken \
+    -background ""
+
+$graph element create line3 -symbol circle -color green4 -fill green2 \
     -linewidth 0 -outlinewidth 1 -pixels 4
-table . .graph 0,0  -fill both
+blt::table . .graph 0,0  -fill both
 update
 
-vector x($length) y($length)
+blt::vector x($length) y($length)
 x expr random(x)
 y expr random(y)
 x sort y
@@ -89,7 +76,7 @@ Blt_Crosshairs $graph
 Blt_ActiveLegend $graph
 Blt_ClosestPoint $graph
 
-busy hold $graph
+blt::busy hold $graph
 update
-busy release $graph
+blt::busy release $graph
 

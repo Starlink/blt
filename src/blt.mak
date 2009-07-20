@@ -53,6 +53,7 @@ D             =
 builddir      =	.\Release
 !ENDIF
 
+
 MSVCRT        =	msvcrt$(DBG).lib
 TK_LIB        =	$(TKDIR)/win/$(builddir)/tk$(v2)$(D).lib  
 TCL_LIB       =	$(TCLDIR)/win/$(builddir)/tcl$(v2)$(D).lib 
@@ -122,12 +123,11 @@ SHLIB_LD_LIBS =	$(COMMON_LIBS) $(EXTRA_LIBS)
 N_OBJS =	bltTed.o
 V3_OBJS =	bltTri.o bltGrMt.o 
 
-TK_OBJS =	tkButton.o tkFrame.o tkScrollbar.o 
+TK_OBJS =	tkButton.o tkFrame.o bltScrollbar.o 
 
 GRAPH_OBJS =	bltGrAxis.o \
 		bltGrBar.o \
 		bltGrElem.o \
-		bltGrGrid.o \
 		bltGrHairs.o \
 		bltGrLegd.o \
 		bltGrLine.o \
@@ -151,13 +151,12 @@ TCL_ONLY_OBJS =	bltAlloc.o \
 		bltSwitch.o \
 		bltTree.o \
 		bltTreeCmd.o \
-		bltUnixPipe.o \
 		bltUtil.o \
-		bltVector.o \
-		bltVecMath.o \
 		bltVecCmd.o \
-		bltVecObjCmd.o \
+		bltVecMath.o \
+		bltVector.o \
 		bltWatch.o  
+		bltWinPipe.o \
 
 OBJS =		$(GRAPH_OBJS) \
 		$(TCL_ONLY_OBJS) \
@@ -166,15 +165,17 @@ OBJS =		$(GRAPH_OBJS) \
 		bltBitmap.o \
 		bltBusy.o \
 		bltCanvEps.o \
-		bltColor.o \
 		bltConfig.o \
 		bltContainer.o \
-		bltCutbuffer.o \
 		bltDragdrop.o \
-		bltHierbox.o \
 		bltHtext.o \
 		bltImage.o \
-		bltUnixImage.o \
+		bltOldConfig.o \
+		bltPainter.o \
+		bltPicture.o \
+		bltPictureFormats.o \
+		bltPictureImage.o \
+		bltPictureMMX.o \
 		bltPs.o \
 		bltTable.o \
 		bltTabnotebook.o \
@@ -183,12 +184,15 @@ OBJS =		$(GRAPH_OBJS) \
 		bltTile.o \
 		bltTreeView.o \
 		bltTreeViewCmd.o \
-		bltTreeViewEdit.o \
 		bltTreeViewColumn.o \
+		bltTreeViewEdit.o \
 		bltTreeViewStyle.o \
-		bltUnixDnd.o \
+		bltWinBitmap.o \
+		bltWinDraw.o \
+		bltWinPainter.o \
+		bltWinPrnt.o \
+		bltWinWindow.o \
 		bltWindow.o \
-		bltObjConfig.o \
 		bltWinop.o \
 		$(TK_OBJS) $(N_OBJS) 
 
@@ -292,6 +296,17 @@ clean:
 	-del $(srcdir)\*.bak 2>nul
 	-del $(srcdir)\*~ 2>nul 
 	-del $(srcdir)\"#"* 2>nul
+
+bltPictureDraw.o: $(srcdir)/bltPictureDraw.c
+	$(CC) -c $(CC_OPTS) $(FT_INC_SPEC)  \
+		-FobltPictureDraw.o $(srcdir)/bltPictureDraw.c 
+
+bltPictureFormats.o: $(srcdir)/bltPictureFormats.c
+	$(CC) -c $(CC_OPTS) \
+		$(FT_INC_SPEC) \
+		$(JPEG_INC_SPEC) $(TIFF_INC_SPEC) $(PNG_INC_SPEC) \
+		$(XPM_INC_SPEC)$(PICTURE_INCLUDES) \
+		-FobltPictureFormats.o $(srcdir)/bltPictureFormats.c 
 
 {$(srcdir)}.c.o:
 	$(CC) -c $(CC_SWITCHES) -Fo$*.o $<

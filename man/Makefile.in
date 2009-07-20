@@ -2,35 +2,37 @@
 # 	Makefile for manual page files 
 # ------------------------------------------------------------------------
 
-prefix  	= @prefix@
-mandir  	= @mandir@
-sectiondir 	= $(mandir)/mann
-srcdir		= @srcdir@
-version		= @BLT_VERSION@
+prefix =	@prefix@
+mandir =	@mandir@
+sectiondir =	$(mandir)/mann
+srcdir =	@srcdir@
+datadir =	@datadir@
+datarootdir =	@datarootdir@
+version =	@BLT_VERSION@
 
-instdirs	= $(mandir) $(mandir)/mann $(mandir)/man3
+instdirs =	$(mandir) $(mandir)/mann $(mandir)/man3
 
-MAN_N		= BLT.n barchart.n beep.n bgexec.n bitmap.n \
-		  bltdebug.n busy.n container.n cutbuffer.n \
-		  dragdrop.n eps.n graph.n hierbox.n  \
-		  hiertable.n htext.n spline.n stripchart.n \
-	 	  table.n tabset.n tile.n tree.n treeview.n vector.n \
-		  watch.n winop.n
+MAN_N =		BLT.n barchart.n beep.n bgexec.n bitmap.n \
+		bltdebug.n busy.n container.n cutbuffer.n \
+		dragdrop.n eps.n graph.n hierbox.n  \
+		hiertable.n htext.n spline.n stripchart.n \
+	 	table.n tabset.n tile.n tree.n treeview.n vector.n \
+		watch.n winop.n
 
-MAN_3 		= Blt_Tree.3 Blt_TreeGetNode.3 \
-		  Blt_TreeCreate.3 Blt_TreeGetToken.3 \
-		  Blt_TreeCreateNode.3 Blt_TreeName.3 \
-		  Blt_TreeDeleteNode.3 Blt_TreeNodeId.3 \
-		  Blt_TreeExists.3 Blt_TreeReleaseToken.3
+MAN_3 =		Blt_Tree.3 Blt_TreeGetNode.3 \
+		Blt_TreeCreate.3 Blt_TreeGetToken.3 \
+		Blt_TreeCreateNode.3 Blt_TreeName.3 \
+		Blt_TreeDeleteNode.3 Blt_TreeNodeId.3 \
+		Blt_TreeExists.3 Blt_TreeReleaseToken.3
 
-MANPAGES	= $(MAN_N) $(MAN_3)
+MANPAGES =	$(MAN_N) $(MAN_3)
 
-INSTALL  	= @INSTALL@
-INSTALL_DATA  	= @INSTALL_DATA@
-INSTALL_ROOT    = 
-SHELL    	= /bin/sh
-RM		= rm -rf
-VPATH		= $(srcdir)
+INSTALL =	@INSTALL@
+INSTALL_DATA =	@INSTALL_DATA@
+INSTALL_ROOT = 
+SHELL =		/bin/sh
+RM =		rm -rf
+VPATH =		$(srcdir)
 
 all: man.macros $(MANPAGES)
 
@@ -51,8 +53,8 @@ mkdirs:
           if test -d $(INSTALL_ROOT)$$i ; then \
             : ; \
           else \
-            echo " mkdir $(INSTALL_ROOT)$$i" ; \
-            mkdir $(INSTALL_ROOT)$$i ; \
+            echo " mkdir -p $(INSTALL_ROOT)$$i" ; \
+            mkdir -p $(INSTALL_ROOT)$$i ; \
           fi ; \
 	done
 

@@ -1,25 +1,29 @@
 /*
  * bltGrLegd.h --
  *
- * Copyright 1991-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_GR_LEGEND_H
@@ -33,24 +37,22 @@
 #define LEGEND_XY	(1<<5)	/* Screen coordinates in the plotting 
 				 * area. */
 #define LEGEND_WINDOW	(1<<6)	/* External window. */
-#define LEGEND_IN_MARGIN \
+#define LEGEND_MARGIN_MASK \
 	(LEGEND_RIGHT | LEGEND_LEFT | LEGEND_BOTTOM | LEGEND_TOP)
-#define LEGEND_IN_PLOT  (LEGEND_PLOT | LEGEND_XY)
+#define LEGEND_PLOTAREA_MASK  (LEGEND_PLOT | LEGEND_XY)
 
-extern int Blt_CreateLegend _ANSI_ARGS_((Graph *graphPtr));
-extern void Blt_DestroyLegend _ANSI_ARGS_((Graph *graphPtr));
-extern void Blt_DrawLegend _ANSI_ARGS_((Legend *legendPtr, Drawable drawable));
-extern void Blt_MapLegend _ANSI_ARGS_((Legend *legendPtr, int width,
-	int height));
-extern int Blt_LegendOp _ANSI_ARGS_((Graph *graphPtr, Tcl_Interp *interp,
-	int argc, char **argv));
-extern int Blt_LegendSite _ANSI_ARGS_((Legend *legendPtr));
-extern int Blt_LegendWidth _ANSI_ARGS_((Legend *legendPtr));
-extern int Blt_LegendHeight _ANSI_ARGS_((Legend *legendPtr));
-extern int Blt_LegendIsHidden _ANSI_ARGS_((Legend *legendPtr));
-extern int Blt_LegendIsRaised _ANSI_ARGS_((Legend *legendPtr));
-extern int Blt_LegendX _ANSI_ARGS_((Legend *legendPtr));
-extern int Blt_LegendY _ANSI_ARGS_((Legend *legendPtr));
-extern void Blt_LegendRemoveElement _ANSI_ARGS_((Legend *legendPtr, 
-	Element *elemPtr));
+BLT_EXTERN int Blt_CreateLegend(Graph *graphPtr);
+BLT_EXTERN void Blt_DestroyLegend(Graph *graphPtr);
+BLT_EXTERN void Blt_DrawLegend(Legend *legendPtr, Drawable drawable);
+BLT_EXTERN void Blt_MapLegend(Legend *legendPtr, int width, int height);
+BLT_EXTERN int Blt_LegendOp(Graph *graphPtr, Tcl_Interp *interp, int objc, 
+	Tcl_Obj *const *objv);
+BLT_EXTERN int Blt_LegendSite(Legend *legendPtr);
+BLT_EXTERN int Blt_LegendWidth(Legend *legendPtr);
+BLT_EXTERN int Blt_LegendHeight(Legend *legendPtr);
+BLT_EXTERN int Blt_LegendIsHidden(Legend *legendPtr);
+BLT_EXTERN int Blt_LegendIsRaised(Legend *legendPtr);
+BLT_EXTERN int Blt_LegendX(Legend *legendPtr);
+BLT_EXTERN int Blt_LegendY(Legend *legendPtr);
+BLT_EXTERN void Blt_LegendRemoveElement(Legend *legendPtr, Element *elemPtr);
 #endif /* BLT_GR_LEGEND_H */

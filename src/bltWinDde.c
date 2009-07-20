@@ -2,16 +2,41 @@
 /* 
  * bltWinDde.c --
  *
- *	This file provides procedures that implement the "send"
- *	command, allowing commands to be passed from interpreter
- *	to interpreter.
+ * This file provides procedures that implement the "send" command,
+ * allowing commands to be passed from interpreter to interpreter.
  *
- * Copyright (c) 1997 by Sun Microsystems, Inc.
+ *	Copyright 1994-2004 George A Howlett.
  *
- * See the file "license.terms" for information on usage and redistribution
- * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * RCS: @(#) $Id: bltWinDde.c,v 1.7 2002/09/04 17:07:32 ghowlett Exp $
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * This was copied from tclWinDde.c of the TCL library distribution.
+ *
+ *	Copyright (c) 1997 by Sun Microsystems, Inc.
+ *
+ *	See the file "license.terms" for information on usage and
+ *	redistribution of this file, and for a DISCLAIMER OF ALL
+ *	WARRANTIES.
+ *
  */
 
 #include "bltInt.h"
@@ -64,22 +89,19 @@ static int isServer;
  * Forward declarations for procedures defined later in this file.
  */
 
-static Tcl_Obj *ExecuteRemoteObject _ANSI_ARGS_((Tcl_Interp *interp,
-	Tcl_Obj *objPtr));
-static int MakeConnection _ANSI_ARGS_((Tcl_Interp *interp, char *name, 
-	HCONV *convPtr));
-static HDDEDATA CALLBACK ServerProc _ANSI_ARGS_((UINT uType, UINT uFmt, 
-	HCONV hConv, HSZ topic, HSZ item, HDDEDATA hData, DWORD dwData1, 
-	DWORD dwData2));
+static Tcl_Obj *ExecuteRemoteObject(Tcl_Interp *interp, Tcl_Obj *objPtr);
+static int MakeConnection(Tcl_Interp *interp, const char *name, HCONV *convPtr);
+static HDDEDATA CALLBACK ServerProc(UINT uType, UINT uFmt, HCONV hConv, 
+	HSZ topic, HSZ item, HDDEDATA hData, DWORD dwData1, DWORD dwData2);
 
 static Tcl_ExitProc ExitProc;
 static Tcl_CmdDeleteProc DeleteProc;
-static void SetError _ANSI_ARGS_((Tcl_Interp *interp));
+static void SetError(Tcl_Interp *interp);
 
 static Tcl_ObjCmdProc DdeObjCmd;
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Initialize --
  *
@@ -91,7 +113,7 @@ static Tcl_ObjCmdProc DdeObjCmd;
  * Side effects:
  *	Registers the DDE server proc.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
@@ -140,7 +162,7 @@ Initialize(void)
 }    
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * SetServerName --
  *
@@ -161,17 +183,16 @@ Initialize(void)
  *	interpreter.  The registration will be removed automatically
  *	if the interpreter is deleted or the "send" command is removed.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
-static char *
+static const char *
 SetServerName(
     Tcl_Interp *interp,
-    char *name			/* The name that will be used to
+    const char *name)		/* The name that will be used to
 				 * refer to the interpreter in later
 				 * "send" commands.  Must be globally
 				 * unique. */
-    )
 {
     int suffix, offset;
     RegisteredInterp *riPtr, *prevPtr;
@@ -229,7 +250,7 @@ SetServerName(
      * We have found a unique name. Now add it to the registry.
      */
 
-    riPtr = Blt_Malloc(sizeof(RegisteredInterp) + strlen(name));
+    riPtr = Blt_AssertMalloc(sizeof(RegisteredInterp) + strlen(name));
     riPtr->interp = interp;
     riPtr->nextPtr = interps;
     interps = riPtr;
@@ -250,7 +271,7 @@ SetServerName(
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DeleteProc
  *
@@ -262,7 +283,7 @@ SetServerName(
  * Side effects:
  *	The interpreter given by riPtr is unregistered.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
@@ -292,7 +313,7 @@ DeleteProc(clientData)
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ExecuteRemoteObject --
  *
@@ -309,10 +330,10 @@ DeleteProc(clientData)
  *	The return result will have a refCount of 0.
  *
  * Side effects:
- *	A Tcl script is run, which can cause all kinds of other
+ *	A TCL script is run, which can cause all kinds of other
  *	things to happen.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static Tcl_Obj *
@@ -328,7 +349,7 @@ ExecuteRemoteObject(
     Tcl_ListObjAppendElement(NULL, listObjPtr, Tcl_NewIntObj(result));
     Tcl_ListObjAppendElement(NULL, listObjPtr, Tcl_GetObjResult(interp));
     if (result == TCL_ERROR) {
-	char *value;
+	const char *value;
 	Tcl_Obj *objPtr;
 
 	value = Tcl_GetVar2(interp, "errorCode", NULL, TCL_GLOBAL_ONLY);
@@ -342,7 +363,7 @@ ExecuteRemoteObject(
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ServerProc --
  *
@@ -358,7 +379,7 @@ ExecuteRemoteObject(
  *	Depending on which command is executed, arbitrary
  *	Tcl scripts can be run.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static HDDEDATA CALLBACK
@@ -430,7 +451,7 @@ ServerProc (
 		    CP_WINANSI);
 	    for (riPtr = interps; riPtr != NULL; riPtr = riPtr->nextPtr) {
 		if (strcasecmp(riPtr->name, utilString) == 0) {
-		    convPtr = Blt_Malloc(sizeof(Conversation));
+		    convPtr = Blt_AssertMalloc(sizeof(Conversation));
 		    convPtr->nextPtr = conversations;
 		    convPtr->returnPackagePtr = NULL;
 		    convPtr->hConv = hConv;
@@ -472,7 +493,7 @@ ServerProc (
 	    int length;
 
 	    /*
-	     * This could be either a request for a value of a Tcl variable,
+	     * This could be either a request for a value of a TCL variable,
 	     * or it could be the send command requesting the results of the
 	     * last execute.
 	     */
@@ -497,21 +518,21 @@ ServerProc (
 		DdeQueryString(instance, item, utilString, length + 1, 
 			CP_WINANSI);
 		if (strcasecmp(utilString, "$TCLEVAL$EXECUTE$RESULT") == 0) {
-		    char *value;
+		    const char *value;
 
 		    value = Tcl_GetStringFromObj(convPtr->returnPackagePtr, 
 				 &length);
-		    code = DdeCreateDataHandle(instance, value, length+1, 0, 
-			item, CF_TEXT, 0);
+		    code = DdeCreateDataHandle(instance, (char *)value, 
+			length+1, 0, item, CF_TEXT, 0);
 		} else {
-		    char *value;
+		    const char *value;
 
 		    value = Tcl_GetVar2(convPtr->riPtr->interp, utilString, 
 				NULL, TCL_GLOBAL_ONLY);
 		    if (value != NULL) {
 			length = strlen(value);
-			code = DdeCreateDataHandle(instance, value, length+1,
-				0, item, CF_TEXT, 0);
+			code = DdeCreateDataHandle(instance, (char *)value, 
+				length+1, 0, item, CF_TEXT, 0);
 		    } else {
 			code = NULL;
 		    }
@@ -612,7 +633,7 @@ ServerProc (
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ExitProc --
  *
@@ -624,7 +645,7 @@ ServerProc (
  * Side effects:
  *	The DDE server is deleted.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
@@ -637,7 +658,7 @@ ExitProc(
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * MakeConnection --
  *
@@ -645,19 +666,19 @@ ExitProc(
  *	server when given a server name and a topic name.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *	
  *
  * Side effects:
  *	Passes back a conversation through ddeConvPtr
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static int
 MakeConnection(
     Tcl_Interp *interp,		/* Used to report errors. */
-    char *name,			/* The connection to use. */
+    const char *name,		/* The connection to use. */
     HCONV *convPtr)
 {
     HSZ topic, service;
@@ -683,7 +704,7 @@ MakeConnection(
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * SetError --
  *
@@ -697,7 +718,7 @@ MakeConnection(
  * Side effects:
  *	The interp's result object is changed.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
@@ -705,7 +726,7 @@ SetError(
     Tcl_Interp *interp)	    /* The interp to put the message in.*/
 {
     int err;
-    char *mesg;
+    const char *mesg;
 
     err = DdeGetLastError(instance);
     switch (err) {
@@ -727,24 +748,24 @@ SetError(
 	    mesg = "dde command failed";
 	    break;
     }
-    Tcl_SetResult(interp, mesg, TCL_VOLATILE);
+    Tcl_SetStringObj(Tcl_GetObjResult(interp), mesg, -1);
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DdeObjCmd --
  *
- *	This procedure is invoked to process the "dde" Tcl command.
+ *	This procedure is invoked to process the "dde" TCL command.
  *	See the user documentation for details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static int
@@ -752,7 +773,7 @@ DdeObjCmd(
     ClientData clientData,	/* Used only for deletion */
     Tcl_Interp *interp,		/* The interp we are sending from */
     int objc,			/* Number of arguments */
-    Tcl_Obj *CONST objv[])	/* The arguments */
+    Tcl_Obj *const objv[])	/* The arguments */
 {
     enum {
 	DDE_SERVERNAME,
@@ -763,11 +784,11 @@ DdeObjCmd(
 	DDE_EVAL
     };
 
-    static char *commands[] = {
+    static const char *commands[] = {
 	"servername", "execute", "poke", "request", "services", "eval", 
 	(char *) NULL
     };
-    static char *options[] = {
+    static const char *options[] = {
 	"-async", (char *) NULL
     };
     int index, argIndex;
@@ -780,8 +801,8 @@ DdeObjCmd(
     HDDEDATA itemData = NULL;
     HCONV hConv = NULL;
     HSZ cookie = 0;
-    char *serviceName, *topicName, *itemString, *dataString;
-    char *string;
+    const char *serviceName, *topicName, *itemString, *dataString;
+    const char *string;
     int firstArg, length, dataLength;
     HDDEDATA code;
     RegisteredInterp *riPtr;
@@ -909,7 +930,7 @@ DdeObjCmd(
 		CP_WINANSI);
     }
 
-    if ((index != DDE_SERVERNAME) &&(index != DDE_EVAL)) {
+    if ((index != DDE_SERVERNAME) && (index != DDE_EVAL)) {
 	topicName = Tcl_GetStringFromObj(objv[firstArg + 1], &length);
 	if (length == 0) {
 	    topicName = NULL;
@@ -948,8 +969,8 @@ DdeObjCmd(
 		break;
 	    }
 
-	    data = DdeCreateDataHandle(instance, dataString, dataLength + 1, 
-		0, 0, CF_TEXT, 0);
+	    data = DdeCreateDataHandle(instance, (char *)dataString, 
+		dataLength + 1, 0, 0, CF_TEXT, 0);
 	    if (data != NULL) {
 		if (async) {
 		    DWORD status;
@@ -1034,7 +1055,7 @@ DdeObjCmd(
 		item = DdeCreateStringHandle(instance, itemString,
 			CP_WINANSI);
 		if (item != NULL) {
-		    data = DdeClientTransaction(dataString,length+1,
+		    data = DdeClientTransaction((char *)dataString, length+1,
 			    hConv, item, CF_TEXT, XTYP_POKE, 5000, NULL);
 		    if (data == NULL) {
 			SetError(interp);
@@ -1054,7 +1075,7 @@ DdeObjCmd(
 	    CONVINFO convInfo;
 	    Tcl_Obj *convListObjPtr, *elementObjPtr;
 	    Tcl_DString dString;
-	    char *name;
+	    const char *name;
 	    
 	    convInfo.cb = sizeof(CONVINFO);
 	    hConvList = DdeConnectList(instance, service, 
@@ -1072,15 +1093,15 @@ DdeObjCmd(
                         convInfo.hszSvcPartner, NULL, 0, CP_WINANSI);
 		Tcl_DStringSetLength(&dString, length);
 		name = Tcl_DStringValue(&dString);
-		DdeQueryString(instance, convInfo.hszSvcPartner, 
-                        name, length + 1, CP_WINANSI);
+		DdeQueryString(instance, convInfo.hszSvcPartner, (char *)name, 
+			length + 1, CP_WINANSI);
 		Tcl_ListObjAppendElement(interp, elementObjPtr,
 			Tcl_NewStringObj(name, length));
 		length = DdeQueryString(instance, convInfo.hszTopic,
 			NULL, 0, CP_WINANSI);
 		Tcl_DStringSetLength(&dString, length);
 		name = Tcl_DStringValue(&dString);
-		DdeQueryString(instance, convInfo.hszTopic, name,
+		DdeQueryString(instance, convInfo.hszTopic, (char *)name,
 			length + 1, CP_WINANSI);
 		Tcl_ListObjAppendElement(interp, elementObjPtr,
 			Tcl_NewStringObj(name, length));
@@ -1095,7 +1116,7 @@ DdeObjCmd(
     case DDE_EVAL: 
 	{
 	    objc -= (async + 3);
-	    ((Tcl_Obj **) objv) += (async + 3);
+	    objv += (async + 3);
 
             /*
 	     * See if the target interpreter is local.  If so, execute
@@ -1143,7 +1164,7 @@ DdeObjCmd(
 		}
 		if (interp != sendInterp) {
 		    if (result == TCL_ERROR) {
-			char *value;
+			const char *value;
 			/*
 			 * An error occurred, so transfer error information
 			 * from the destination interpreter back to our
@@ -1175,7 +1196,7 @@ DdeObjCmd(
 		
 		objPtr = Tcl_ConcatObj(objc, objv);
 		string = Tcl_GetStringFromObj(objPtr, &length);
-		itemData = DdeCreateDataHandle(instance, string,
+		itemData = DdeCreateDataHandle(instance, (char *)string,
 			length+1, 0, 0, CF_TEXT, 0);
 		
 		if (async) {
@@ -1220,8 +1241,8 @@ DdeObjCmd(
 		    resultPtr = Tcl_NewObj();
 		    length = DdeGetData(data, NULL, 0, 0);
 		    Tcl_SetObjLength(resultPtr, length);
-		    string = Tcl_GetString(resultPtr);
-		    DdeGetData(data, string, length, 0);
+		    string = Tcl_GetStringFromObj(resultPtr, length);
+		    DdeGetData(data, (char *)string, length, 0);
 		    Tcl_SetObjLength(resultPtr, strlen(string));
 		    
 		    if (Tcl_ListObjIndex(NULL, resultPtr, 0, &objPtr)
@@ -1300,23 +1321,23 @@ DdeObjCmd(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Blt_DdeInit --
+ * Blt_DdeCmdInitProc --
  *
  *	This procedure initializes the dde command.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 int
-Blt_DdeInit(interp)
+Blt_DdeCmdInitProc(interp)
     Tcl_Interp *interp;
 {
     Tcl_CreateObjCommand(interp, "dde", DdeObjCmd, NULL, NULL);

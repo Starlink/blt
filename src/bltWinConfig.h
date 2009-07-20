@@ -1,3 +1,5 @@
+#ifndef _BLT_WIN_CONFIG_H
+#define _BLT_WIN_CONFIG_H
 /* src/bltConfig.h.  Generated automatically by configure.  */
 /* src/bltConfig.h.in.  Generated automatically from configure.in by autoheader.  */
 
@@ -22,21 +24,17 @@
    byte first (like Motorola and SPARC, unlike Intel and VAX).  */
 #undef WORDS_BIGENDIAN	
 
-
 /* Define if DBL_EPSILON is not defined in float.h */
 #undef BLT_DBL_EPSILON
 
-/* Define if drand48 isn't declared in math.h. */
-#define NEED_DECL_DRAND48	1
+/* Define if drand48 is declared in math.h. */
+#define HAVE_DECL_DRAND48	0
 
-/* Define if srand48 isn't declared in math.h. */
-#define NEED_DECL_SRAND48	1
+/* Define if srand48 is declared in math.h. */
+#define HAVE_DECL_SRAND48	0
 
-/* Define if strdup isn't declared in a standard header file. */
-#undef NEED_DECL_STRDUP
-
-/* Define if j1 isn't declared in a standard header file. */
-#define NEED_DECL_J1		1
+/* Define if j1 is declared in a standard header file. */
+#define HAVE_DECL_J1		0
 
 /* Define if union wait type is defined incorrectly.  */
 #undef HAVE_UNION_WAIT
@@ -137,3 +135,10 @@
 /* Define if you have the socket library (-lsocket).  */
 #undef HAVE_LIBSOCKET
 
+
+#if (_MSC_VER == 1400)
+#define HAVE_SPRINTF_S
+#endif
+
+#define WIN32	1
+#endif _BLT_WIN_CONFIG_H

@@ -24,7 +24,7 @@
 .BS
 '\" Note:  do not modify the .SH NAME line immediately below!
 .SH NAME
-tree \-  Create and manage tree data objects.
+\fBtree\fR \-  Create and manage tree data objects.
 .SH SYNOPSIS
 \fBblt::tree create \fR?\fItreeName\fR?
 .sp
@@ -45,7 +45,7 @@ data. Tree objects can also be managed via a C API.
 
 .SH SYNTAX
 .TP
-\fBtree create\fR ?\fItreeName\fR?  
+\fBblt::tree create\fR ?\fItreeName\fR?  
 Creates a new tree object.  The name of the new tree is returned.  If
 no \fItreeName\fR argument is present, then the name of the tree is
 automatically generated in the form "\f(CWtree0\fR", "\f(CWtree1\fR",
@@ -61,13 +61,13 @@ default, created in the current namespace, not the global namespace,
 unless \fItreeName\fR contains a namespace qualifier, such as
 "\f(CWfred::myTree\fR".
 .TP
-\fBtree destroy\fR \fItreeName\fR...
+\fBblt::tree destroy\fR \fItreeName\fR...
 Releases one of more trees.  The Tcl command associated with
 \fItreeName\fR is also removed.  Trees are reference counted.  The
 internal tree data object isn't destroyed until no one else is using
 the tree.
 .TP
-\fBtree names \fR?\fIpattern\fR?
+\fBblt::tree names \fR?\fIpattern\fR?
 Returns the names of all tree objects.  if a \fIpattern\fR argument
 is given, then the only those trees whose name matches pattern will
 be listed.
@@ -238,23 +238,28 @@ Test each node using \fIstring\fR as a regular expression pattern.
 Only test nodes that have the tag \fIstring\fR.
 .RE
 .TP
-\fItreeName\fR \fBattach\fR \fItreeObject\fR
-Attaches to an existing tree object \fItreeObject\fR.  This is for cases
-where the tree object was previously created via the C API.  The current
-tree associated with \fItreeName\fR is discarded.  In addition, the
-current set of tags, notifier events, and traces are removed.
+\fItreeName\fR \fBattach\fR \fItreeObject\fR ?\fIswitches\fR?
+Attaches to an existing tree object \fItreeObject\fR.  
+The current tree associated with \fItreeName\fR is discarded.  
+In addition, the current set of tags, notifier events, and traces are 
+removed. The valid \fIswitches\fR are listed below:
+.RS
+.TP
+\fB\-newtags\fR 
+By default, the tree will share the tags of the attached tree. If this
+flag is present, the tree will start with an empty tag table.
+.RE
 .TP
 \fItreeName\fR \fBchildren\fR \fInode\fR
 Returns a list of children for \fInode\fR.  If \fInode\fR is a leaf,
 then an empty string is returned.
 .TP
-\fItreeName\fR \fBcopy\fR \fIsrcNode\fR ?\fIdestTree\fR? \fIparentNode\fR ?\fIswitches\fR?
-Copies \fIsrcNode\fR into \fIparentNode\fR. Both nodes \fIsrcNode\fR and
-\fIparentNode\fR must already exist. The id of the new node is
-returned. You can copy from one tree to another.  If a \fIdestTree\fR 
-argument is present, it indicates the name of the destination tree.  
-By default both the source and destination trees are the same. The valid 
-\fIswitches\fR are listed below:
+\fItreeName\fR \fBcopy\fR \fIparent\fR ?\fItree\fR? \fInode\fR ?\fIswitches\fR?
+Copies \fInode\fR into \fIparent\fR. Both nodes \fInode\fR and
+\fIparent\fR must already exist. The id of the new node is
+returned. You can also copy nodes from another tree.  If a \fItree\fR 
+argument is present, it indicates the name of the source tree.  
+The valid \fIswitches\fR are listed below:
 .RS
 .TP
 \fB\-label\fR \fIstring\fR
@@ -352,6 +357,10 @@ to the children of \fInode\fR.
 \fB\-exact\fR \fIstring\fR
 Matches each node using \fIstring\fR.  The node must match \fIstring\fR
 exactly.
+.TP 1i
+\fB\-excludes\fR \fInodeList\fR
+Excludes any node in the list \fInodeList\fR from the search.  
+The subnodes of an excluded node are still examined.
 .TP 1i
 \fB\-exec\fR \fIcommand\fR
 Invoke \fIcommand\fR for each matching node.  Before \fIcommand\fR is
@@ -470,7 +479,7 @@ It is an error if the id is already used by another node in the tree.
 .TP 1i
 \fB\-tags\fR \fItagList\fR
 Adds each tag in \fItagList\fR to the new node. \fITagList\fR is a list
-of tags, so be careful if a tag has embedded space.
+of tags, so be careful if a tag has embedded spaces.
 .RE
 .TP
 \fItreeName\fR \fBis\fR \fIproperty\fR \fIargs\fR  
@@ -720,6 +729,10 @@ Deletes the tag \fIstring\fR from one or more nodes.
 Removes the tag \fIstring\fR from all nodes.  It's not an error if no
 nodes are tagged as \fIstring\fR.
 .TP
+\fItreeName\fR \fBtag get\fR \fInode\fR \fIpattern\fR...
+Returns the tag names for a given node.  If one of more pattern
+arguments are provided, then only those matching tags are returned.
+.TP
 \fItreeName\fR \fBtag names\fR ?\fInode\fR?
 Returns a list of tags used by the tree.  If a \fInode\fR argument
 is present, only those tags used by \fInode\fR are returned.
@@ -727,6 +740,15 @@ is present, only those tags used by \fInode\fR are returned.
 \fItreeName\fR \fBtag nodes\fR \fIstring\fR
 Returns a list of nodes that have the tag \fIstring\fR.  If no node
 is tagged as \fIstring\fR, then an empty string is returned.
+.TP
+\fItreeName\fR \fBtag set\fR \fInode\fR \fIstring\fR...
+Sets one or more tags for a given node.  Tag names can't start with a
+digit (to distinquish them from node ids) and can't be a reserved tag
+("root" or "all").
+.TP
+\fItreeName\fR \fBtag unset\fR \fInode\fR \fIstring\fR...  
+Removes one or more tags from a given node. Tag names that don't exist 
+or are reserved ("root" or "all") are silently ignored.
 .SH TRACE OPERATIONS
 Data fields can be traced much in the same way that you can trace Tcl
 variables.  Data traces cause Tcl commands to be executed whenever a

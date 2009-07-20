@@ -24,12 +24,12 @@
 .BS
 '\" Note:  do not modify the .SH NAME line immediately below!
 .SH NAME
-spline \-  Fit curves with spline interpolation
+\fBspline\fR \-  Fit curves with spline interpolation
 .SH SYNOPSIS
 .sp
-\fBspline natural \fIx y sx sy\fR
+\fBblt::spline natural \fIx y sx sy\fR
 .sp
-\fBspline quadratic \fIx y sx sy\fR
+\fBblt::spline quadratic \fIx y sx sy\fR
 .BE
 .SH DESCRIPTION
 The \fBspline\fR command computes a spline fitting a set of data
@@ -65,7 +65,7 @@ data that we're going to fit.  Obviously, both vectors must be the
 same length.
 .CS
 # Create sample data of ten points. 
-vector x(10) y(10)
+blt::vector x(10) y(10)
 
 for {set i 10} {$i > 0} {incr i -1} {
     set x($i-1) [expr $i*$i]
@@ -109,16 +109,16 @@ Finally, we generate the ordinates (the images of the spline) using
 the \fBspline\fR command.  The ordinates are stored in a fourth
 vector.
 .CS
-spline natural x y sx sy
+blt::spline natural x y sx sy
 .CE
 This creates a new vector \f(CWsy\fR.  It will have the same length as
 \f(CWsx\fR.  The vectors \f(CWsx\fR and \f(CWsy\fR represent the smoothed
 curve which we can now plot.
 .CS 
-graph .graph
+blt::graph .graph
 \&.graph element create original -x x -y x -color blue
 \&.graph element create spline -x sx -y sy -color red
-table . .graph
+blt::table . .graph
 .CE
 The \fBnatural\fR operation employs a cubic interpolant when forming
 the spline.  In terms of the draftmen's spline, a \fInatural spline\fR
@@ -130,11 +130,11 @@ Alternatively, you can generate a spline using the \fBquadratic\fR
 operation.  Quadratic interpolation produces a spline which follows 
 the line segments of the data points much more closely.  
 .CS
-spline quadratic x y sx sy 
+blt::spline quadratic x y sx sy 
 .CE
 .SH OPERATIONS
 .TP
-\fBspline natural \fIx y sx sy\fR 
+\fBblt::spline natural \fIx y sx sy\fR 
 Computes a cubic spline from the data points represented by the
 vectors \fIx\fR and \fIy\fR and interpolates new points using vector
 \fIsx\fR as the x-coordinates.  The resulting y-coordinates are
@@ -149,7 +149,7 @@ of the components of \fIsx\fR must be monotonically increasing.
 will be stored.  If \fIsy\fR does not already exist, a new vector will be
 created.
 .TP
-\fBspline quadratic \fIx y sx sy\fR 
+\fBblt::spline quadratic \fIx y sx sy\fR 
 Computes a quadratic spline from the data points represented by the
 vectors \fIx\fR and \fIy\fR and interpolates new points using vector
 \fIsx\fR as the x-coordinates.  The resulting y-coordinates are

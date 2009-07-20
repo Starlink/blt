@@ -1,4 +1,10 @@
+
 #include "bltInt.h"
+#include "bltOp.h"
+#include <bltVector.h>
+
+typedef int (SplineProc)(Point2d origPts[], int nOrigPts, Point2d intpPts[],
+			 int nIntpPts);
 
 typedef double TriDiagonalMatrix[3];
 typedef struct {
@@ -23,10 +29,10 @@ typedef struct {
 #define Y1	param[8]
 #define Y2	param[9]
 
-static Tcl_CmdProc SplineCmd;
+static Tcl_ObjCmdProc SplineCmd;
 
 /*
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Search --
  *
@@ -37,16 +43,16 @@ static Tcl_CmdProc SplineCmd;
  *	Returns the index of the largest value in xtab for which
  *	x[i] < key.
  *
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-Search(points, nPoints, key, foundPtr)
-    Point2D points[];		/* Contains the abscissas of the data
+Search(
+    Point2d points[],		/* Contains the abscissas of the data
 				 * points of interpolation. */
-    int nPoints;			/* Dimension of x. */
-    double key;			/* Value whose relative position in
+    int nPoints,		/* Dimension of x. */
+    double key,			/* Value whose relative position in
 				 * x is to be located. */
-    int *foundPtr;		/* (out) Returns 1 if s is found in
+    int *foundPtr)		/* (out) Returns 1 if s is found in
 				 * x and 0 otherwise. */
 {
     int high, low, mid;
@@ -70,7 +76,7 @@ Search(points, nPoints, key, foundPtr)
 }
 
 /*
- *-----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * QuadChoose --
  *
@@ -81,17 +87,17 @@ Search(points, nPoints, key, foundPtr)
  * 	Returns a case number (1-4) which controls how the parameters
  * 	of the quadratic spline are evaluated.
  *
- *-----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-QuadChoose(p, q, m1, m2, epsilon)
-    Point2D *p;			/* Coordinates of one of the points of
+QuadChoose(
+    Point2d *p,			/* Coordinates of one of the points of
 				 * interpolation */
-    Point2D *q;			/* Coordinates of one of the points of
+    Point2d *q,			/* Coordinates of one of the points of
 				 * interpolation */
-    double m1;			/* Derivative condition at point P */
-    double m2;			/* Derivative condition at point Q */
-    double epsilon;		/* Error tolerance used to distinguish
+    double m1,			/* Derivative condition at point P */
+    double m2,			/* Derivative condition at point Q */
+    double epsilon)		/* Error tolerance used to distinguish
 				 * cases when m1 or m2 is relatively
 				 * close to the slope or twice the
 				 * slope of the line segment joining
@@ -193,7 +199,7 @@ QuadChoose(p, q, m1, m2, epsilon)
 }
 
 /*
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * QuadCases --
  *
@@ -218,14 +224,11 @@ QuadChoose(p, q, m1, m2, epsilon)
  *	the knots and other parameters of the spline on P.
  *	(e1,e2) and Q are used only if ncase=4.
  *
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-QuadCases(p, q, m1, m2, param, which)
-    Point2D *p, *q;
-    double m1, m2;
-    double param[];
-    int which;
+QuadCases(Point2d *p, Point2d *q, double m1, double m2, double param[], 
+	  int which)
 {
     if ((which == 3) || (which == 4)) {	/* Parameters used in both 3 and 4 */
 	double mbar1, mbar2, mbar3, c1, d1, h1, j1, k1;
@@ -283,11 +286,8 @@ QuadCases(p, q, m1, m2, param, which)
 }
 
 static int
-QuadSelect(p, q, m1, m2, epsilon, param)
-    Point2D *p, *q;
-    double m1, m2;
-    double epsilon;
-    double param[];
+QuadSelect(Point2d *p, Point2d *q, double m1, double m2, double epsilon,
+	   double param[])
 {
     int ncase;
 
@@ -297,16 +297,14 @@ QuadSelect(p, q, m1, m2, epsilon, param)
 }
 
 /*
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * QuadGetImage --
  *
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 INLINE static double
-QuadGetImage(p1, p2, p3, x1, x2, x3)
-    double p1, p2, p3;
-    double x1, x2, x3;
+QuadGetImage(double p1, double p2, double p3, double x1, double x2, double x3)
 {
     double A, B, C;
     double y;
@@ -320,7 +318,7 @@ QuadGetImage(p1, p2, p3, x1, x2, x3)
 }
 
 /*
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * QuadSpline --
  *
@@ -344,17 +342,17 @@ QuadGetImage(p1, p2, p3, x1, x2, x3)
  * Results:
  *	The image of the spline at x.
  *
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-QuadSpline(intp, left, right, param, ncase)
-    Point2D *intp;		/* Value at which spline is evaluated */
-    Point2D *left;		/* Point to the left of the data point to
+QuadSpline(
+    Point2d *intp,		/* Value at which spline is evaluated */
+    Point2d *left,		/* Point to the left of the data point to
 				 * be evaluated */
-    Point2D *right;		/* Point to the right of the data point to
+    Point2d *right,		/* Point to the right of the data point to
 				 * be evaluated */
-    double param[];		/* Parameters of the spline */
-    int ncase;			/* Controls the evaluation of the
+    double param[],		/* Parameters of the spline */
+    int ncase)			/* Controls the evaluation of the
 				 * spline by indicating whether one or
 				 * two knots were placed in the
 				 * interval (leftX,rightX) */
@@ -406,7 +404,7 @@ QuadSpline(intp, left, right, param, ncase)
 }
 
 /*
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * QuadSlopes --
  *
@@ -421,21 +419,16 @@ QuadSpline(intp, left, right, param, ncase)
  *	The output array "m" is filled with the derivates at each
  *	data point.
  *
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-QuadSlopes(points, m, nPoints)
-    Point2D points[];
-    double *m;			/* (out) To be filled with the first
-				 * derivative at each data point. */
-    int nPoints;		/* Number of data points (dimension of
-				 * x, y, and m). */
+QuadSlopes(Point2d *points, double *m, int nPoints)
 {
     double xbar, xmid, xhat, ydif1, ydif2;
     double yxmid;
     double m1, m2;
     double m1s, m2s;
-    register int i, n, l;
+    int i, n, l;
 
     m1s = m2s = m1 = m2 = 0;
     for (l = 0, i = 1, n = 2; i < (nPoints - 1); l++, i++, n++) {
@@ -503,7 +496,7 @@ QuadSlopes(points, m, nPoints)
 }
 
 /*
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * QuadEval --
  *
@@ -550,25 +543,25 @@ QuadSlopes(points, m, nPoints)
  *      QuadCases
  *      QuadChoose
  *      QuadSpline
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-QuadEval(origPts, nOrigPts, intpPts, nIntpPts, m, epsilon)
-    Point2D origPts[];
-    int nOrigPts;
-    Point2D intpPts[];
-    int nIntpPts;
-    double *m;			/* Slope of the spline at each point
+QuadEval(
+    Point2d origPts[],
+    int nOrigPts,
+    Point2d intpPts[],
+    int nIntpPts,
+    double *m,			/* Slope of the spline at each point
 				 * of interpolation. */
-    double epsilon;		/* Relative error tolerance (see choose) */
+    double epsilon)		/* Relative error tolerance (see choose) */
 {
     int error;
-    register int i, j;
+    int i, j;
     double param[10];
     int ncase;
     int start, end;
     int l, p;
-    register int n;
+    int n;
     int found;
 
     /* Initialize indices and set error result */
@@ -728,14 +721,14 @@ QuadEval(origPts, nOrigPts, intpPts, nIntpPts, m, epsilon)
 }
 
 /*
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *		  Shape preserving quadratic splines
  *		   by D.F.Mcallister & J.A.Roulier
  *		    Coded by S.L.Dodd & M.Roulier
  *			 N.C.State University
  *
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*
  * Driver routine for quadratic spline package
@@ -750,19 +743,14 @@ QuadEval(origPts, nOrigPts, intpPts, nIntpPts, m, epsilon)
  *   ym     Contains the interpolated spline value at each data point
  */
 int
-Blt_QuadraticSpline(origPts, nOrigPts, intpPts, nIntpPts)
-    Point2D origPts[];
-    int nOrigPts;
-    Point2D intpPts[];
-    int nIntpPts;
+Blt_QuadraticSpline(Point2d *origPts, int nOrigPts, Point2d *intpPts, 
+		    int nIntpPts)
 {
     double epsilon;
     double *work;
     int result;
 
-    work = Blt_Malloc(nOrigPts * sizeof(double));
-    assert(work);
-
+    work = Blt_AssertMalloc(nOrigPts * sizeof(double));
     epsilon = 0.0;		/* TBA: adjust error via command-line option */
     /* allocate space for vectors used in calculation */
     QuadSlopes(origPts, work, nOrigPts);
@@ -775,7 +763,7 @@ Blt_QuadraticSpline(origPts, nOrigPts, intpPts, nIntpPts)
 }
 
 /*
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Reference:
  *	Numerical Analysis, R. Burden, J. Faires and A. Reynolds.
@@ -785,24 +773,21 @@ Blt_QuadraticSpline(origPts, nOrigPts, intpPts, nIntpPts)
  *	origPts - vector of points, assumed to be sorted along x.
  *	intpPts - vector of new points.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_NaturalSpline(origPts, nOrigPts, intpPts, nIntpPts)
-    Point2D origPts[];
-    int nOrigPts;
-    Point2D intpPts[];
-    int nIntpPts;
+Blt_NaturalSpline(Point2d *origPts, int nOrigPts, Point2d *intpPts, 
+		  int nIntpPts)
 {
     Cubic2D *eq;
-    Point2D *iPtr, *endPtr;
+    Point2d *ip, *iend;
     TriDiagonalMatrix *A;
     double *dx;		/* vector of deltas in x */
     double x, dy, alpha;
     int isKnot;
-    register int i, j, n;
+    int i, j, n;
 
-    dx = Blt_Malloc(sizeof(double) * nOrigPts);
+    dx = Blt_AssertMalloc(sizeof(double) * nOrigPts);
     /* Calculate vector of differences */
     for (i = 0, j = 1; j < nOrigPts; i++, j++) {
 	dx[i] = origPts[j].x - origPts[i].x;
@@ -811,7 +796,7 @@ Blt_NaturalSpline(origPts, nOrigPts, intpPts, nIntpPts)
 	}
     }
     n = nOrigPts - 1;		/* Number of intervals. */
-    A = Blt_Malloc(sizeof(TriDiagonalMatrix) * nOrigPts);
+    A = Blt_AssertMalloc(sizeof(TriDiagonalMatrix) * nOrigPts);
     if (A == NULL) {
 	Blt_Free(dx);
 	return 0;
@@ -829,8 +814,8 @@ Blt_NaturalSpline(origPts, nOrigPts, intpPts, nIntpPts)
 	A[j][1] = dx[j] / A[j][0];
 	A[j][2] = (alpha - dx[i] * A[i][2]) / A[j][0];
     }
-    eq = Blt_Malloc(sizeof(Cubic2D) * nOrigPts);
 
+    eq = Blt_Malloc(sizeof(Cubic2D) * nOrigPts);
     if (eq == NULL) {
 	Blt_Free(A);
 	Blt_Free(dx);
@@ -846,11 +831,10 @@ Blt_NaturalSpline(origPts, nOrigPts, intpPts, nIntpPts)
     Blt_Free(A);
     Blt_Free(dx);
 
-    endPtr = intpPts + nIntpPts;
     /* Now calculate the new values */
-    for (iPtr = intpPts; iPtr < endPtr; iPtr++) {
-	iPtr->y = 0.0;
-	x = iPtr->x;
+    for (ip = intpPts, iend = ip + nIntpPts; ip < iend; ip++) {
+	ip->y = 0.0;
+	x = ip->x;
 
 	/* Is it outside the interval? */
 	if ((x < origPts[0].x) || (x > origPts[n].x)) {
@@ -859,12 +843,11 @@ Blt_NaturalSpline(origPts, nOrigPts, intpPts, nIntpPts)
 	/* Search for the interval containing x in the point array */
 	i = Search(origPts, nOrigPts, x, &isKnot);
 	if (isKnot) {
-	    iPtr->y = origPts[i].y;
+	    ip->y = origPts[i].y;
 	} else {
 	    i--;
 	    x -= origPts[i].x;
-	    iPtr->y = origPts[i].y + 
-		x * (eq[i].b + x * (eq[i].c + x * eq[i].d));
+	    ip->y = origPts[i].y + x * (eq[i].b + x * (eq[i].c + x * eq[i].d));
 	}
     }
     Blt_Free(eq);
@@ -873,67 +856,70 @@ Blt_NaturalSpline(origPts, nOrigPts, intpPts, nIntpPts)
 
 static Blt_OpSpec splineOps[] =
 {
-    {"natural", 1, (Blt_Op)Blt_NaturalSpline, 6, 6, "x y splx sply",},
-    {"quadratic", 1, (Blt_Op)Blt_QuadraticSpline, 6, 6, "x y splx sply",},
+    {"natural", 1, Blt_NaturalSpline, 6, 6, "x y splx sply",},
+    {"quadratic", 1, Blt_QuadraticSpline, 6, 6, "x y splx sply",},
 };
 static int nSplineOps = sizeof(splineOps) / sizeof(Blt_OpSpec);
 
 /*ARGSUSED*/
 static int
-SplineCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+SplineCmd(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
-    Blt_Op proc;
+    SplineProc *proc;
     Blt_Vector *x, *y, *splX, *splY;
     double *xArr, *yArr;
-    register int i;
-    Point2D *origPts, *intpPts;
+    int i;
+    Point2d *origPts, *intpPts;
     int nOrigPts, nIntpPts;
     
-    proc = Blt_GetOp(interp, nSplineOps, splineOps, BLT_OP_ARG1, argc, argv,0);
+    proc = Blt_GetOpFromObj(interp, nSplineOps, splineOps, BLT_OP_ARG1, 
+	objc, objv, 0);
     if (proc == NULL) {
 	return TCL_ERROR;
     }
-    if ((Blt_GetVector(interp, argv[2], &x) != TCL_OK) ||
-	(Blt_GetVector(interp, argv[3], &y) != TCL_OK) ||
-	(Blt_GetVector(interp, argv[4], &splX) != TCL_OK)) {
+    if ((Blt_GetVectorFromObj(interp, objv[2], &x) != TCL_OK) ||
+	(Blt_GetVectorFromObj(interp, objv[3], &y) != TCL_OK) ||
+	(Blt_GetVectorFromObj(interp, objv[4], &splX) != TCL_OK)) {
 	return TCL_ERROR;
     }
     nOrigPts = Blt_VecLength(x);
     if (nOrigPts < 3) {
-	Tcl_AppendResult(interp, "length of vector \"", argv[2], "\" is < 3",
-	    (char *)NULL);
+	Tcl_AppendResult(interp, "length of vector \"", Tcl_GetString(objv[2]),
+			 "\" is < 3", (char *)NULL);
 	return TCL_ERROR;
     }
     for (i = 1; i < nOrigPts; i++) {
 	if (Blt_VecData(x)[i] < Blt_VecData(x)[i - 1]) {
-	    Tcl_AppendResult(interp, "x vector \"", argv[2],
+	    Tcl_AppendResult(interp, "x vector \"", Tcl_GetString(objv[2]),
 		"\" must be monotonically increasing", (char *)NULL);
 	    return TCL_ERROR;
 	}
     }
     /* Check that all the data points aren't the same. */
     if (Blt_VecData(x)[i - 1] <= Blt_VecData(x)[0]) {
-	Tcl_AppendResult(interp, "x vector \"", argv[2],
+	Tcl_AppendResult(interp, "x vector \"", Tcl_GetString(objv[2]),
 	 "\" must be monotonically increasing", (char *)NULL);
 	return TCL_ERROR;
     }
     if (nOrigPts != Blt_VecLength(y)) {
-	Tcl_AppendResult(interp, "vectors \"", argv[2], "\" and \"", argv[3],
-	    " have different lengths", (char *)NULL);
+	Tcl_AppendResult(interp, "vectors \"", Tcl_GetString(objv[2]), 
+			 "\" and \"", Tcl_GetString(objv[3]),
+			 " have different lengths", (char *)NULL);
 	return TCL_ERROR;
     }
     nIntpPts = Blt_VecLength(splX);
-    if (Blt_GetVector(interp, argv[5], &splY) != TCL_OK) {
+    if (Blt_GetVectorFromObj(interp, objv[5], &splY) != TCL_OK) {
 	/*
 	 * If the named vector to hold the ordinates of the spline
 	 * doesn't exist, create one the same size as the vector
 	 * containing the abscissas.
 	 */
-	if (Blt_CreateVector(interp, argv[5], nIntpPts, &splY) != TCL_OK) {
+	if (Blt_CreateVector(interp, Tcl_GetString(objv[5]), nIntpPts, &splY) 
+	    != TCL_OK) {
 	    return TCL_ERROR;
 	}
     } else if (nIntpPts != Blt_VecLength(splY)) {
@@ -945,13 +931,13 @@ SplineCmd(clientData, interp, argc, argv)
 	    return TCL_ERROR;
 	}
     }
-    origPts = Blt_Malloc(sizeof(Point2D) * nOrigPts);
+    origPts = Blt_Malloc(sizeof(Point2d) * nOrigPts);
     if (origPts == NULL) {
 	Tcl_AppendResult(interp, "can't allocate \"", Blt_Itoa(nOrigPts), 
 		"\" points", (char *)NULL);
 	return TCL_ERROR;
     }
-    intpPts = Blt_Malloc(sizeof(Point2D) * nIntpPts);
+    intpPts = Blt_Malloc(sizeof(Point2d) * nIntpPts);
     if (intpPts == NULL) {
 	Tcl_AppendResult(interp, "can't allocate \"", Blt_Itoa(nIntpPts), 
 		"\" points", (char *)NULL);
@@ -995,16 +981,11 @@ SplineCmd(clientData, interp, argc, argv)
 }
 
 int
-Blt_SplineInit(interp)
-    Tcl_Interp *interp;
+Blt_SplineCmdInitProc(Tcl_Interp *interp)
 {
-    static Blt_CmdSpec cmdSpec =
-    {"spline", SplineCmd,};
+    static Blt_InitCmdSpec cmdSpec = {"spline", SplineCmd,};
 
-    if (Blt_InitCmd(interp, "blt", &cmdSpec) == NULL) {
-	return TCL_ERROR;
-    }
-    return TCL_OK;
+    return Blt_InitCmd(interp, "::blt", &cmdSpec);
 }
 
 
@@ -1035,9 +1016,7 @@ typedef struct {
  * Return TRUE if decomposition exist.
  */
 static int 
-SolveCubic1(A, n)
-    TriDiagonalMatrix A[];
-    int n;
+SolveCubic1(TriDiagonalMatrix A[], int n)
 {
     int i;
     double m_ij, m_n, m_nn, d;
@@ -1080,10 +1059,7 @@ SolveCubic1(A, n)
  * in x[]. The solution x overwrites the right side in x[].
  */
 static void 
-SolveCubic2(A, spline, nIntervals)
-    TriDiagonalMatrix A[];
-    CubicSpline spline[];
-    int nIntervals;
+SolveCubic2(TriDiagonalMatrix A[], CubicSpline spline[], int nIntervals)
 {
     int i;
     double x, y;
@@ -1134,14 +1110,15 @@ SolveCubic2(A, spline, nIntervals)
  * Note: For CLOSED_CONTOURs the first and last point must be equal.
  */
 static CubicSpline *
-CubicSlopes(points, nPoints, isClosed, unitX, unitY)
-    Point2D points[];
-    int nPoints;		/* Number of points (nPoints>=3) */
-    int isClosed;		/* CLOSED_CONTOUR or OPEN_CONTOUR  */
-    double unitX, unitY;	/* Unit length in x and y (norm=1) */
+CubicSlopes(
+    Point2d points[],
+    int nPoints,		/* Number of points (nPoints>=3) */
+    int isClosed,		/* CLOSED_CONTOUR or OPEN_CONTOUR  */
+    double unitX, 
+    double unitY)		/* Unit length in x and y (norm=1) */
 {
     CubicSpline *spline;
-    register CubicSpline *s1, *s2;
+    CubicSpline *s1, *s2;
     int n, i;
     double norm, dx, dy;
     TriDiagonalMatrix *A;	/* The tri-diagonal matrix is saved here. */
@@ -1264,17 +1241,12 @@ CubicSlopes(points, nPoints, isClosed, unitX, unitY)
  * values is n. On an equidistant grid n_intpol values are calculated.
  */
 static int
-CubicEval(origPts, nOrigPts, intpPts, nIntpPts, spline)
-    Point2D origPts[];
-    int nOrigPts;
-    Point2D intpPts[];
-    int nIntpPts;
-    CubicSpline spline[];
+CubicEval(Point2d *origPts, int nOrigPts, Point2d *intpPts, int nIntpPts,
+	  CubicSpline *spline)
 {
     double t, tSkip, tMax;
-    Point2D p, q;
-    double d, hx, dx0, dx01, hy, dy0, dy01;
-    register int i, j, count;
+    Point2d q;
+    int i, j, count;
 
     /* Sum the lengths of all the segments (intervals). */
     tMax = 0.0;
@@ -1295,6 +1267,9 @@ CubicEval(origPts, nOrigPts, intpPts, nIntpPts, spline)
     t += tSkip;
     
     for (i = 0, j = 1; j < nOrigPts; i++, j++) {
+	Point2d p;
+	double d, hx, dx0, dx01, hy, dy0, dy01;
+	
 	d = spline[i].t;	/* Interval length */
 	p = q;
 	q = origPts[i+1];
@@ -1323,14 +1298,8 @@ CubicEval(origPts, nOrigPts, intpPts, nIntpPts, spline)
  * parameter t is the length of the linear stroke.
  */
 int
-Blt_NaturalParametricSpline(origPts, nOrigPts, extsPtr, isClosed, 
-	intpPts, nIntpPts)
-    Point2D origPts[];
-    int nOrigPts;
-    Extents2D *extsPtr;
-    int isClosed;
-    Point2D *intpPts;
-    int nIntpPts;
+Blt_NaturalParametricSpline(Point2d *origPts, int nOrigPts, Region2d *extsPtr,
+			    int isClosed, Point2d *intpPts, int nIntpPts)
 {
     double unitX, unitY;	/* To define norm (x,y)-plane */
     CubicSpline *spline;
@@ -1368,10 +1337,8 @@ Blt_NaturalParametricSpline(origPts, nOrigPts, extsPtr, isClosed,
     return result;
 }
 
-static void
-CatromCoeffs(p, a, b, c, d)
-    Point2D *p;
-    Point2D *a, *b, *c, *d;
+static INLINE void
+CatromCoeffs(Point2d *p, Point2d *a, Point2d *b, Point2d *c, Point2d *d)
 {
     a->x = -p[0].x + 3.0 * p[1].x - 3.0 * p[2].x + p[3].x;
     b->x = 2.0 * p[0].x - 5.0 * p[1].x + 4.0 * p[2].x - p[3].x;
@@ -1384,39 +1351,37 @@ CatromCoeffs(p, a, b, c, d)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_ParametricCatromSpline --
  *
- *	Computes a spline based upon the data points, returning a new
- *	(larger) coordinate array or points.
+ *	Computes a spline based upon the data points, returning a new (larger)
+ *	coordinate array of points.
  *
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_CatromParametricSpline(points, nPoints, intpPts, nIntpPts)
-    Point2D *points;
-    int nPoints;
-    Point2D *intpPts;
-    int nIntpPts;
+Blt_CatromParametricSpline(Point2d *points, int nPoints, Point2d *intpPts,
+			   int nIntpPts)
 {
-    register int i;
-    Point2D *origPts;
+    int i;
+    Point2d *origPts;
     double t;
     int interval;
-    Point2D a, b, c, d;
+    Point2d a, b, c, d;
 
     assert(nPoints > 0);
+
     /*
-     * The spline is computed in screen coordinates instead of data
-     * points so that we can select the abscissas of the interpolated
-     * points from each pixel horizontally across the plotting area.
+     * The spline is computed in screen coordinates instead of data points so
+     * that we can select the abscissas of the interpolated points from each
+     * pixel horizontally across the plotting area.
      */
-    origPts = Blt_Malloc((nPoints + 4) * sizeof(Point2D));
-    memcpy(origPts + 1, points, sizeof(Point2D) * nPoints);
+    origPts = Blt_AssertMalloc((nPoints + 4) * sizeof(Point2d));
+    memcpy(origPts + 1, points, sizeof(Point2d) * nPoints);
 
     origPts[0] = origPts[1];
     origPts[nPoints + 2] = origPts[nPoints + 1] = origPts[nPoints];

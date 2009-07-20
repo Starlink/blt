@@ -1,27 +1,29 @@
+
 /*
  * bltTile.c --
  *
- *	This module manages images for tiled backgrounds for the BLT toolkit.
+ * This module manages images for tiled backgrounds for the BLT toolkit.
  *
- * Copyright 1995-1998 Lucent Technologies, Inc.
+ *	Copyright 1995-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltInt.h"
@@ -29,15 +31,16 @@
 #include "bltHash.h"
 #include "bltImage.h"
 #include <X11/Xutil.h>
-
+#include "tkDisplay.h"
 #include "bltTile.h"
+#include "bltBitmap.h"
 
 #define TILE_THREAD_KEY	"BLT Tile Data"
 #define TILE_MAGIC ((unsigned int) 0x46170277)
 
 typedef struct {
-    Blt_HashTable tileTable;	/* Hash table of tile structures keyed by 
-				 * the name of the image. */
+    Blt_HashTable tileTable;	/* Hash table of tile structures keyed by the
+				 * name of the image. */
     Tcl_Interp *interp;
 } TileInterpData;
 
@@ -46,36 +49,43 @@ typedef struct {
     Display *display;		/* Display where pixmap was created. */
     int flags;			/* See definitions below. */
     Tcl_Interp *interp;
+
     Blt_HashEntry *hashPtr;	/* Pointer to hash table location */
+
     Blt_HashTable *tablePtr;
 
     Pixmap pixmap;		/* Pixmap generated from image. */
-    Pixmap mask;		/* Monochrome pixmap used as
-				 * transparency mask. */
+
+    Pixmap mask;		/* Monochrome pixmap used as a transparency
+				 * mask. */
+
     GC gc;			/* GC */
     Tk_Image tkImage;		/* Tk image token. */
-    Blt_Chain *clients;		/* Chain of clients sharing this tile. */
-    int width, height;		
+    Blt_Chain clients;		/* Chain of clients sharing this tile. */
+
+    int width, height;		/* Dimensions of the tile itself. */
 } Tile;
 
-#define NOTIFY_PENDING	1	/* If set, indicates that the image
-				 * associated with the tile has been
-				 * updated or deleted.  The tile pixmap
-				 * will be changed and the clients of the
-				 * tile will be notified (if they supplied
-				 * a TileChangedProc routine. */
+#define NOTIFY_PENDING	1	/* If set, indicates that the image associated
+				 * with the tile has been updated or deleted.
+				 * The tile pixmap will be changed and the
+				 * clients of the tile will be notified (if
+				 * they supplied a TileChangedProc routine. */
 
-typedef struct Blt_TileClientStruct {
+typedef struct _Blt_TileClient {
     unsigned int magic;
-    Tk_Window tkwin;		/* Client window. */
-    int xOrigin, yOrigin;	/* Tiling origin in relation to the
-				 * client window. */
-    Blt_TileChangedProc *notifyProc; /* If non-NULL, routine to
-				 * call to when tile image changes. */
+
+    Tk_Window tkwin;		/* Reference window. */
+
+    int xOrigin, yOrigin;	/* Origin of tile relative to the reference
+				 * window. */
+
+    Blt_TileChangedProc *notifyProc; /* If non-NULL, routine to call to when
+				 * tile image changes. */
     ClientData clientData;	/* Data to pass to when calling the above
 				 * routine. */
     Tile *tilePtr;		/* Pointer to actual tile information */
-    Blt_ChainLink *linkPtr;	/* Pointer to client entry in the server's
+    Blt_ChainLink link;		/* Pointer to client entry in the server's
 				 * client list.  Used to delete the client */
 } TileClient;
 
@@ -84,34 +94,61 @@ typedef struct {
     Tk_Uid nameId;
     int depth;
 } TileKey;
-    
-static TileInterpData *GetTileInterpData _ANSI_ARGS_((Tcl_Interp *interp));
+
+#ifdef notdef    
+#define DEF_TILE_BORDER		STD_BACKGROUND
+#define DEF_TILE_BORDER_WIDTH	"0"
+#define DEF_TILE_RESIZE		"none"
+#define DEF_TILE_X_ORIGIN	"0"
+#define DEF_TILE_Y_ORIGIN	"0"
+
+static Blt_ConfigSpec configSpecs[] =
+{
+    {BLT_CONFIG_BORDER, "-background", "background", "Background",
+	DEF_TILE_BORDER_COLOR, Blt_Offset(Tile, border), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", "BorderWidth",
+	DEF_TILE_BORDERWIDTH, Blt_Offset(Tile, borderWidth),
+	BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_CUSTOM, "-image", "image", "Image", (char *)NULL,
+        Blt_Offset(Tile, image), BLT_CONFIG_DONT_SET_DEFAULT, &imageOption},
+    {BLT_CONFIG_CUSTOM, "-relativeto", "relativeTo", "RelativeTo", (char *)NULL,
+        Blt_Offset(Tile, relative), BLT_CONFIG_DONT_SET_DEFAULT, 
+	&relativeOption},
+    {BLT_CONFIG_CUSTOM, "-resize", "resize", "Resize", (char *)NULL,
+        Blt_Offset(Tile, resize), BLT_CONFIG_DONT_SET_DEFAULT, 
+	&resizeOption},
+    {BLT_CONFIG_INT, "-xorigin", "xOrigin", "Origin", DEF_TILE_X_ORIGIN, 
+	Blt_Offset(Tile, xOrigin), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_INT, "-yorigin", "yOrigin", "Origin", DEF_TILE_Y_ORIGIN, 
+	Blt_Offset(Tile, yOrigin), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+};
+#endif
 
 static Tcl_IdleProc UpdateTile;
 static Tk_ImageChangedProc ImageChangedProc;
 static Tcl_InterpDeleteProc TileInterpDeleteProc;
 
-static void DestroyClient _ANSI_ARGS_((TileClient *clientPtr));
-static void DestroyTile _ANSI_ARGS_((Tile *tilePtr));
+static TileInterpData *GetTileInterpData(Tcl_Interp *interp);
+static void DestroyClient(TileClient *clientPtr);
+static void DestroyTile(Tile *tilePtr);
 
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * RedrawTile --
  *
- *	Generates a pixmap and draws the tile image into it.  Also
- *	a tranparency mask is possibly generated from the image.
+ *	Generates a pixmap and draws the tile image into it.  Also a
+ *	tranparency mask is possibly generated from the image.
  *
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-RedrawTile(tkwin, tilePtr)
-    Tk_Window tkwin;
-    Tile *tilePtr;
+RedrawTile(Tk_Window tkwin, Tile *tilePtr)
 {
     GC newGC;
     Tk_PhotoHandle photo;
@@ -126,11 +163,10 @@ RedrawTile(tkwin, tilePtr)
 	Pixmap pixmap;
 
 	/*
-	 * Create the new pixmap *before* destroying the old one.  I don't
-	 * why this happens, but if you delete the old pixmap first, the
-	 * old pixmap sometimes gets used in the client's GCs.  I suspect
-	 * it has something to do with the way Tk reallocates X resource
-	 * identifiers.  
+	 * Create the new pixmap *before* destroying the old one.  I don't why
+	 * this happens, but if you delete the old pixmap first, the old
+	 * pixmap sometimes gets used in the client's GCs.  I suspect it has
+	 * something to do with the way Tk reallocates X resource identifiers.
 	 */
 	pixmap = Tk_GetPixmap(Tk_Display(tkwin), Tk_WindowId(tkwin), width, 
 			      height, Tk_Depth(tkwin));
@@ -154,15 +190,15 @@ RedrawTile(tkwin, tilePtr)
     tilePtr->height = height;
 
     if (tilePtr->mask != None) {
-#ifdef WIN32
+#if defined(WIN32) || defined(MACOSX)
 	Tk_FreePixmap(Tk_Display(tkwin), tilePtr->mask);
 #else 
 	XFreePixmap(Tk_Display(tkwin), tilePtr->mask);
-#endif /* WIN32 */
+#endif /* WIN32 or MACOSX */
 	tilePtr->mask = None;
     }
-    photo = Blt_FindPhoto(tilePtr->interp, 
-			  Blt_NameOfImage(tilePtr->tkImage));
+    photo = Tk_FindPhoto(tilePtr->interp, 
+		  Blt_NameOfImage(tilePtr->tkImage));
     if (photo != NULL) {
 	Tk_PhotoImageBlock src;
 
@@ -174,7 +210,7 @@ RedrawTile(tkwin, tilePtr)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * UpdateTile --
  *
@@ -183,34 +219,33 @@ RedrawTile(tkwin, tilePtr)
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-UpdateTile(clientData)
-    ClientData clientData;
+UpdateTile(ClientData clientData)
 {
     Tile *tilePtr = (Tile *)clientData;
     TileClient *clientPtr;
-    Blt_ChainLink *linkPtr;
+    Blt_ChainLink link;
 
     tilePtr->flags &= ~NOTIFY_PENDING;
-    if (Tk_ImageIsDeleted(tilePtr->tkImage)) {
+    if (Blt_ImageIsDeleted(tilePtr->tkImage)) {
 	if (tilePtr->pixmap != None) {
 	    Tk_FreePixmap(tilePtr->display, tilePtr->pixmap);
 	}
 	tilePtr->pixmap = None;
     } else {
 	/* Pick any client window to generate the new pixmap. */
-	linkPtr = Blt_ChainFirstLink(tilePtr->clients);
-	clientPtr = Blt_ChainGetValue(linkPtr);
+	link = Blt_Chain_FirstLink(tilePtr->clients);
+	clientPtr = Blt_Chain_GetValue(link);
 	RedrawTile(clientPtr->tkwin, tilePtr);
     }
 
     /* Notify each of the tile's clients that the pixmap has changed. */
 
-    for (linkPtr = Blt_ChainFirstLink(tilePtr->clients); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	clientPtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_ChainFirstLink(tilePtr->clients); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	clientPtr = Blt_Chain_GetValue(link);
 	if (clientPtr->notifyProc != NULL) {
 	    (*clientPtr->notifyProc) (clientPtr->clientData, clientPtr);
 	}
@@ -218,7 +253,7 @@ UpdateTile(clientData)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ImageChangedProc
  *
@@ -226,22 +261,22 @@ UpdateTile(clientData)
  *	tile.
  *
  *	Note:	As of Tk 4.2 (rechecked in 8.3), if you redraw Tk 
- *		images from a Tk_ImageChangedProc you'll get a 
- *		coredump.  As a workaround, we have to simulate 
- *		how the Tk widgets use images and redraw within 
- *		an idle event.
+ *		images from a Tk_ImageChangedProc you'll get a coredump.  As a
+ *		workaround, we have to simulate how the Tk widgets use images
+ *		and redraw within an idle event.
  *
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /* ARGSUSED */
 static void
-ImageChangedProc(clientData, x, y, width, height, imageWidth, imageHeight)
-    ClientData clientData;
-    int x, y, width, height;	/* Not used. */
-    int imageWidth, imageHeight; /* Not used. */
+ImageChangedProc(
+    ClientData clientData,
+    int x, int y,		/* Not used. */
+    int width, int height,	/* Not used. */
+    int imageWidth, int imageHeight) /* Not used. */
 {
     Tile *tilePtr = (Tile *) clientData;
 
@@ -252,33 +287,33 @@ ImageChangedProc(clientData, x, y, width, height, imageWidth, imageHeight)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DestroyTile --
  *
- *	Deletes the core tile structure, including the pixmap
- *	representing the tile.
+ *	Deletes the core tile structure, including the pixmap representing the
+ *	tile.
  *
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
 DestroyTile(Tile *tilePtr)
 {
-    Blt_ChainLink *linkPtr;
+    Blt_ChainLink link;
     TileClient *clientPtr;
 
     if (tilePtr->flags & NOTIFY_PENDING) {
 	Tcl_CancelIdleCall(UpdateTile, tilePtr);
     }
-    for (linkPtr = Blt_ChainFirstLink(tilePtr->clients); linkPtr != NULL;
-	linkPtr = Blt_ChainNextLink(linkPtr)) {
-	clientPtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_FirstLink(tilePtr->clients); link != NULL;
+	link = Blt_Chain_NextLink(link)) {
+	clientPtr = Blt_Chain_GetValue(link);
 	Blt_Free(clientPtr);
     }
-    Blt_ChainDestroy(tilePtr->clients);
+    Blt_Chain_Destroy(tilePtr->clients);
 
     if (tilePtr->hashPtr != NULL) {
 	Blt_DeleteHashEntry(tilePtr->tablePtr, tilePtr->hashPtr);
@@ -298,23 +333,23 @@ DestroyTile(Tile *tilePtr)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * CreateTile --
  *
- *	Creates a tile server.  A tile server manages a single image,
- *	possibly shared by several clients.  Clients will be updated
- *	(if requested) by the server if the image changes, so they
- *	know to redraw themselves.  For X11 the image is drawn into a
- *	pixmap that is used in a new GC as its tile.  For Windows we
- *	have to do the tiling ourselves by redrawing the image across
- *	the drawing area (see Blt_TileRectangle and Blt_TilePolygon).
+ *	Creates a tile server.  A tile server manages a single image, possibly
+ *	shared by several clients.  Clients will be updated (if requested) by
+ *	the server if the image changes, so they know to redraw themselves.
+ *	For X11 the image is drawn into a pixmap that is used in a new GC as
+ *	its tile.  For Windows we have to do the tiling ourselves by redrawing
+ *	the image across the drawing area (see Blt_TileRectangle and
+ *	Blt_TilePolygon).
  *
  * Results:
- *	Returns a pointer to the new tile server.  If the image name
- *	does not represent a Tk image, NULL is returned.
+ *	Returns a pointer to the new tile server.  If the image name does not
+ *	represent a Tk image, NULL is returned.
  *
- *---------------------------------------------------------------------- 
+ *---------------------------------------------------------------------------
  */
 static Tile *
 CreateTile(
@@ -325,11 +360,9 @@ CreateTile(
     Tile *tilePtr;
     Tk_Image tkImage;
 
-    tilePtr = Blt_Calloc(1, sizeof(Tile));
-    assert(tilePtr);
-    /*
-     * Get the image. Funnel all change notifications to a single routine.
-     */
+    tilePtr = Blt_AssertCalloc(1, sizeof(Tile));
+
+    /* Get the image. Funnel all change notifications to a single routine. */
     tkImage = Tk_GetImage(interp, tkwin, imageName, ImageChangedProc,
 	tilePtr);
     if (tkImage == NULL) {
@@ -337,31 +370,29 @@ CreateTile(
 	return NULL;
     }
 
-    /*
-     * Initialize the tile server.
-     */
+    /* Initialize the tile server. */
     tilePtr->display = Tk_Display(tkwin);
     tilePtr->interp = interp;
-    tilePtr->name = Blt_Strdup(imageName);
-    tilePtr->clients = Blt_ChainCreate();
+    tilePtr->name = Blt_AssertStrdup(imageName);
+    tilePtr->clients = Blt_Chain_Create();
     tilePtr->tkImage = tkImage;
     RedrawTile(tkwin, tilePtr);
     return tilePtr;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DestroyClient --
  *
- *	Removes the client from the servers's list of clients and
- *	memory used by the client token is released.  When the last
- *	client is deleted, the server is also removed.
+ *	Removes the client from the servers's list of clients and memory used
+ *	by the client token is released.  When the last client is deleted, the
+ *	server is also removed.
  *
  * Results:
  *	None.
  *
- *---------------------------------------------------------------------- 
+ *---------------------------------------------------------------------------
  */
 static void
 DestroyClient(TileClient *clientPtr)
@@ -370,13 +401,13 @@ DestroyClient(TileClient *clientPtr)
     tilePtr = clientPtr->tilePtr;
 
     /* Remove the client from the server's list */
-    if (clientPtr->linkPtr != NULL) {
-	Blt_ChainDeleteLink(tilePtr->clients, clientPtr->linkPtr);
+    if (clientPtr->link != NULL) {
+	Blt_Chain_DeleteLink(tilePtr->clients, clientPtr->link);
     }
-    if (Blt_ChainGetLength(tilePtr->clients) == 0) {
+    if (Blt_Chain_GetLength(tilePtr->clients) == 0) {
 	/*
-	 * If there are no more clients of the tile, then remove the
-	 * pixmap, image, and the server record.
+	 * If there are no more clients of the tile, then remove the pixmap,
+	 * image, and the server record.
 	 */
 	DestroyTile(tilePtr);
     }
@@ -384,27 +415,27 @@ DestroyClient(TileClient *clientPtr)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * CreateClient --
  *
- *	Returns a token to a tile (possibly shared by many clients).
- *	A client uses the token to query or display the tile.  Clients
- *	request tiles by their image names.  Each tile is known by its
- *	display, screen depth, and image name.  The tile server tracks
- *	what clients are using the tile and notifies them (via a
- *	callback) whenever the tile changes. If no server exists
- *	already, one is created on-the-fly.
+ *	Returns a token to a tile (possibly shared by many clients).  A client
+ *	uses the token to query or display the tile.  Clients request tiles by
+ *	their image names.  Each tile is known by its display, screen depth,
+ *	and image name.  The tile server tracks what clients are using the
+ *	tile and notifies them (via a callback) whenever the tile changes. If
+ *	no server exists already, one is created on-the-fly.
  *
  * Results:
  *	A pointer to the newly created client (i.e. tile).
  *
- *---------------------------------------------------------------------- 
+ *---------------------------------------------------------------------------
  */
 static TileClient *
 CreateClient(
     Tcl_Interp *interp,
     Tk_Window tkwin,
+
     char *name)
 {
     TileClient *clientPtr;
@@ -423,33 +454,31 @@ CreateClient(
     if (isNew) {
 	tilePtr = CreateTile(interp, tkwin, name);
 	if (tilePtr == NULL) {
-	    Blt_DeleteHashEntry(&(dataPtr->tileTable), hPtr);
+	    Blt_DeleteHashEntry(&dataPtr->tileTable, hPtr);
 	    return NULL;
 	}
 	tilePtr->hashPtr = hPtr;
-	tilePtr->tablePtr = &(dataPtr->tileTable);
+	tilePtr->tablePtr = &dataPtr->tileTable;
 	Blt_SetHashValue(hPtr, tilePtr);
     } else {
 	tilePtr = Blt_GetHashValue(hPtr);
     }
-    clientPtr = Blt_Calloc(1, sizeof(TileClient));
-    assert(clientPtr);
-
+    clientPtr = Blt_AssertCalloc(1, sizeof(TileClient));
     /* Initialize client information. */
     clientPtr->magic = TILE_MAGIC;
     clientPtr->tkwin = tkwin;
-    clientPtr->linkPtr = Blt_ChainAppend(tilePtr->clients, clientPtr);
+    clientPtr->link = Blt_Chain_Append(tilePtr->clients, clientPtr);
     clientPtr->tilePtr = tilePtr;
     return clientPtr;
 }
 
 /*
- * -----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * TileInterpDeleteProc --
  *
- *	This is called when the interpreter is deleted. All the tiles
- *	are specific to that interpreter are destroyed.
+ *	This is called when the interpreter is deleted. All the tiles are
+ *	specific to that interpreter are destroyed.
  *
  * Results:
  *	None.
@@ -457,7 +486,7 @@ CreateClient(
  * Side effects:
  *	Destroys the tile table.
  *
- * ------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /* ARGSUSED */
 static void
@@ -470,20 +499,19 @@ TileInterpDeleteProc(
     Blt_HashSearch cursor;
     Tile *tilePtr;
     
-    for (hPtr = Blt_FirstHashEntry(&(dataPtr->tileTable), &cursor);
+    for (hPtr = Blt_FirstHashEntry(&dataPtr->tileTable, &cursor);
 	 hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
 	tilePtr = Blt_GetHashValue(hPtr);
 	tilePtr->hashPtr = NULL;
 	DestroyTile(tilePtr);
     }
-    Blt_DeleteHashTable(&(dataPtr->tileTable));
+    Blt_DeleteHashTable(&dataPtr->tileTable);
     Tcl_DeleteAssocData(interp, TILE_THREAD_KEY);
     Blt_Free(dataPtr);
 }
 
 static TileInterpData *
-GetTileInterpData(interp)
-     Tcl_Interp *interp;
+GetTileInterpData(Tcl_Interp *interp)
 {
     TileInterpData *dataPtr;
     Tcl_InterpDeleteProc *proc;
@@ -491,32 +519,29 @@ GetTileInterpData(interp)
     dataPtr = (TileInterpData *)
 	Tcl_GetAssocData(interp, TILE_THREAD_KEY, &proc);
     if (dataPtr == NULL) {
-	dataPtr = Blt_Malloc(sizeof(TileInterpData));
-	assert(dataPtr);
+	dataPtr = Blt_AssertMalloc(sizeof(TileInterpData));
 	dataPtr->interp = interp;
 	Tcl_SetAssocData(interp, TILE_THREAD_KEY, TileInterpDeleteProc, 
 		dataPtr);
-	Blt_InitHashTable(&(dataPtr->tileTable), sizeof(TileKey)/sizeof(int));
+	Blt_InitHashTable(&dataPtr->tileTable, sizeof(TileKey)/sizeof(int));
     }
     return dataPtr;
 }
 
-
 /* Public API for tiles. */
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_GetTile
  *
  *	Convert the named image into a tile.
  *
  * Results:
- *	If the image is valid, a new tile is returned.  If the name
- *	does not represent a proper image, an error message is left in
- *	interp->result.
+ *	If the image is valid, a new tile is returned.  If the name does not
+ *	represent a proper image, an error message is left in interp->result.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*LINTLIBRARY*/
 int
@@ -537,7 +562,7 @@ Blt_GetTile(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_FreeTile
  *
@@ -547,10 +572,10 @@ Blt_GetTile(
  *	None.
  *
  * Side Effects:
- *	Memory and X resources are freed.  Bookkeeping information
- *	about the tile (i.e. width, height, and name) is discarded.
+ *	Memory and X resources are freed.  Bookkeeping information about the
+ *	tile (i.e. width, height, and name) is discarded.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*LINTLIBRARY*/
 void
@@ -563,21 +588,20 @@ Blt_FreeTile(TileClient *clientPtr) /* Tile to be deleted */
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_NameOfTile
  *
- *	Returns the name of the image from which the tile was
- *	generated.
+ *	Returns the name of the image from which the tile was generated.
  *
  * Results:
- *	The name of the image is returned.  The name is not unique.
- *	Many tiles may use the same image.
+ *	The name of the image is returned.  The name is not unique.  Many
+ *	tiles may use the same image.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*LINTLIBRARY*/
-char *
+const char *
 Blt_NameOfTile(TileClient *clientPtr) /* Tile to query */
 {
     if (clientPtr == NULL) {
@@ -590,7 +614,7 @@ Blt_NameOfTile(TileClient *clientPtr) /* Tile to query */
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_PixmapOfTile
  *
@@ -599,7 +623,7 @@ Blt_NameOfTile(TileClient *clientPtr) /* Tile to query */
  * Results:
  *	The X pixmap used as the tile is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*LINTLIBRARY*/
 Pixmap
@@ -612,7 +636,7 @@ Blt_PixmapOfTile(TileClient *clientPtr) /* Tile to query */
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_SizeOfTile
  *
@@ -621,7 +645,7 @@ Blt_PixmapOfTile(TileClient *clientPtr) /* Tile to query */
  * Results:
  *	The width and height of the tile are returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*LINTLIBRARY*/
 void
@@ -639,7 +663,7 @@ Blt_SizeOfTile(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_SetTileChangedProc
  *
@@ -649,10 +673,10 @@ Blt_SizeOfTile(
  *	None.
  *
  * Side Effects:
- *	The designated routine will be called the next time the
- *	image associated with the tile changes.
+ *	The designated routine will be called the next time the image
+ *	associated with the tile changes.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*LINTLIBRARY*/
 void
@@ -668,24 +692,24 @@ Blt_SetTileChangedProc(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_SetTileOrigin --
  *
- *	Set the pattern origin of the tile to a common point (i.e. the
- *	origin (0,0) of the top level window) so that tiles from two
- *	different widgets will match up.  This done by setting the
- *	GCTileStipOrigin field is set to the translated origin of the
- *	toplevel window in the hierarchy.
+ *	Set the pattern origin of the tile to a common point (i.e. the origin
+ *	(0,0) of the top level window) so that tiles from two different
+ *	widgets will match up.  This done by setting the GCTileStipOrigin
+ *	field is set to the translated origin of the toplevel window in the
+ *	hierarchy.
  *
  * Results:
  *	None.
  *
  * Side Effects:
- *	The GCTileStipOrigin is reset in the GC.  This will cause the
- *	tile origin to change when the GC is used for drawing.
+ *	The GCTileStipOrigin is reset in the GC.  This will cause the tile
+ *	origin to change when the GC is used for drawing.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 void
@@ -740,11 +764,11 @@ static int tkpWinRopModes[] =
 #define COPYBG		0x00AC0744 /* dest = (!pat & src) | (pat & dst) */
 
 static void
-TileRegion(
+TileArea(
     HDC srcDC,			/* Source device context. */
     HDC destDC,			/* Destination device context. */
-    HDC maskDC,			/* If non-NULL, device context of the
-				 * mask tile mask. */
+    HDC maskDC,			/* If non-NULL, device context of the tile
+				 * mask. */
     TileClient *clientPtr,
     int x, int y, 
     int width, int height)
@@ -850,18 +874,18 @@ Blt_TilePolygon(
     Tk_Window tkwin,
     Drawable drawable,
     TileClient *clientPtr,
-    XPoint pointArr[],
+    XPoint *points,
     int nPoints)
 {
     HBITMAP oldBitmap;
     HDC hDC, memDC;
     HRGN hRgn;
-    POINT *p, *winPts;
-    Region2D bbox;
+    POINT *wp, *winPts;
+    int left, right, top, bottom;
     Tile *tilePtr;
     TkWinDCState state;
     TkWinDrawable *twdPtr;
-    XPoint *endPtr, *pointPtr;
+    XPoint *pend, *p;
     int fillMode;    
     int width, height;
     
@@ -871,44 +895,43 @@ Blt_TilePolygon(
     tilePtr = clientPtr->tilePtr;
 
     /* Determine the bounding box of the polygon. */
-    bbox.left = bbox.right = pointArr[0].x;
-    bbox.top = bbox.bottom = pointArr[0].y;
-    
-    endPtr = pointArr + nPoints;
-    for (pointPtr = pointArr; pointPtr < endPtr; pointPtr++) {
-	if (pointPtr->x < bbox.left) {
-	    bbox.left = pointPtr->x;
+    left = right = points[0].x;
+    top = bottom = points[0].y;
+    for (p = points, pend = p + nPoints; p < pend; p++) {
+	if (p->x < left) {
+	    left = p->x;
 	} 
-	if (pointPtr->x > bbox.right) {
-	    bbox.right = pointPtr->x;
+	if (p->x > right) {
+	    right = p->x;
 	}
-	if (pointPtr->y < bbox.top) {
-	    bbox.top = pointPtr->y;
+	if (p->y < top) {
+	    top = p->y;
 	} 
-	if (pointPtr->y > bbox.bottom) {
-	    bbox.bottom = pointPtr->y;
+	if (p->y > bottom) {
+	    bottom = p->y;
 	}
     }
-    width = bbox.right - bbox.left + 1;
-    height = bbox.bottom - bbox.top + 1;
-
+    width = right - left + 1;
+    height = bottom - top + 1;
 
     /* Allocate and fill an array of POINTS to create the polygon path. */
-    p = winPts = Blt_Malloc(sizeof(POINT) * nPoints);
-    for (pointPtr = pointArr; pointPtr < endPtr; pointPtr++) {
-	p->x = pointPtr->x - bbox.left;
-	p->y = pointPtr->y - bbox.top;
-	p++;
+    wp = winPts = Blt_AssertMalloc(sizeof(POINT) * nPoints);
+    for (p = points; p < pend; p++) {
+	wp->x = p->x - left;
+	wp->y = p->y - top;
+	wp++;
     }
 
     hDC = TkWinGetDrawableDC(Tk_Display(tkwin), drawable, &state);
     SetROP2(hDC, tkpWinRopModes[tilePtr->gc->function]);
     fillMode = (tilePtr->gc->fill_rule == EvenOddRule) ? ALTERNATE : WINDING;
+
     /* Use the polygon as a clip path. */
     LPtoDP(hDC, winPts, nPoints);
     hRgn = CreatePolygonRgn(winPts, nPoints, fillMode);
     SelectClipRgn(hDC, hRgn);
-    OffsetClipRgn(hDC, bbox.left, bbox.top);
+    OffsetClipRgn(hDC, left, top);
+
     Blt_Free(winPts);
 
     twdPtr = (TkWinDrawable *)tilePtr->pixmap;
@@ -924,12 +947,10 @@ Blt_TilePolygon(
 	    &maskState);
 	SetBkColor(hDC, RGB(255, 255, 255));      
 	SetTextColor(hDC, RGB(0, 0, 0));
-	TileRegion(memDC, hDC, maskDC, clientPtr, bbox.left, bbox.top, width, 
-		   height);
+	TileArea(memDC, hDC, maskDC, clientPtr, left, top, width, height);
 	TkWinReleaseDrawableDC(tilePtr->mask, maskDC, &maskState);
     } else {
-	TileRegion(memDC, hDC, NULL, clientPtr, bbox.left, bbox.top, width, 
-	   height);
+	TileArea(memDC, hDC, NULL, clientPtr, left, top, width, height);
     }
     SelectBitmap(memDC, oldBitmap);
     DeleteDC(memDC);
@@ -973,10 +994,10 @@ Blt_TileRectangle(
 	    &maskState);
 	SetBkColor(hDC, RGB(255, 255, 255));      
 	SetTextColor(hDC, RGB(0, 0, 0));
-	TileRegion(memDC, hDC, maskDC, clientPtr, x, y, width, height);
+	TileArea(memDC, hDC, maskDC, clientPtr, x, y, width, height);
 	TkWinReleaseDrawableDC(tilePtr->mask, maskDC, &maskState);
     } else {
-	TileRegion(memDC, hDC, NULL, clientPtr, x, y, width, height);
+	TileArea(memDC, hDC, NULL, clientPtr, x, y, width, height);
     }
     SelectBitmap(memDC, oldBitmap);
     DeleteDC(memDC);
@@ -988,7 +1009,7 @@ Blt_TileRectangles(
     Tk_Window tkwin,
     Drawable drawable,
     TileClient *clientPtr,
-    XRectangle rectArr[],
+    XRectangle *rectangles,
     int nRectangles)
 {
     HBITMAP oldBitmap;
@@ -996,11 +1017,11 @@ Blt_TileRectangles(
     Tile *tilePtr;
     TkWinDCState state;
     TkWinDrawable *twdPtr;
-    XRectangle *rectPtr, *endPtr;
 
     if (drawable == None) {
 	return;
     }
+
     tilePtr = clientPtr->tilePtr;
     hDC = TkWinGetDrawableDC(Tk_Display(tkwin), drawable, &state);
     SetROP2(hDC, tkpWinRopModes[tilePtr->gc->function]);
@@ -1009,9 +1030,9 @@ Blt_TileRectangles(
     memDC = CreateCompatibleDC(hDC);
     oldBitmap = SelectBitmap(memDC, twdPtr->bitmap.handle);
 
-    endPtr = rectArr + nRectangles;
     /* Tile the bounding box. */
     if (tilePtr->mask != None) {
+	XRectangle *rp, *rend;
 	TkWinDCState maskState;
 	HDC maskDC;
 
@@ -1019,15 +1040,17 @@ Blt_TileRectangles(
 	    &maskState);
 	SetBkColor(hDC, RGB(255, 255, 255));      
 	SetTextColor(hDC, RGB(0, 0, 0));
-	for (rectPtr = rectArr; rectPtr < endPtr; rectPtr++) {
-	    TileRegion(memDC, hDC, maskDC, clientPtr, (int)rectPtr->x, 
-		(int)rectPtr->y, (int)rectPtr->width, (int)rectPtr->height);
+	for (rp = rectangles, rend = rp + nRectangles; rp < rend; rp++) {
+	    TileArea(memDC, hDC, maskDC, clientPtr, (int)rp->x, (int)rp->y, 
+		(int)rp->width, (int)rp->height);
 	}
 	TkWinReleaseDrawableDC(tilePtr->mask, maskDC, &maskState);
     } else {
-	for (rectPtr = rectArr; rectPtr < endPtr; rectPtr++) {
-	    TileRegion(memDC, hDC, NULL, clientPtr, (int)rectPtr->x, 
-		(int)rectPtr->y, (int)rectPtr->width, (int)rectPtr->height);
+	XRectangle *rp, *rend;
+
+	for (rp = rectangles, rend = rp + nRectangles; rp < rend; rp++) {
+	    TileArea(memDC, hDC, NULL, clientPtr, (int)rp->x, (int)rp->y, 
+		(int)rp->width, (int)rp->height);
 	}
     }
     SelectBitmap(memDC, oldBitmap);
@@ -1038,27 +1061,26 @@ Blt_TileRectangles(
 #else 
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * RectangleMask --
  *
- *	Creates a rectangular mask also stippled by the mask of the 
- *	tile.  This is used to draw the tiled polygon images with 
- *	transparent areas.
+ *	Creates a rectangular mask also stippled by the mask of the tile.
+ *	This is used to draw the tiled polygon images with transparent areas.
  *
  * Results:
  *	A bitmap mask is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Pixmap
-RectangleMask(display, drawable, x, y, width, height, mask, xOrigin, yOrigin)
-    Display *display;
-    Drawable drawable;
-    int x, y;
-    unsigned int width, height;
-    Pixmap mask;
-    int xOrigin, yOrigin;
+RectangleMask(
+    Display *display,
+    Drawable drawable,
+    int x, int y,
+    unsigned int width, unsigned int height,
+    Pixmap mask,
+    int xOrigin, int yOrigin)
 {
     GC gc;
     Pixmap bitmap;
@@ -1081,13 +1103,13 @@ RectangleMask(display, drawable, x, y, width, height, mask, xOrigin, yOrigin)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_TileRectangle --
  *
- *	Draws a rectangle filled by a tiled image.  This differs from 
- *	the normal XFillRectangle call in that we also try to handle 
- *	a transparency mask. 
+ *	Draws a rectangle filled by a tiled image.  This differs from the
+ *	normal XFillRectangle call in that we also try to handle a
+ *	transparency mask.
  *
  * Results:
  *	None.
@@ -1095,7 +1117,7 @@ RectangleMask(display, drawable, x, y, width, height, mask, xOrigin, yOrigin)
  * Side Effects:
  *	Draws the rectangle.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
 Blt_TileRectangle(
@@ -1103,8 +1125,7 @@ Blt_TileRectangle(
     Drawable drawable,
     TileClient *clientPtr,
     int x, int y,
-    unsigned int width, 
-    unsigned int height)
+    unsigned int width, unsigned int height)
 {
     Tile *tilePtr;
     Display *display;
@@ -1128,13 +1149,13 @@ Blt_TileRectangle(
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_TileRectangles --
  *
- *	Draws rectangles filled by a tiled image.  This differs from 
- *	the normal XFillRectangles call in that we also try to handle 
- *	a transparency mask. 
+ *	Draws rectangles filled by a tiled image.  This differs from the
+ *	normal XFillRectangles call in that we also try to handle a
+ *	transparency mask.
  *
  * Results:
  *	None.
@@ -1142,97 +1163,97 @@ Blt_TileRectangle(
  * Side Effects:
  *	Draws the given rectangles.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
 Blt_TileRectangles(
     Tk_Window tkwin,
     Drawable drawable,
     TileClient *clientPtr,
-    XRectangle rectArr[],
+    XRectangle rectangles[],
     int nRectangles)
 {
     Tile *tilePtr;
 
     tilePtr = clientPtr->tilePtr;
     if (tilePtr->mask != None) {
-	XRectangle *rectPtr, *endPtr;
+	XRectangle *rp, *rend;
 
-	endPtr = rectArr + nRectangles;
-	for (rectPtr = rectArr; rectPtr < endPtr; rectPtr++) {
-	    Blt_TileRectangle(tkwin, drawable, clientPtr, rectPtr->x, 
-		rectPtr->y, rectPtr->width, rectPtr->height);
+	for (rp = rectangles, rend = rp + nRectangles; rp < rend; rp++) {
+	    Blt_TileRectangle(tkwin, drawable, clientPtr, rp->x, rp->y, 
+		rp->width, rp->height);
 	}
     } else {
-	XFillRectangles(Tk_Display(tkwin), drawable, tilePtr->gc, rectArr, 
+	XFillRectangles(Tk_Display(tkwin), drawable, tilePtr->gc, rectangles, 
 		nRectangles);
     }
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * PolygonMask --
  *
- *	Creates a polygon shaped mask also stippled by the mask
- *	of the tile.  This is used to draw the tiled polygon images
- *	with transparent areas.
+ *	Creates a polygon shaped mask also stippled by the mask of the tile.
+ *	This is used to draw the tiled polygon images with transparent areas.
  *
  * Results:
  *	A bitmap mask is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Pixmap
-PolygonMask(display, pointArr, nPoints, regionPtr, mask, xOrigin, yOrigin)
-    Display *display;
-    XPoint *pointArr;
-    int nPoints;
-    Region2D *regionPtr;
-    Pixmap mask;
-    int xOrigin, yOrigin;
+PolygonMask(
+    Display *display,
+    XPoint *points,
+    int nPoints,
+    int x, int y, int width, int height,
+    Pixmap mask,
+    int xOrigin, int yOrigin)
 {
-    unsigned int width, height;
     Pixmap bitmap;
-    GC gc;
-    XPoint *destArr;
-    register XPoint *srcPtr, *destPtr, *endPtr;
+    XPoint *maskPts;
 
-    width = regionPtr->right - regionPtr->left + 1;
-    height = regionPtr->bottom - regionPtr->top + 1;
-    bitmap = 
-	Tk_GetPixmap(display, DefaultRootWindow(display), width, height, 1);
-
-    destArr = Blt_Malloc(sizeof(XPoint) * nPoints);
-    endPtr = destArr + nPoints;
-    srcPtr = pointArr;
-    for (destPtr = destArr; destPtr < endPtr; destPtr++) {
-	destPtr->x = srcPtr->x - regionPtr->left;
-	destPtr->y = srcPtr->y - regionPtr->top;
-	srcPtr++;
+    maskPts = Blt_Malloc(sizeof(XPoint) * nPoints);
+    if (maskPts == NULL) {
+	return None;
     }
-    gc = XCreateGC(display, bitmap, 0, NULL);
-    XFillRectangle(display, bitmap, gc, 0, 0, width, height);
-    XSetForeground(display, gc, 0x01);
-    XSetFillStyle(display, gc, FillStippled);
-    XSetTSOrigin(display, gc, xOrigin - regionPtr->left, 
-		 yOrigin - regionPtr->top);
-    XSetStipple(display, gc, mask);
-    XFillPolygon(display, bitmap, gc, destArr, nPoints, Complex, 
-		 CoordModeOrigin);
-    XFreeGC(display, gc);
-    Blt_Free(destArr);
+    {
+	XPoint *dp, *pp, *pend;
+
+	dp = maskPts;
+	for (pp = points, pend = pp + nPoints; pp < pend; pp++) {
+	    dp->x = pp->x - x;
+	    dp->y = pp->y - y;
+	    dp++;
+	}
+    }
+
+    bitmap = Tk_GetPixmap(display, DefaultRootWindow(display), width, height,1);
+    {
+	GC gc;
+
+	gc = XCreateGC(display, bitmap, 0, NULL);
+	XFillRectangle(display, bitmap, gc, 0, 0, width, height);
+	XSetForeground(display, gc, 0x01);
+	XSetFillStyle(display, gc, FillStippled);
+	XSetTSOrigin(display, gc, xOrigin - x, yOrigin - y);
+	XSetStipple(display, gc, mask);
+	XFillPolygon(display, bitmap, gc, maskPts, nPoints, Complex, 
+		     CoordModeOrigin);
+	XFreeGC(display, gc);
+    }
+    Blt_Free(maskPts);
     return bitmap;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_TilePolygon --
  *
- *	Draws a polygon filled by a tiled image.  This differs from 
- *	the normal XFillPolygon call in that we also try to handle 
- *	a transparency mask. 
+ *	Draws a polygon filled by a tiled image.  This differs from the normal
+ *	XFillPolygon call in that we also try to handle a transparency mask.
  *
  * Results:
  *	None.
@@ -1240,14 +1261,14 @@ PolygonMask(display, pointArr, nPoints, regionPtr, mask, xOrigin, yOrigin)
  * Side Effects:
  *	Draws the polygon.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
 Blt_TilePolygon(
     Tk_Window tkwin,
     Drawable drawable,
     TileClient *clientPtr,
-    XPoint pointArr[],
+    XPoint *points,
     int nPoints)
 {
     Tile *tilePtr;
@@ -1256,40 +1277,39 @@ Blt_TilePolygon(
     display = Tk_Display(tkwin);
     tilePtr = clientPtr->tilePtr;
     if (tilePtr->mask != None) {
-	XPoint *pointPtr, *endPtr;
-	Region2D region;
+	XPoint *pp, *pend;
+	int left, right, top, bottom;
 	Pixmap mask;
 
 	/* Determine the bounding box of the polygon. */
-	pointPtr = pointArr;
-	region.left = region.right = pointPtr->x;
-	region.top = region.bottom = pointPtr->y;
-	
-	endPtr = pointArr + nPoints;
-	for (pointPtr = pointArr; pointPtr < endPtr; pointPtr++) {
-	    if (region.left > pointPtr->x) {
-		region.left = pointPtr->x;
-	    } else if (region.right < pointPtr->x) {
-		region.right = pointPtr->x;
+	left = right = points[0].x;
+	top = bottom = points[0].y;
+	for (pp = points, pend = pp + nPoints; pp < pend; pp++) {
+	    if (left > pp->x) {
+		left = pp->x;
+	    } else if (right < pp->x) {
+		right = pp->x;
 	    }
-	    if (region.top > pointPtr->y) {
-		region.top = pointPtr->y;
-	    } else if (region.bottom < pointPtr->y) {
-		region.bottom = pointPtr->y;
+	    if (top > pp->y) {
+		top = pp->y;
+	    } else if (bottom < pp->y) {
+		bottom = pp->y;
 	    }
 	}
-	mask = PolygonMask(display, pointArr, nPoints, &region, 
-		   tilePtr->mask, clientPtr->xOrigin, clientPtr->yOrigin);
+	mask = PolygonMask(display, points, nPoints, left, top, 
+		right - left + 1, bottom - top + 1, tilePtr->mask, 
+		clientPtr->xOrigin, clientPtr->yOrigin);
 	XSetClipMask(display, tilePtr->gc, mask);
-	XSetClipOrigin(display, tilePtr->gc, region.left, region.top);
-	XFillPolygon(display, drawable, tilePtr->gc, pointArr, 
-		     nPoints, Complex, CoordModeOrigin);
+	XSetClipOrigin(display, tilePtr->gc, left, top);
+	XFillPolygon(display, drawable, tilePtr->gc, points, nPoints, 
+		Complex, CoordModeOrigin);
 	XSetClipMask(display, tilePtr->gc, None);
 	XSetClipOrigin(display, tilePtr->gc, 0, 0);
 	Tk_FreePixmap(display, mask);
     } else {
-	XFillPolygon(display, drawable, tilePtr->gc, pointArr, 
-		     nPoints, Complex, CoordModeOrigin);
+	XFillPolygon(display, drawable, tilePtr->gc, points, nPoints, Complex, 
+		CoordModeOrigin);
     }
 }
-#endif
+#endif /* WIN32 */
+

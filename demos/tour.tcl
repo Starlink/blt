@@ -1,29 +1,6 @@
 #!../src/bltwish
 
 #package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 option add *Scrollbar.relief	flat
 set oldLabel "dummy"
@@ -44,40 +21,44 @@ proc RunDemo { program } {
 }
 
 frame .top
-hierbox .top.hier -separator "." -xscrollincrement 1 \
+set tree [blt::tree create]
+blt::treeview .top.hier -separator "." -xscrollincrement 1 \
     -yscrollcommand { .top.yscroll set } -xscrollcommand { .top.xscroll set } \
+    -separator . \
+    -tree $tree \
     -selectcommand { 
 	set index [.top.hier curselection]
-	set label [.top.hier entry cget $index -label]
-	.top.title configure -text $label
-	.top.tab tab configure Example -window .top.tab.f1 
-	if { $label != $oldLabel }  {
-	    RunDemo $label
+	if { $index != "" } {
+	    set label [.top.hier entry cget $index -label]
+	    .top.title configure -text $label
+	    .top.tab tab configure Example -window .top.tab.f1 
+	    if { $label != $oldLabel }  {
+		RunDemo $label
+	    }
 	}
     }
 	
 
-scrollbar .top.yscroll -command { .top.hier yview }
-scrollbar .top.xscroll -command { .top.hier xview } -orient horizontal
-label .top.mesg -relief groove -borderwidth 2 
-label .top.title -text "Synopsis" -highlightthickness 0
-tabset .top.tab -side bottom -relief flat -bd 0 -highlightthickness 0 \
-    -pageheight 4i
+blt::tk::scrollbar .top.yscroll -command { .top.hier yview }
+blt::tk::scrollbar .top.xscroll -command { .top.hier xview } -orient horizontal
+blt::tk::label .top.mesg -relief groove -borderwidth 2 
+blt::tk::label .top.title -text "Synopsis" -highlightthickness 0
+blt::tabset .top.tab -side bottom -outerrelief flat -outerborderwidth 0 \
+    -highlightthickness 0 -pageheight 4i
 
-.top.tab insert end \
-    "Example" \
-    "See Code" \
-    "Manual"
+foreach tab { "Example" "See Code" "Manual" } {
+    .top.tab insert end $tab
+}
  
 set pics /DOS/f/gah/Pics
 set pics /home/gah/Pics
-image create photo dummy -file $pics/Ex1.gif
-image create photo graph.img -width 50 -height 50
-winop resample dummy graph.img box box
+image create picture dummy -file images/blt98.gif
+image create picture graph.img -width 50 -height 50
+graph.img resample dummy
 
-image create photo dummy -file $pics/Ex11.gif
-image create photo barchart.img -width 50 -height 50
-winop resample dummy barchart.img box box
+dummy configure -file images/blt98.gif
+image create picture barchart.img -width 50 -height 50
+barchart.img resample dummy
 
 .top.hier entry configure root -label "BLT"
 .top.hier insert end \
@@ -108,26 +89,27 @@ winop resample dummy barchart.img box box
     "Miscellaneous.watch" \
     "Miscellaneous.bltdebug" 
 .top.hier open -r root
-.top.hier entry configure root -labelfont *-helvetica*-bold-r-*-18-* \
-    -labelcolor red -labelshadow red3
-.top.hier entry configure "Plotting" "Composition" "Miscellaneous" \
-    -labelfont *-helvetica*-bold-r-*-14-* \
-    -labelcolor blue4 -labelshadow blue2
+.top.hier entry configure root -font *-helvetica*-bold-r-*-18-* 
+puts stderr [$tree dump root]
+foreach item { "Plotting" "Composition" "Miscellaneous" } {
+    set index [.top.hier index ".$item"]
+    .top.hier entry configure $index -font *-helvetica*-bold-r-*-14-* 
+}
+.top.hier entry configure [.top.hier index ".Plotting.graph"] \
+    -font *-helvetica*-bold-r-*-14-* -label "X-Y Graph"
+.top.hier entry configure [.top.hier index ".Plotting.barchart"] \
+    -font *-helvetica*-bold-r-*-14-* -label "Bar Chart"
 
-.top.hier entry configure "Plotting.graph" \
-    -labelfont *-helvetica*-bold-r-*-14-* -label "X-Y Graph"
-.top.hier entry configure "Plotting.barchart" \
-    -labelfont *-helvetica*-bold-r-*-14-* -label "Bar Chart"
+.top.hier entry configure [.top.hier index ".Plotting.stripchart"] \
+    -font *-helvetica*-bold-r-*-14-* -label "X-Y Graph"
+.top.hier entry configure [.top.hier index ".Plotting.stripchart"] \
+    -font *-helvetica*-bold-r-*-14-* -label "Strip Chart"
 
-.top.hier entry configure "Plotting.stripchart" \
-    -labelfont *-helvetica*-bold-r-*-14-* -label "X-Y Graph"
-.top.hier entry configure "Plotting.stripchart" \
-    -labelfont *-helvetica*-bold-r-*-14-* -label "Strip Chart"
+.top.hier entry configure [.top.hier index ".Plotting.graph"] -icon graph.img
+.top.hier entry configure [.top.hier index ".Plotting.barchart"] \
+    -icon barchart.img
 
-.top.hier entry configure "Plotting.graph" -icon graph.img
-.top.hier entry configure "Plotting.barchart" -icon barchart.img
-
-table .top \
+blt::table .top \
     0,0 .top.hier -fill both -rspan 2 \
     0,1 .top.yscroll -fill y -rspan 2 \
     0,2 .top.mesg -padx 2 -pady { 8 2 } -fill both \
@@ -135,10 +117,10 @@ table .top \
     1,2 .top.tab -fill both -rspan 2 \
     2,0 .top.xscroll -fill x 
 
-table configure .top c1 r2 -resize none
-table configure .top c0 -width { 3i {} }
-table configure .top c2 -width { 4i {} }
-table . \
+blt::table configure .top c1 r2 -resize none
+blt::table configure .top c0 -width { 3i {} }
+blt::table configure .top c2 -width { 4i {} }
+blt::table . \
     .top -fill both
 
 proc DoExit { code } {
@@ -147,12 +129,12 @@ proc DoExit { code } {
     exit $code
 }
 
-container .top.tab.f1 -relief raised -bd 2 -takefocus 0
+blt::container .top.tab.f1 -relief raised -bd 2 -takefocus 0
 .top.tab tab configure Example -window .top.tab.f1 
 
 if  1 {
     set cmd "xterm -fn fixed -geom +4000+4000"
-    eval bgexec programInfo(xterm) $cmd &
+    eval blt::bgexec programInfo(xterm) $cmd &
     set programInfo(lastProgram) xterm
     .top.tab.f1 configure -command $cmd 
 } 

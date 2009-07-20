@@ -1,3 +1,4 @@
+
 '\"
 '\" Copyright 1998 by Bell Labs Innovations for Lucent Technologies.
 '\"
@@ -29,37 +30,17 @@ tabset \- Create and manipulate tabset widgets
 .SH SYNOPSIS
 \fBtabset\fR \fIpathName \fR?\fIoptions\fR?
 .SH DESCRIPTION
-The \fBtabset\fR widget displays a series of overlapping folders. Only
-the contents of one folder at a time is displayed.  By clicking on the
-tab's of a folder, you can view other folders.  Each folder may
-contain any Tk widget that can be automatically positioned and resized
-in the folder.
+The \fBtabset\fR widget displays a series of tabbed folders
+where only one folder at a time is displayed. A folder can contain 
+a Tk widget that is displayed when the folder is displayed.
 .PP
-There's no limit to the number of folders.  Tabs can be tiered or
-scrolled.  Pages (i.e. embedded widgets) can be torn off and displayed
-in another toplevel widget, and also restored.  A tabset can also be
-used as just a set of tabs, without a displaying any pages.  You can
-bind events to individual tabs, so it's easy to add features like
+There's no limit to the number of folders.  Tabs can be tiered (more than 
+one row).  If there are more tabs than can be displayed, tabs can also 
+be scrolled.  Any folder can also be torn off, when the contents (the Tk widget
+contained by it) is temporarily moved into another toplevel widget.
+A tabset may used as just a set of tabs, without a displaying any pages.  
+You can bind events to individual tabs, so it's easy to add features like
 "balloon help".
-.SH INTRODUCTION
-Notebooks are a popular graphical paradigm.  They allow you to organize
-several windows that are too big to display at the same time as 
-pages of a notebook.  For example, your application may display several 
-X-Y graphs at the same time.  The graphs are too big to pack into the 
-same frame.  Managing them in several \fBtoplevel\fR widgets is
-also cumbersome and clutters the screen.  Instead, the \fBtabset\fR widget 
-organizes the graphs as folders in a notebook.  
-.PP
-Only one page is visible at a time. When you click on a tab, 
-the folder corresponding to the tab is displayed in the  \fBtabset\fR 
-widget.  The tabset also lets you temporarily tear pages 
-out of the notebook into a separate toplevel widget, and put them back 
-in the tabset later.  For example, you could compare two graphs side-by-side 
-by tearing them out, and then replace them when you are finished.
-.PP
-A tabset can contain any number of folders.  If there are too
-many tabs to view, you can arrange them as multiple tiers or scroll
-the tabs. You can also attach Tk scrollbars to the tabset to scroll the tabs.
 .SH SYNTAX
 The \fBtabset\fR command creates a new window using the \fIpathName\fR
 argument and makes it into a tabset widget.
@@ -73,27 +54,26 @@ font, text, and relief.  The \fBtabset\fR command returns its
 must not exist a window named \fIpathName\fR, but \fIpathName\fR's
 parent must exist.
 .PP
-When first created, a new tabset contains no tabs.  Tabs are added or
-deleted using widget operations described below. It is not necessary
-for all the tabs to be displayed in the tabset window at once;
-commands described below may be used to change the view in the window.
-Tabsets allow scrolling of tabs using the \fB\-scrollcommand\fR
-option.  They also support scanning (see the \fBscan\fR operation).
-Tabs may be arranged along any side of the tabset window using the
-\fB\-side\fR option.
-.PP
+When first created the new tabset widget contains no tabs.  Tabs are 
+added using the \fBinsert\fR operation described below. 
 The size of the tabset window is determined the number of tiers of
-tabs and the sizes of the Tk widgets embedded inside each folder.
-The widest widget determines the width of the folder. The tallest
+tabs requested and the sizes of the Tk widgets embedded inside each folder.
+The widest embedded widget determines the width of all folders. The tallest
 determines the height.  If no folders contain an embedded widget, the
-size is detemined solely by the size of the tabs.  
-.PP
-You can override either dimension with the tabset's \fB\-width\fR
+size is detemined solely by the size of the tabs.  You can override 
+either dimension with the tabset's \fB\-width\fR
 and \fB\-height\fR options.
-.SH "INDICES"
-Indices refer to individual tabs/folders in the tabset.  Many of
-the operations for tabset widgets take one or more indices as
-arguments.  An index may take several forms:
+.PP
+Tabs may be scrolled using the \fB\-scrollcommand\fR option.  They also
+support scanning (see the \fBscan\fR operation).  Tabs also may be arranged
+along any side of the tabset window using the \fB\-side\fR option.
+.PP
+An individual tabs/folders in the tabset may be described by its index, 
+name, tag or text label.  
+.SS "INDICES"
+An index is the order of the tab in the tabset.  Indices start from zero.
+In addition to numeric indices, there are additional special indices.
+They are described below:
 .TP 12
 \fInumber\fR 
 Unique node id of the tab.
@@ -103,8 +83,8 @@ Tab that covers the point in the tabset window
 specified by \fIx\fR and \fIy\fR (in screen coordinates).  If no
 tab covers that point, then the index is ignored.
 .TP 12
-\fBselect\fR 
-The currently selected tab.  The \fBselect\fR index is 
+\fBselected\fR 
+The currently selected tab.  The \fBselected\fR index is 
 typically changed by either clicking on the tab with the left mouse 
 button or using the widget's \fBinvoke\fR operation.
 .TP 12
@@ -149,6 +129,8 @@ index is ignored.
 Some indices may not always be available.  For example, if the mouse
 is not over any tab, "active" does not have an index.  For most
 tabset operations this is harmless and ignored.  
+.SH "NAMES"
+
 .SH "OPERATIONS"
 All \fBtabset\fR operations are invoked by specifying the widget's
 pathname, the operation, and any arguments that pertain to that
@@ -161,7 +143,7 @@ operation.  The general form is:
 \fIOperation\fR and the \fIarg\fRs determine the exact behavior of the
 command.  The following operations are available for tabset widgets:
 .TP
-\fIpathName \fBactivate\fR \fIindex\fR 
+\fIpathName \fBactivate\fR \fItab\fR 
 Sets the active tab to the one indicated by \fIindex\fR.  The
 active tab is drawn with its \fIactive\fR colors (see the
 \fB\-activebackground\fR and \fB\-activeforeground\fR options) and may
@@ -211,17 +193,15 @@ this case the command returns an empty string.
 .SB "WIDGET OPTIONS" 
 below.
 .TP
-\fIpathName \fBdelete \fIfirst \fR?\fIlast\fR?
-Deletes one or more tabs from the tabset.  \fIFirst\fR and \fIlast\fR
-are the first and last indices, defining a range of tabs to be deleted.  
-If \fIlast\fR isn't specified, then only the tab at \fIfirst\fR 
-is deleted.
+\fIpathName \fBdelete \fItab...\fR?
+Deletes one or more tabs from the tabset.  \fITab\fR may be 
+an index, tag, name, or label referring to one or more tabs.
 .TP
-\fIpathName \fBfocus \fIindex\fR
-Designates a tab to get the widget's focus.  This tab is displayed 
+\fIpathName \fBfocus \fItab\fR
+Specifies the tab to get the widget's focus.  The tab is displayed 
 with a dashed line around its label. 
 .TP
-\fIpathName \fBget\fR \fIindex\fR
+\fIpathName \fBget\fR \fItab\fR
 Returns the name of the tab.  The value of \fIindex\fR may
 be in any form described in the section
 .SB "INDICES".
@@ -233,25 +213,27 @@ If \fIflag\fR is \fB\-index\fR, \fIstring\fR is an index such as
 "active" or "focus".  If \fIflag\fR isn't specified, it defaults to
 \fB\-index\fR.
 .TP
-\fIpathName \fBinsert\fR \fIposition \fIname\fR ?\fIoption value\fR?...
-Inserts new tabs into the tabset.  Tabs are inserted just before the
+\fIpathName \fBinsert\fR \fIposition\fR ?\fIname\fR? ?\fIoption value\fR?...
+Inserts a new tab into the tabset.  The new tab is inserted before the
 tab given by \fIposition\fR.  \fIPosition\fR may be either a number,
 indicating where in the list the new tab should be added, or \fBend\fR,
 indicating that the new tab is to be added the end of the list.  
-\fIName\fR is the symbolic name of the tab. \fIBe careful not to use 
-a number. Otherwise the tabset will confuse it with tab indices\fR.  Returns 
-a list of indices for all the new tabs.
+\fIName\fR is the name of the tab. If \fIname\fR isn't given,
+then a name is generated in the form "tabN".  Returns the name of the
+new tab.
 .TP
-\fIpathName \fBinvoke \fIindex\fR
-Selects the tab given by \fIindex\fR, maps the tab's embedded widget, and 
-invokes the Tcl command associated with the tab, if  there  is  one.  
-The return value is the return value from the Tcl command, or an empty
+\fIpathName \fBinvoke \fItab\fR
+Selects the folder given by \fItab\fR, displaying it in the tabset.
+It also invokes the Tcl command associated with the tab \
+(see the tabset's \fB\-selectcommand\fR option or the tab's \fB\-command\fR 
+option), if there is one.  
+It returns the return value from the Tcl command, or an empty
 string  if there  is  no  command  associated with the tab.
 This command is ignored if the  tab's state (see the \fB\-state\fR option)
 is disabled.
 .TP
-\fIpathName \fBmove\fR \fIindex\fR \fBbefore\fR|\fBafter\fR \fIindex\fR
-Moves the tab \fIindex\fR to a new position in the tabset.
+\fIpathName \fBmove\fR \fItab\fR \fBbefore\fR|\fBafter\fR \fItab\fR
+Moves the tab \fItab\fR to a new position in the tabset.
 .TP
 \fIpathName \fBnearest\fR \fIx\fR \fIy\fR
 Returns the name of the tab nearest to given X-Y screen coordinate.
@@ -260,9 +242,9 @@ Returns the name of the tab nearest to given X-Y screen coordinate.
 This operation controls the perforation on the tab label.
 .RS
 .TP
-\fIpathName \fBperforation highlight\fR \fIindex\fR \fIboolean\fR
+\fIpathName \fBperforation highlight\fR \fItab\fR \fIboolean\fR
 .TP
-\fIpathName \fBperforation invoke\fR \fIindex\fR
+\fIpathName \fBperforation invoke\fR \fItab\fR
 Invokes the command specified for perforations (see the 
 \fB\-perforationcommand\fR widget option). Typically this command
 places the page into a top level widget. The name of the toplevel
@@ -295,9 +277,9 @@ dragging the list at high speed through the window.  The return
 value is an empty string.
 .RE
 .TP
-\fIpathName \fBsee \fIindex\fR 
+\fIpathName \fBsee \fItab\fR 
 Scrolls the tabset so that the tab
-\fIindex\fR is visible in the widget's window.
+\fItab\fR is visible in the widget's window.
 .TP
 \fIpathName \fBsize\fR
 Returns the number of tabs in the tabset.
@@ -305,21 +287,19 @@ Returns the number of tabs in the tabset.
 \fIpathName \fBtab \fIoperation\fR ?\fIargs\fR?
 .RS
 .TP
-\fIpathName \fBtab cget\fR \fInameOrIndex\fR \fIoption\fR
+\fIpathName \fBtab cget\fR \fItab\fR \fIoption\fR
 Returns the current value of the configuration option given
-by \fIoption\fR.
+by \fIoption\fR for tab \fItab\fR.
 \fIOption\fR may have any of the values accepted by the \fBtab configure\fR
 operation described in the section 
 .SB "TAB OPTIONS"
 below.
 .TP
-\fIpathName \fBtab configure\fR \fInameOrIndex\fR ?\fInameOrIndex\fR...? \fIoption\fR? ?\fIvalue option value ...\fR?
+\fIpathName \fBtab configure\fR \fItab\fR \fIoption\fR? ?\fIvalue option value ...\fR?
 Query or modify the configuration options of one or more tabs.
+ More than one tab can be configured if \fItab\fR refers to multiple tabs.
 If no \fIoption\fR is specified, this operation returns a list 
-describing all the available options for \fInameOrIndex\fR.  
-\fINameOrIndex\fR can be either the name of a tab or its index.  Names
-of tabs take precedence over their indices.  That means a tab named 
-\fIfocus\fR is picked over the "focus" tab.
+describing all the available options for \fItab\fR.  
 .sp
 If \fIoption\fR is specified, but not \fIvalue\fR, then a list describing the
 one named option is returned.  If  one or more \fIoption\-value\fR pairs 
@@ -334,14 +314,14 @@ below.
 Returns the names of all the tabs matching the given pattern. If
 no \fIpattern\fR argument is provided, then all tab names are returned.
 .TP
-\fIpathName \fBtab tearoff \fIindex\fR ?\fInewName\fR?
-Reparents the widget embedded into \fIindex\fR, placing
-it inside of \fInewName\fR.  \fINewName\fR is either the name of
+\fIpathName \fBtab tearoff \fItab\fR ?\fIwindow\fR?
+Moves the widget embedded the folder \fItab\fR (see the \fB-window\fR option), 
+placing it inside of \fIwindow\fR.  \fIWindow\fR is either the name of
 an new widget that will contain the embedded widget or the name
 of the \fBtabset\fR widget.  It the last case, the embedded widget
 is put back into the folder.
 .sp
-If no \fInewName\fR argument is provided, then the name of the current
+If no \fIwindow\fR argument is provided, then the name of the current
 parent of the embedded widget is returned.
 .RE
 .TP
@@ -399,12 +379,38 @@ operation.  Individual tabs may override this option by setting the
 tab's \fB\-activeforeground\fR option.
 .TP
 \fB\-background \fIcolor\fR
-Sets the background color of the tabset.  
+Sets the default background color of folders.  Individual tabs can
+override this with their own \fBR-background\fR option.
 .TP
 \fB\-borderwidth \fIpixels\fR
+Sets the width of the 3\-D border around tabs and folders. The
+\fB\-relief\fR option determines how the border is to be drawn.  The
+default is \f(CW1\fR.
+.TP
+\fB\-relief \fIrelief\fR
+Specifies the 3-D effect for both tabs and folders.  \fIRelief\fR
+specifies how the tabs should appear relative to background of the 
+widget; for example, \f(CWraised\fR means the tab should
+appear to protrude.  The default is \f(CWraised\fR.
+.TP
+\fB\-troughbackground \fIcolor\fR
+Sets the background color of the trough under the tabs.  
+.TP
+\fB\-outerborderwidth \fIpixels\fR
 Sets the width of the 3\-D border around the outside edge of the widget.  The
 \fB\-relief\fR option determines how the border is to be drawn.  The
-default is \f(CW2\fR.
+default is \f(CW0\fR.
+.TP
+\fB\-outerpad \fIpixels\fR
+Sets the amount of padding between the highlight ring on the 
+outer edge of the tabset and the folder.  
+The default is \f(CW0\fR.
+.TP
+\fB\-outerrelief \fIrelief\fR
+Specifies the 3-D effect for the tabset widget.  \fIRelief\fR
+specifies how the tabset should appear relative to widget that
+it is packed into; for example, \f(CWraised\fR means the tabset should
+appear to protrude.  The default is \f(CWsunken\fR.
 .TP
 \fB\-cursor \fIcursor\fR
 Specifies the widget's cursor.  The default cursor is \f(CW""\fR.
@@ -421,7 +427,7 @@ line.  The default value is \f(CW5 2\fR.
 \fB\-font \fIfontName\fR 
 Sets the default font for the text in tab labels.  Individual tabs may
 override this by setting the tab's \fB\-font\fR option.  The default value is
-\f(CW*-Helvetica-Bold-R-Normal-*-12-120-*\fR.
+\f(CW*Arial 9\fR.
 .TP
 \fB\-foreground \fIcolor\fR 
 Sets the default color of tab labels.  Individual tabs may
@@ -453,14 +459,11 @@ value and may have any of the forms acceptable to \fBTk_GetPixels\fR.
 If the value is zero, no focus highlight is drawn around the widget.
 The default is \f(CW2\fR.
 .TP
-\fB\-outerpad \fIpixels\fR
-Padding around the exterior of the tabset and folder.
-.TP
 \fB\-pageheight \fIpixels\fR
 Sets the requested height of the page.  The page is the area under the
 tab used to display the page contents.  If \fIpixels\fR is \f(CW0\fR,
-the maximum height of all embedded tab windows is used.  The default
-is \f(CW0\fR.
+the maximum height of all embedded tab windows is used.  
+The default is \f(CW0\fR.
 .TP
 \fB\-pagewidth \fIpixels\fR
 Sets the requested width of the page.  The page is the area under the
@@ -475,20 +478,27 @@ left mouse button is released over the tab perforation.  The default
 action is to tear-off the page and place it into a new toplevel 
 window.
 .TP
-\fB\-relief \fIrelief\fR
-Specifies the 3-D effect for the tabset widget.  \fIRelief\fR
-specifies how the tabset should appear relative to widget that
-it is packed into; for example, \f(CWraised\fR means the tabset should
-appear to protrude.  The default is \f(CWsunken\fR.
-.TP
-\fB\-rotate \fItheta\fR
+\fB\-rotate \fIangle\fR
 Specifies the degrees to rotate text in tab labels.
-\fITheta\fR is a real value representing the number of degrees
-to rotate the tick labels.  The default is \f(CW0.0\fR degrees.
+\fIAngle\fR is a real value representing the number of degrees
+to rotate the text labels.  The default is \f(CW0.0\fR degrees.
 .TP 
-\fB\-samewidth \fIboolean\fR
-Indicates if each tab should be the same width.  If true, each tab will
-be as wide as the widest tab.  The default is \f(CWno\fR.
+\fB\-tabwidth \fIwidth\fR
+Indicates the width of each tab.  \fIWidth\fR can be one of the
+following:
+.RS
+.TP 1i
+\f(CWvariable\fR
+The width of the tab is determined by its text and image.
+.TP 1i
+\f(CWsame\fR
+The width of every tab is the maximum size.
+.TP 1i
+\f(CWpixels\fR
+The width of the tab is set to \fIpixels\R. 
+\fIPixels\fR is a positive screen distance.
+.RE
+The default is \f(CWsame\fR.
 .TP 
 \fB\-scrollcommand \fIstring\fR
 Specifies the prefix for a command for communicating with 
@@ -565,27 +575,6 @@ The right side of the tab is slanted.
 Boths sides of the tab are slanted.
 .RE
 .TP
-\fB\-tabbackground \fIcolor\fR
-Sets the default background color of tabs.
-Individual tabs can override this option by setting the tab's 
-\fB\-background\fR option.
-.TP
-\fB\-tabborderwidth \fIpixels\fR
-Sets the width of the 3\-D border around the outside edge of the tab.  The
-\fB\-tabrelief\fR option determines how the border is to be drawn.  The
-default is \f(CW2\fR.
-.TP
-\fB\-tabforeground \fIcolor\fR
-Specifies the color to use when displaying a tab's label.
-Individual tabs can override this option by setting the tab's 
-\fB\-foreground\fR option.
-.TP
-\fB\-tabrelief \fIrelief\fR
-Specifies the 3-D effect for both tabs and folders.  \fIRelief\fR
-specifies how the tabs should appear relative to background of the 
-widget; for example, \f(CWraised\fR means the tab should
-appear to protrude.  The default is \f(CWraised\fR.
-.TP
 \fB\-takefocus\fR \fIfocus\fR 
 Provides information used when moving the focus from window to window
 via keyboard traversal (e.g., Tab and Shift-Tab).  If \fIfocus\fR is
@@ -606,13 +595,6 @@ valid sides are \f(CWleft\fR, \f(CWright\fR, \f(CWtop\fR, and
 \fB\-tiers \fInumber\fB
 Specifies the maximum number of tiers to use to display the tabs.
 The default value is \f(CW1\fR.
-.TP
-\fB\-tile \fIimage\fR 
-Specifies a tiled background for the widget.  If \fIimage\fR isn't
-\f(CW""\fR, the background is tiled using \fIimage\fR.
-Otherwise, the normal background color is drawn (see the
-\fB\-background\fR option).  \fIImage\fR must be an image created
-using the Tk \fBimage\fR command.  The default is \f(CW""\fR.
 .TP
 \fB\-width \fIpixels\fR
 Specifies the requested width of the widget.  If \fIpixels\fR is

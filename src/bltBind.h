@@ -1,25 +1,26 @@
 /*
  * bltBind.h --
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1998-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_BIND_H
@@ -27,20 +28,20 @@
 
 #include <bltList.h>
 
-typedef struct Blt_BindTableStruct *Blt_BindTable;
+typedef struct _Blt_BindTable *Blt_BindTable;
 
-typedef ClientData (Blt_BindPickProc) _ANSI_ARGS_((ClientData clientData,
-	int x, int y, ClientData *contextPtr));
+typedef ClientData (Blt_BindPickProc)(ClientData clientData, int x, int y, 
+	ClientData *contextPtr);
 
-typedef void (Blt_BindTagProc) _ANSI_ARGS_((Blt_BindTable bindTable, 
-	ClientData object, ClientData context, Blt_List list));
+typedef void (Blt_BindTagProc)(Blt_BindTable bindTable, ClientData object, 
+	ClientData context, Blt_List list);
 
 
 /*
  *  Binding structure information:
  */
 
-struct Blt_BindTableStruct {
+struct _Blt_BindTable {
     unsigned int flags;
     Tk_BindingTable bindingTable;
 				/* Table of all bindings currently defined.
@@ -52,31 +53,30 @@ struct Blt_BindTableStruct {
 
     ClientData currentItem;	/* The item currently containing the mouse
 				 * pointer, or NULL if none. */
-    ClientData currentContext;	/* One word indicating what kind of object
-				 * was picked. */
+    ClientData currentContext;	/* One word indicating what kind of object was
+				 * picked. */
 
     ClientData newItem;		/* The item that is about to become the
-				 * current one, or NULL.  This field is
-				 * used to detect deletions of the new
-				 * current item pointer that occur during
-				 * Leave processing of the previous current
-				 * tab.  */
-    ClientData newContext;	/* One-word indicating what kind of object 
-				 * was just picked. */
+				 * current one, or NULL.  This field is used
+				 * to detect deletions of the new current item
+				 * pointer that occur during Leave processing
+				 * of the previous current tab.  */
+    ClientData newContext;	/* One-word indicating what kind of object was
+				 * just picked. */
 
     ClientData focusItem;
     ClientData focusContext;
 
-    XEvent pickEvent;		/* The event upon which the current choice
-				 * of the current tab is based.  Must be saved
-				 * so that if the current item is deleted,
-				 * we can pick another. */
-    int activePick;		/* The pick event has been initialized so
-				 * that we can repick it */
+    XEvent pickEvent;		/* The event upon which the current choice of
+				 * the current tab is based.  Must be saved so
+				 * that if the current item is deleted, we can
+				 * pick another. */
+    int activePick;		/* The pick event has been initialized so that
+				 * we can repick it */
 
-    int state;			/* Last known modifier state.  Used to
-				 * defer picking a new current object
-				 * while buttons are down. */
+    int state;			/* Last known modifier state.  Used to defer
+				 * picking a new current object while buttons
+				 * are down. */
 
     ClientData clientData;
     Tk_Window tkwin;
@@ -85,27 +85,23 @@ struct Blt_BindTableStruct {
     Blt_BindTagProc *tagProc;	/* Routine to report tags picked items. */
 };
 
-EXTERN void Blt_DestroyBindingTable _ANSI_ARGS_((Blt_BindTable table));
+BLT_EXTERN void Blt_DestroyBindingTable(Blt_BindTable table);
 
-EXTERN Blt_BindTable Blt_CreateBindingTable _ANSI_ARGS_((Tcl_Interp *interp,
+BLT_EXTERN Blt_BindTable Blt_CreateBindingTable(Tcl_Interp *interp, 
 	Tk_Window tkwin, ClientData clientData, Blt_BindPickProc *pickProc,
-	Blt_BindTagProc *tagProc));
+	Blt_BindTagProc *tagProc);
 
-EXTERN int Blt_ConfigureBindings _ANSI_ARGS_((Tcl_Interp *interp,
-	Blt_BindTable table, ClientData item, int argc, char **argv));
+BLT_EXTERN int Blt_ConfigureBindings(Tcl_Interp *interp, Blt_BindTable table, 
+	ClientData item, int argc, const char **argv);
 
-#if (TCL_MAJOR_VERSION >= 8)
-EXTERN int Blt_ConfigureBindingsFromObj _ANSI_ARGS_((Tcl_Interp *interp,
-	Blt_BindTable table, ClientData item, int objc, Tcl_Obj *CONST *objv));
-#endif
+BLT_EXTERN int Blt_ConfigureBindingsFromObj(Tcl_Interp *interp, 
+	Blt_BindTable table, ClientData item, int objc, Tcl_Obj *const *objv);
 
-EXTERN void Blt_PickCurrentItem _ANSI_ARGS_((Blt_BindTable table));
+BLT_EXTERN void Blt_PickCurrentItem(Blt_BindTable table);
 
-EXTERN void Blt_DeleteBindings _ANSI_ARGS_((Blt_BindTable table,
-	ClientData object));
+BLT_EXTERN void Blt_DeleteBindings(Blt_BindTable table, ClientData object);
 
-EXTERN void Blt_MoveBindingTable _ANSI_ARGS_((Blt_BindTable table, 
-	Tk_Window tkwin));
+BLT_EXTERN void Blt_MoveBindingTable(Blt_BindTable table, Tk_Window tkwin);
 
 #define Blt_SetFocusItem(bindPtr, object, context) \
 	((bindPtr)->focusItem = (ClientData)(object),\

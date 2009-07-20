@@ -1,41 +1,18 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
-#bltdebug 100
+#blt::bltdebug 100
 
-image create photo label1 -file ./images/mini-book1.gif
-image create photo label2 -file ./images/mini-book2.gif
-image create photo testImage -file ./images/txtrflag.gif
+image create picture label1 -file ./images/mini-book1.gif
+image create picture label2 -file ./images/mini-book2.gif
+image create picture testImage -file ./images/txtrflag.gif
 
-tabset .t \
+blt::tabset .t \
     -textside right \
     -slant both \
     -side right \
-    -samewidth yes \
+    -tabwidth same \
     -highlightcolor yellow \
     -tiers 5 \
     -scrollcommand { .s set } \
@@ -43,7 +20,9 @@ tabset .t \
 
 label .t.l -image testImage
 
-#option add *Tabset.Tab.font -*-helvetica-bold-r-*-*-12-*-*-*-*-*-*-*
+set font [font create -family "Arial" -size 8 -weight bold]
+puts stderr [font configure $font]
+option add *Tabset.Tab.font $font
 #option add *Tabset.Tab.fill both
 
 set attributes {
@@ -165,7 +144,7 @@ radiobutton .top -text "Top" -variable side -value "top" \
 radiobutton .bottom -text "Bottom" -variable side -value "bottom" \
     -command { .t configure -side $side -rotate 0 }
 
-table . \
+blt::table . \
     .t 0,0 -fill both -cspan 2 \
     .s 1,0 -fill x -cspan 2 \
     .top 2,0 -cspan 2 \
@@ -173,22 +152,22 @@ table . \
     .right 3,1 \
     .bottom 4,0 -cspan 2 
 
-table configure . r1 r3 r4 r2 -resize none
+blt::table configure . r1 r3 r4 r2 -resize none
 focus .t
 
 .t focus 0
 
 after 3000 {
 	.t move 0 after 3
-	.t tab configure [.t get 3] -state disabled 
+	.t tab configure 3 -state disabled 
 }
 
 foreach file { graph1 graph2 graph3 graph5 barchart2 } {
     namespace eval $file {
 	if { [string match graph* $file] } {
-	    set graph [graph .t.$file]
+	    set graph [blt::graph .t.$file]
 	} else {
-	    set graph [barchart .t.$file]
+	    set graph [blt::barchart .t.$file]
 	}
 	source scripts/$file.tcl
 	.t tab configure $file -window $graph -fill both 

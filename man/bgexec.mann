@@ -24,7 +24,7 @@
 .BS
 '\" Note:  do not modify the .SH NAME line immediately below!
 .SH NAME
-bgexec \- Run programs in the background while handling Tk events.
+\fBbgexec\fR \- Run programs in the background while handling Tk events.
 .SH SYNOPSIS
 \fBblt::bgexec \fIvarName\fR ?\fIoption value\fR?... \fIprogram\fR ?\fIarg\fR?...
 .BE

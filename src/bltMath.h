@@ -2,25 +2,29 @@
 /*
  * bltMath.h --
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_MATH_H
@@ -30,7 +34,7 @@
 
 #ifdef HAVE_FLOAT_H
 #include <float.h>
-#endif
+#endif /* HAVE_FLOAT_H */
 
 #ifdef HAVE_IEEEFP_H
 #include <ieeefp.h>
@@ -42,7 +46,7 @@
 
 #ifndef M_PI_2
 #define M_PI_2		1.57079632679489661923
-#endif
+#endif /* M_PI_2 */
 
 #ifndef M_SQRT2
 #define M_SQRT2		1.41421356237309504880
@@ -70,7 +74,7 @@
 
 #ifndef HAVE_FLOAT_H
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DBL_MIN, DBL_MAX --
  *
@@ -80,7 +84,7 @@
  * 	float.h.  Otherwise, we use HUGE_VAL or HUGE to determine
  * 	them.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*
  * Don't want to include __infinity (definition of HUGE_VAL (SC1.x))
@@ -112,7 +116,7 @@
 #endif /*!HAVE_FLOAT_H*/
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  *  	The following are macros replacing math library functions:
  *  	"fabs", "fmod", "abs", "rint", and "exp10".
@@ -124,7 +128,7 @@
  *  	true on several systems).  We can avoid the problem by
  *  	replacing the "exotic" math routines with macros.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 #undef ABS
 #define ABS(x)		(((x)<0)?(-(x)):(x))
@@ -163,36 +167,35 @@
 #endif /* HAVE_ISFINITE */
 #endif /* HAVE_FINITE */
 
-extern double bltNaN;
-
 #define DEFINED(x)	(!isnan(x))
 #define UNDEFINED(x)	(isnan(x))
-#define VALUE_UNDEFINED bltNaN
 
-/*
- * ----------------------------------------------------------------------
- *
- *	On some systems "strdup" and "strcasecmp" are in the C library,
- *      but have no declarations in the C header files. Make sure we
- *      supply them here.
- *
- * ----------------------------------------------------------------------
- */
-#ifdef NEED_DECL_STRDUP
-extern char *strdup _ANSI_ARGS_((CONST char *s));
-#endif /* NEED_DECL_STRDUP */
+#if !HAVE_DECL_DRAND48
+BLT_EXTERN double drand48(void);
+#endif /* !HAVE_DECL_DRAND48 */
 
-#ifndef HAVE_STRTOLOWER
-extern void strtolower _ANSI_ARGS_((char *s));
-#endif /* HAVE_STRTOLOWER */
+#if !HAVE_DECL_SRAND48
+BLT_EXTERN void srand48(long seed);
+#endif /* !HAVE_DECL_SRAND48 */
 
-#ifdef NEED_DECL_DRAND48
-extern double drand48 _ANSI_ARGS_((void));
-extern void srand48 _ANSI_ARGS_((long seed));
-#endif /* NEED_DECL_DRAND48 */
+#if !HAVE_DECL_J1
+BLT_EXTERN double j1(double x);
+#endif /* !HAVE_DECL_J1 */
 
-#ifdef NEED_DECL_STRCASECMP
-extern int strcasecmp _ANSI_ARGS_((CONST char *s1, CONST char *s2));
-#endif /* NEED_DECL_STRCASECMP */
+#if !HAVE_DECL_HYPOT
+BLT_EXTERN double hypot(double x, double y);
+#endif /* !HAVE_DECL_HYPOT */
+
+#ifdef HAVE_ISNAN
+#if !HAVE_DECL_ISNAN
+BLT_EXTERN int isnan(double x);
+#endif /* !HAVE_DECL_ISNAN */
+#endif /* HAVE_ISNAN */
+
+#ifdef HAVE_FINITE
+#if !HAVE_DECL_FINITE
+BLT_EXTERN int finite(double x);
+#endif /* !HAVE_DECL_FINITE */
+#endif /* HAVE_FINITE */
 
 #endif /* BLT_MATH_H */

@@ -2,29 +2,6 @@
 
 package require BLT
 
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 
 if { ([info exists tcl_platform]) && ($tcl_platform(platform) == "windows") } {
@@ -88,12 +65,17 @@ proc ShowResult { widget args } {
 # ----------------------------------------------------------------------
 # Main application window...
 # ----------------------------------------------------------------------
-image create photo openFolder -format gif -data {
+image create picture openFolder -data {
 R0lGODdhEAAOAPIAAP///wAAAH9/f9nZ2f//AAAAAAAAAAAAACwAAAAAEAAOAAADOwgqzPoQ
 iDjjAoPkIZuTgCZykBCA2ziaXusRrFUGQ5zeRMCcE76xvJBPozuBVCmT0eUKGAHOqFQqqwIS
 ADs=
     }
-label .sample -text "Color" -height 12 -width 20 -bd 2 -relief raised  \
+label .sample \
+    -text "Color" \
+    -height 12 \
+    -width 20 \
+    -bd 2 \
+    -relief raised  \
     -highlightthickness 2 
 
 set cursors {
@@ -115,84 +97,88 @@ set cursors {
 
 
 # Set up the color sample as a drag&drop source and target for "color" values:
-dnd register .sample -source yes -target yes \
+blt::dnd register .sample \
+    -source yes \
+    -target yes \
     -package PackageSample \
     -result ShowResult \
     -cursors $cursors
 
-dnd getdata .sample color GetColor
-dnd setdata .sample color SetColor
+blt::dnd getdata .sample color GetColor
+blt::dnd setdata .sample color SetColor
 
 # Establish the appearance of the token window:
-set token [dnd token window .sample]
+set token [blt::dnd token window .sample]
 label $token.label -text "Color" -bd 2 -highlightthickness 1  
 pack $token.label
-dnd token configure .sample -borderwidth 2 \
-    -relief raised -activerelief raised  \
-    -outline pink -fill red \
+blt::dnd token configure .sample \
+    -borderwidth 2 \
+    -relief raised \
+    -activerelief raised  \
+    -outline pink \
+    -fill red \
     -anchor s
 
 if 1 {
-scale .redScale -label "Red" -orient horizontal \
-    -from 0 -to 255 -command adjust_color
-frame .red -width 20 -height 20 -borderwidth 3 -relief sunken
-
-scale .greenScale -label "Green" -orient horizontal \
-    -from 0 -to 255 -command adjust_color
-frame .green -width 20 -height 20 -borderwidth 3 -relief sunken
-
-scale .blueScale -label "Blue" -orient horizontal \
-    -from 0 -to 255 -command adjust_color
-frame .blue -width 20 -height 20 -borderwidth 3 -relief sunken
-
-# ----------------------------------------------------------------------
-# This procedure loads a new color value into this editor.
-# ----------------------------------------------------------------------
-proc GetColor { widget args } {
-    return [$widget cget -bg]
-}
-
-proc SetColor { widget args } {
-    array set info $args 
-    set rgb [winfo rgb . $info(value)]
-    set r [lindex $rgb 0]
-    set g [lindex $rgb 1]
-    set b [lindex $rgb 2]
+    scale .redScale -label "Red" -orient horizontal \
+	-from 0 -to 255 -command adjust_color
+   frame .red -width 20 -height 20 -borderwidth 3 -relief sunken
     
-    .redScale set [expr round($r/65535.0 * 255)]
-    .greenScale set [expr round($g/65535.0 * 255)]
-    .blueScale set [expr round($b/65535.0 * 255)]
-}
+    scale .greenScale -label "Green" -orient horizontal \
+	-from 0 -to 255 -command adjust_color
+    frame .green -width 20 -height 20 -borderwidth 3 -relief sunken
 
-# ----------------------------------------------------------------------
-# This procedure is invoked whenever an RGB slider changes to
-# update the color samples in this display.
-# ----------------------------------------------------------------------
-proc adjust_color {args} {
-    set rval [.redScale get]
-    .red configure -background [format "#%.2x0000" $rval]
-    set gval [.greenScale get]
-    .green configure -background [format "#00%.2x00" $gval]
-    set bval [.blueScale get]
-    .blue configure -background [format "#0000%.2x" $bval]
+    scale .blueScale -label "Blue" -orient horizontal \
+	-from 0 -to 255 -command adjust_color
+    frame .blue -width 20 -height 20 -borderwidth 3 -relief sunken
 
-    .sample configure -background \
-        [format "#%.2x%.2x%.2x" $rval $gval $bval]
-    if {$rval+$gval+$bval < 1.5*255} {
-        .sample configure -foreground white
-    } else {
-        .sample configure -foreground black
+    # ----------------------------------------------------------------------
+    # This procedure loads a new color value into this editor.
+    # ----------------------------------------------------------------------
+    proc GetColor { widget args } {
+	return [$widget cget -bg]
     }
-}
-table . .redScale    1,0 -fill both
-table . .red	     1,1 -fill both
-table . .greenScale  2,0 -fill both
-table . .green	     2,1 -fill both
-table . .blueScale   3,0 -fill both
-table . .blue	     3,1 -fill both
 
+    proc SetColor { widget args } {
+	array set info $args 
+	set rgb [winfo rgb . $info(value)]
+	set r [lindex $rgb 0]
+	set g [lindex $rgb 1]
+	set b [lindex $rgb 2]
+	
+	.redScale set [expr round($r/65535.0 * 255)]
+	.greenScale set [expr round($g/65535.0 * 255)]
+	.blueScale set [expr round($b/65535.0 * 255)]
+    }
+
+    # ----------------------------------------------------------------------
+    # This procedure is invoked whenever an RGB slider changes to
+    # update the color samples in this display.
+    # ----------------------------------------------------------------------
+    proc adjust_color {args} {
+	set rval [.redScale get]
+	.red configure -background [format "#%.2x0000" $rval]
+	set gval [.greenScale get]
+	.green configure -background [format "#00%.2x00" $gval]
+	set bval [.blueScale get]
+	.blue configure -background [format "#0000%.2x" $bval]
+	
+	.sample configure -background \
+	    [format "#%.2x%.2x%.2x" $rval $gval $bval]
+	if {$rval+$gval+$bval < 1.5*255} {
+	    .sample configure -foreground white
+	} else {
+	    .sample configure -foreground black
+	}
+    }
+    blt::table . .redScale    1,0 -fill both
+    blt::table . .red	     1,1 -fill both
+    blt::table . .greenScale  2,0 -fill both
+    blt::table . .green	     2,1 -fill both
+    blt::table . .blueScale   3,0 -fill both
+    blt::table . .blue	     3,1 -fill both
 }
-table . .sample      0,0 -columnspan 2 -fill both -pady {0 4}
+blt::table . .sample      0,0 -columnspan 2 -fill both -pady {0 4}
 
 proc random {{max 1.0} {min 0.0}} {
     global randomSeed
@@ -206,7 +192,7 @@ set randomSeed [clock clicks]
 .redScale set [expr round([random 255.0])]
 .blueScale set [expr round([random 255.0])]
 .greenScale set [expr round([random 255.0])]
-bind .sample <KeyPress-Escape> { dnd cancel .sample }
+bind .sample <KeyPress-Escape> { blt::dnd cancel .sample }
 focus .sample
 
 

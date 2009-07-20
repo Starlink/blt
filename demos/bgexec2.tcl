@@ -23,7 +23,7 @@ package require BLT
 
 if { $tcl_version >= 8.0 } {
     namespace import blt::*
-    namespace import -force blt::tile::*
+#    namespace import -force blt::tk::*
 }
 
 source scripts/demo.tcl
@@ -31,12 +31,12 @@ source scripts/demo.tcl
 proc ShowResult { name1 name2 how } {
     global var
     .l$name2 configure -text "$var($name2)"
-    after 2000 "table forget .l$name2"
+    after 2000 "blt::table forget .l$name2"
 }
     
 for { set i 1 } { $i <= 20 } { incr i } {
     label .l$i 
-    table . .l$i $i,0
+    blt::table . .l$i $i,0
     set pid [bgexec var($i) du /usr/include &]
     .l$i configure -text "Starting #$i pid=$pid"
     trace variable var($i) w ShowResult

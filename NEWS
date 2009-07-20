@@ -1,3 +1,26 @@
+FEATURES
+========
+
+stripchart
+   The graph's -areapattern, -areaforeground, -areabackground, and
+   -areatile options are now available in the stripchart too.
+   
+
+BUG FIXES
+=========
+
+tree
+   On 64-bit platforms, bltTree.c doesn't compile because of missing
+   macros START_LOGSIZE and MAX_LIST_VALUES.  Thanks to Keith
+   W. Johnson <kwjohnson@llnl.gov> for the bug report.
+general
+   When compiling under Tru64, bltInit.c fails to compile.  Again many
+   thanks to Keith W. Johnson <kwjohnson@llnl.gov> for the bug report.
+vector
+   Vector always uses array variable in global namespace when name
+   is not namespace-qualified.  Thanks to Paul Kienzle 
+   <pkienzle@jazz.ncnr.nist.gov> for the bug report and example
+   script.
 
 Changes from 2.4y to 2.4z
 
@@ -342,6 +365,7 @@ graph
 	
 	.graph element configure line1 -areapattern solid 
 	.graph element configure line2 -areapattern BLT 
+
 graph/stripchart/barchart
    New -reduce option.
 

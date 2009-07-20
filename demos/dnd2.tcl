@@ -1,29 +1,6 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 
 if { ([info exists tcl_platform]) && ($tcl_platform(platform) == "windows") } {
@@ -189,11 +166,11 @@ if { $count == 1 }  {
 
 # Set up the entire canvas as a drag&drop source.
 
-dnd register .c -source yes  -dragthreshold 5 -button 1
+blt::dnd register .c -source yes  -dragthreshold 5 -button 1
 
 # Register code to pick up the information about a canvas item
 
-dnd getdata .c color GetColor
+blt::dnd getdata .c color GetColor
 
 proc GetColor { widget args } {
     array set info $args
@@ -213,7 +190,7 @@ proc GetColor { widget args } {
     return [list $color $type]
 }
 
-dnd configure .c -package PackageSample 
+blt::dnd configure .c -package PackageSample 
 
 proc PackageSample { widget args } {
     array set info $args
@@ -257,7 +234,7 @@ proc PackageSample { widget args } {
 
 # Configure a set of animated cursors.
 
-dnd configure .c -cursors {
+blt::dnd configure .c -cursors {
     { @bitmaps/hand/hand01.xbm bitmaps/hand/hand01m.xbm  black white }
     { @bitmaps/hand/hand02.xbm bitmaps/hand/hand02m.xbm  black white }
     { @bitmaps/hand/hand03.xbm bitmaps/hand/hand03m.xbm  black white }
@@ -276,20 +253,20 @@ dnd configure .c -cursors {
 
 # Create a widget to place in the drag-and-drop token
 
-set token [dnd token window .c]
+set token [blt::dnd token window .c]
 
 label $token.label -bd 2 -highlightthickness 1  
 pack $token.label
-dnd token configure .c \
+blt::dnd token configure .c \
     -borderwidth 2 \
     -relief raised -activerelief raised  \
     -outline pink -fill red \
     -anchor s
 
 
-dnd configure .c -target yes
+blt::dnd configure .c -target yes
 
-dnd setdata .c color { 
+blt::dnd setdata .c color { 
     NewObject 
 }
 
@@ -305,7 +282,7 @@ proc NewObject { widget args } {
 
 }
 
-dnd configure .c -onmotion OnMotion -onenter OnMotion -onleave OnMotion 
+blt::dnd configure .c -onmotion OnMotion -onenter OnMotion -onleave OnMotion 
 
 proc OnMotion { widget args } {
     global cells lastCell

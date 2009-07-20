@@ -23,7 +23,7 @@ package require BLT
 # --------------------------------------------------------------------------
 if { $tcl_version >= 8.0 } {
     namespace import blt::*
-    namespace import -force blt::tile::*
+    namespace import -force blt::tk::*
 }
 source scripts/demo.tcl
 
@@ -122,10 +122,10 @@ proc adjust_color {args} {
     }
 }
 
-table . .sample      0,0 -columnspan 2 -fill both -pady {0 4}
-table . .redScale    1,0 -fill both
-table . .redSample   1,1 -fill both
-table . .greenScale  2,0 -fill both
-table . .greenSample 2,1 -fill both
-table . .blueScale   3,0 -fill both
-table . .blueSample  3,1 -fill both
+blt::table . .sample      0,0 -columnspan 2 -fill both -pady {0 4}
+blt::table . .redScale    1,0 -fill both
+blt::table . .redSample   1,1 -fill both
+blt::table . .greenScale  2,0 -fill both
+blt::table . .greenSample 2,1 -fill both
+blt::table . .blueScale   3,0 -fill both
+blt::table . .blueSample  3,1 -fill both

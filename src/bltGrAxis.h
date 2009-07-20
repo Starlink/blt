@@ -1,25 +1,30 @@
+
 /*
  * bltGrAxis.h --
  *
- * Copyright 1991-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_GR_AXIS_H
@@ -28,118 +33,114 @@
 #include "bltList.h"
 
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
+ *
+ * Grid --
+ *
+ *	Contains attributes of describing how to draw grids (at major ticks)
+ *	in the graph.  Grids may be mapped to either/both X and Y axis.
+ *
+ *---------------------------------------------------------------------------
+ */
+typedef struct {
+    Blt_Dashes dashes;		/* Dash style of the grid. This represents an
+				 * array of alternatingly drawn pixel
+				 * values. */
+    int lineWidth;		/* Width of the grid lines */
+    XColor *color;		/* Color of the grid lines */
+    GC gc;			/* Graphics context for the grid. */
+
+    Segment2d *segments;	/* Array of line segments representing the
+				 * grid lines */
+    int nUsed;			/* # of axis segments in use. */
+    int nAllocated;		/* # of axis segments allocated. */
+} Grid;
+
+/*
+ *---------------------------------------------------------------------------
  *
  * AxisRange --
  *
  *	Designates a range of values by a minimum and maximum limit.
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
     double min, max, range, scale;
 } AxisRange;
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * TickLabel --
  *
  * 	Structure containing the X-Y screen coordinates of the tick
  * 	label (anchored at its center).
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    Point2D anchorPos;
-    int width, height;
+    Point2d anchorPos;
+    unsigned int width, height;
     char string[1];
 } TickLabel;
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Ticks --
  *
  * 	Structure containing information where the ticks (major or
  *	minor) will be displayed on the graph.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    int nTicks;			/* # of ticks on axis */
+    unsigned int nTicks;	/* # of ticks on axis */
     double values[1];		/* Array of tick values (malloc-ed). */
 } Ticks;
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * TickSweep --
  *
  * 	Structure containing information where the ticks (major or
  *	minor) will be displayed on the graph.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
     double initial;		/* Initial value */
     double step;		/* Size of interval */
-    int nSteps;			/* Number of intervals. */
+    unsigned int nSteps;	/* Number of intervals. */
 } TickSweep;
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Axis --
  *
  * 	Structure contains options controlling how the axis will be
  * 	displayed.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    char *name;			/* Identifier to refer the element.
-				 * Used in the "insert", "delete", or
-				 * "show", commands. */
+    GraphObj obj;		/* Must be first field in axis. */
 
-    Blt_Uid classUid;		/* Type of axis. */
+    unsigned int flags;		
 
-    Graph *graphPtr;		/* Graph widget of element*/
+    Blt_HashEntry *hashPtr;
 
-    unsigned int flags;		/* Set bit field definitions below */
+    /* Fields specific to axes. */
 
-    /*
-     * AXIS_DRAWN		Axis is designated as a logical axis
-     * AXIS_DIRTY
-     *
-     * AXIS_CONFIG_MAJOR	User specified major ticks.
-     * AXIS_CONFIG_MINOR	User specified minor ticks.
-     */
-
-    char **tags;
-
-    char *detail;
-
-    int deletePending;		/* Indicates that the axis was
-				 * scheduled for deletion. The actual
-				 * deletion may be deferred until the
-				 * axis is no longer in use.  */
+    const char *detail;
 
     int refCount;		/* Number of elements referencing this
 				 * axis. */
 
-    Blt_HashEntry *hashPtr;	/* Points to axis entry in hash
-				 * table. Used to quickly remove axis
-				 * entries. */
-
-    int logScale;		/* If non-zero, scale the axis values
-				 * logarithmically. */
-
-    int hidden;			/* If non-zero, don't display the
-				 * axis title, ticks, or line. */
-
-    int showTicks;		/* If non-zero, display tick marks and
-				 * labels. */
+    int logScale;
 
     int descending;		/* If non-zero, display the range of
 				 * values on the axis in descending
@@ -151,25 +152,22 @@ typedef struct {
 				 * is overriddened by setting the -min
 				 * and -max options.  */
 
-    char *title;		/* Title of the axis. */
-
-    TextStyle titleTextStyle;	/* Text attributes (color, font,
-				 * rotation, etc.)  of the axis
-				 * title. */
+    const char *title;		/* Title of the axis. */
 
     int titleAlternate;		/* Indicates whether to position the
 				 * title above/left of the axis. */
 
-    Point2D titlePos;		/* Position of the title */
+    Point2d titlePos;		/* Position of the title */
 
     unsigned short int titleWidth, titleHeight;	
+
 
     int lineWidth;		/* Width of lines representing axis
 				 * (including ticks).  If zero, then
 				 * no axis lines or ticks are
 				 * drawn. */
 
-    char **limitsFormats;	/* One or two strings of sprintf-like
+    const char **limitsFormats;	/* One or two strings of sprintf-like
 				 * formats describing how to display
 				 * virtual axis limits. If NULL,
 				 * display no limits. */
@@ -188,14 +186,11 @@ typedef struct {
 
     int tickLength;		/* Length of major ticks in pixels */
 
-    TextStyle tickTextStyle;	/* Text attributes (color, font, rotation, 
-				 * etc.) for labels at each major tick. */
-
-    char *formatCmd;		/* Specifies a Tcl command, to be invoked
+    const char *formatCmd;	/* Specifies a TCL command, to be invoked
 				 * by the axis whenever it has to generate 
 				 * tick labels. */
 
-    char *scrollCmdPrefix;
+    Tcl_Obj *scrollCmdObjPtr;
     int scrollUnits;
 
     double min, max;		/* The actual axis range. */
@@ -207,6 +202,8 @@ typedef struct {
 				 * been set.  They override the
 				 * computed range of the axis
 				 * (determined by auto-scaling). */
+
+    double reqScrollMin, reqScrollMax;
 
     double scrollMin, scrollMax;/* Defines the scrolling reqion of the axis.
 				 * Normally the region is determined from 
@@ -230,15 +227,6 @@ typedef struct {
 				 * upon the range of elements mapped to the 
 				 * axis. The default value is 0.0. */
 
-    double tickZoom;		/* If > 0.0, overrides the computed major 
-				 * tick interval.  Otherwise a stepsize 
-				 * is automatically calculated, based 
-				 * upon the range of elements mapped to the 
-				 * axis. The default value is 0.0. */
-
-
-    GC tickGC;			/* Graphics context for axis and tick labels */
-
     Ticks *t1Ptr;		/* Array of major tick positions. May be
 				 * set by the user or generated from the 
 				 * major sweep below. */
@@ -249,6 +237,7 @@ typedef struct {
 
     TickSweep minorSweep, majorSweep;
 
+    int reqNumMajorTicks;	/* Default number of ticks to be displayed. */
     int reqNumMinorTicks;	/* If non-zero, represents the
 				 * requested the number of minor ticks
 				 * to be uniformally displayed along
@@ -261,12 +250,10 @@ typedef struct {
 
     /* The following fields are specific to logical axes */
 
-    Blt_ChainLink *linkPtr;	/* Axis link in margin list. */
-    Blt_Chain *chainPtr;
+    Blt_ChainLink link;		/* Axis link in margin list. */
+    Blt_Chain chain;
 
-    short int width, height;	/* Extents of axis */
-
-    Segment2D *segments;	/* Array of line segments representing
+    Segment2d *segments;	/* Array of line segments representing
 				 * the major and minor ticks, but also
 				 * the axis line itself. The segment
 				 * coordinates are relative to the
@@ -274,33 +261,66 @@ typedef struct {
 
     int nSegments;		/* Number of segments in the above array. */
 
-    Blt_Chain *tickLabels;	/* Contains major tick label strings 
+    Blt_Chain tickLabels;	/* Contains major tick label strings 
 				 * and their offsets along the axis. */
-    Region2D region;
 
-    Tk_3DBorder border;
-    int borderWidth;
+    short int left, right, top, bottom;	/* Region occupied by the of axis. */
+    short int width, height;	/* Extents of axis */
+
+    Blt_Background normalBg;
+    Blt_Background activeBg;
+    XColor *activeFgColor;
+
     int relief;
+    int borderWidth;
+    int activeRelief;
+
+    float tickAngle;	
+    Blt_Font tickFont;
+    Tk_Anchor tickAnchor;
+    Tk_Anchor reqTickAnchor;
+    XColor *tickColor;
+    GC tickGC;			/* Graphics context for axis and tick labels */
+    GC activeTickGC;
+
+    double titleAngle;	
+    Blt_Font titleFont;
+    Tk_Anchor titleAnchor;
+    Tk_Justify titleJustify;
+    XColor *titleColor;
+    
+    Grid major, minor;		/* Axis grid information. */
+
+    double screenScale;
+    int screenMin, screenRange;
+
 } Axis;
 
-#define AXIS_CONFIG_MAJOR (1<<4) /* User specified major tick intervals. */
-#define AXIS_CONFIG_MINOR (1<<5) /* User specified minor tick intervals. */
-#define AXIS_ONSCREEN	  (1<<6) /* Axis is displayed on the screen via
-				  * the "use" operation */
-#define AXIS_DIRTY	  (1<<7)
-#define AXIS_ALLOW_NULL   (1<<12)
-
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Axis2D --
+ * Axis2d --
  *
  *	The pair of axes mapping a point onto the graph.
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
     Axis *x, *y;
-} Axis2D;
+} Axis2d;
+
+/* Axis flags: */
+
+#define AXIS_AUTO_MAJOR		(1<<16) /* Auto-generate major ticks. */
+#define AXIS_AUTO_MINOR		(1<<17) /* Auto-generate minor ticks. */
+#define AXIS_ONSCREEN		(1<<18)	/* Axis is displayed on the screen via
+					 * the "use" operation */
+#define AXIS_GRID		(1<<19)
+#define AXIS_GRID_MINOR		(1<<20)
+#define AXIS_TICKS		(1<<21)
+#define AXIS_TICKS_INTERIOR	(1<<22)
+#define AXIS_CHECK_LIMITS	(1<<23)
+#define AXIS_LOGSCALE		(1<<24)
+#define AXIS_DECREASING		(1<<25)
 
 #endif /* _BLT_GR_AXIS_H */

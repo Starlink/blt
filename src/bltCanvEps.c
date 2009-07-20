@@ -1,42 +1,47 @@
+
 /*
  * bltCanvEps.c --
  *
- *	This file implements Encapsulated PostScript items for canvas widgets.
+ * This file implements an Encapsulated PostScript item for canvas
+ * widgets.
  *
- * Copyright 1991-1998 Lucent Technologies, Inc.
+ *	Copyright 1991-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
  *
- * EPS canvas item created by George Howlett.
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /*
  * To do:
  *
  *	1. Add -rotate option.  Allow arbitrary rotation of image and EPS.
- *	2. Draw color images instead of photos. This will eliminate the need
+ *	2. Draw pictures instead of photos. This will eliminate the need
  *	   to create hidden photo images.
  *	3. Create a spiffy demo that lets you edit your page description.
  */
+#define USE_OLD_CANVAS	1
+
 #include "bltInt.h"
 #include "bltPs.h"
 #include "bltImage.h"
+#include "bltPicture.h"
+#include "bltPainter.h"
 
 #ifdef HAVE_TIFF_H
 #include "tiff.h"
@@ -68,27 +73,21 @@
 #define PS_PREVIEW_WMF	1
 #define PS_PREVIEW_TIFF	2
 
-#define xLeft	header.x1
-#define xRight	header.x2
-#define yTop	header.y1
-#define yBottom	header.y2
-
-
 #define MAX_EPS_LINE_LENGTH 255	/* Maximum line length for a EPS file */
 
 /*
  * ParseInfo --
  *
- *	This structure is used to pass PostScript file information
- *	around to various routines while parsing the EPS file.
+ *	This structure is used to pass PostScript file information around to
+ *	various routines while parsing the EPS file.
  */
 typedef struct {
     int maxBytes;		/* Maximum length of PostScript code.  */
     int lineNumber;		/* Current line number of EPS file */
     char line[MAX_EPS_LINE_LENGTH + 1];
-    /* Buffer to contain a single line from
+				/* Buffer to contain a single line from
 				 * the PostScript file. */
-    char hexTable[256];		/* Table for converting ASCII hex digits to
+    unsigned char hexTable[256]; /* Table for converting ASCII hex digits to
 				 * values */
 
     char *nextPtr;		/* Pointer to the next character to process on
@@ -100,26 +99,21 @@ typedef struct {
 
 #define DEF_EPS_ANCHOR		"nw"
 #define DEF_EPS_OUTLINE_COLOR	RGB_BLACK
-#define DEF_EPS_OUTLINE_MONO    RGB_BLACK
 #define DEF_EPS_BORDERWIDTH	STD_BORDERWIDTH
 #define DEF_EPS_FILE_NAME	(char *)NULL
 #define DEF_EPS_FONT		STD_FONT
 #define DEF_EPS_FILL_COLOR     	STD_NORMAL_FOREGROUND
-#define DEF_EPS_FILL_MONO	STD_NORMAL_FG_MONO
 #define DEF_EPS_HEIGHT		"0"
 #define DEF_EPS_IMAGE_NAME	(char *)NULL
 #define DEF_EPS_JUSTIFY		"center"
 #define DEF_EPS_QUICK_RESIZE	"no"
 #define DEF_EPS_RELIEF		"sunken"
-#define DEF_EPS_SHADOW_COLOR	(char *)NULL
-#define DEF_EPS_SHADOW_MONO	(char *)NULL
 #define DEF_EPS_SHOW_IMAGE	"yes"
 #define DEF_EPS_STIPPLE		(char *)NULL
 #define DEF_EPS_TAGS		(char *)NULL
 #define DEF_EPS_TITLE		(char *)NULL
 #define DEF_EPS_TITLE_ANCHOR	"center"
 #define DEF_EPS_TITLE_COLOR	RGB_BLACK
-#define DEF_EPS_TITLE_ROTATE	"0"
 #define DEF_EPS_WIDTH		"0"
 
 /*
@@ -128,108 +122,99 @@ typedef struct {
 
 static Tk_CustomOption tagsOption;
 
-extern Tk_CustomOption bltDistanceOption;
-extern Tk_CustomOption bltShadowOption;
+BLT_EXTERN Tk_CustomOption bltDistanceOption;
 
 /*
  * The structure below defines the record for each EPS item.
  */
 typedef struct {
-    Tk_Item header;		/* Generic stuff that's the same for all
+    Tk_Item item;		/* Generic stuff that's the same for all
 				 * types.  MUST BE FIRST IN STRUCTURE. */
     Tk_Canvas canvas;		/* Canvas containing the EPS item. */
 
-    int canvasX, canvasY;	/* Translated (by the anchor) canvas
-				 * coordinates of the EPS item. */
-
     int lastWidth, lastHeight;	/* Last known dimensions of the EPS item.
-				 * This is used to know if the color image
-				 * preview needs to be resized. */
+				 * This is used to know if the picture preview
+				 * needs to be resized. */
 
     Tcl_Interp *interp;
 
-    FILE *psFile;		/* File pointer to Encapsulated
-				 * PostScript file. We'll hold this as
-				 * long as the EPS item is using this
-				 * file. */
-    size_t psStart;		/* File offset of PostScript code. */
-    size_t psLength;		/* Length of PostScript code. If zero,
+    FILE *psFile;		/* File pointer to Encapsulated PostScript
+				 * file. We'll hold this as long as the EPS
+				 * item is using this file. */
+    unsigned int psStart;	/* File offset of PostScript code. */
+    unsigned int psLength;	/* Length of PostScript code. If zero,
 				 * indicates to read to EOF. */
-    size_t wmfStart;		/* File offset of Windows Metafile preview.  */
-    size_t wmfLength;		/* Length of WMF portion in bytes. If zero,
+    unsigned int wmfStart;	/* File offset of Windows Metafile
+				 * preview.  */
+    unsigned int wmfLength;     /* Length of WMF portion in bytes. If zero,
 				 * indicates there is no WMF preview. */
-    size_t tiffStart;		/* File offset of TIFF preview. */
-    size_t tiffLength;		/* Length of TIFF portion in bytes. If zero,
+    unsigned int tiffStart;	/* File offset of TIFF preview. */
+    unsigned int tiffLength;    /* Length of TIFF portion in bytes. If zero,
 				 * indicates there is no TIFF preview. */
-    char *previewName;
+    const char *previewImageName;
     int previewFormat;
 
-    Tk_Image preview;		/* A Tk photo image provided as a
-				 * preview of the EPS contents. This
-				 * image supersedes any EPS preview
-				 * embedded PostScript preview (EPSI). */
+    Tk_Image preview;		/* A Tk photo image provided as a preview of
+				 * the EPS contents. This image supersedes any
+				 * EPS preview embedded PostScript preview
+				 * (EPSI). */
 
-    Tk_Image tmpImage;		/* Used to display the resized preview image.
-				 * Created and deleted internally. */
+    Blt_Painter painter;
+    Blt_Picture original;	/* The original photo or PostScript preview
+				 * image converted to a picture. */
+    int origFromPicture;
 
-
-    Pixmap pixmap;		/* Pixmap representing scaled preview. This
-				 * isn't currently used.  For now we're
-				 * overwriting the Tk image everytime the
-				 * EPS item is resized. In the future
-				 * we'll use our own image routines. */
-
-    ColorTable colorTable;	/* Pointer to color table */
-
-    Blt_ColorImage colorImage;	/* The original photo or PostScript
-				 * preview image converted to a color
-				 * image.  This is kept around for
-				 * resampling or resizing the image. */
+    Blt_Picture picture;	/* Holds resized preview image.  Created and
+				 * deleted internally. */
 
     int firstLine, lastLine; 
 				/* First and last line numbers of the
-				 * PostScript preview.  They are used
-				 * to skip over the preview when
-				 * encapsulating PostScript for the
-				 * canvas item. */
+				 * PostScript preview.  They are used to skip
+				 * over the preview when encapsulating
+				 * PostScript for the canvas item. */
 
-    GC fillGC;			/* Graphics context to fill background
-				 * of image outline if no preview image
-				 * was present. */
+    GC fillGC;			/* Graphics context to fill background of
+				 * image outline if no preview image was
+				 * present. */
 
-    int llx, lly, urx, ury;	/* Lower left and upper right coordinates
-				 * of PostScript bounding box, retrieved
-				 * from file's "BoundingBox:" field. */
+    int llx, lly, urx, ury;	/* Lower left and upper right coordinates of
+				 * PostScript bounding box, retrieved from
+				 * file's "BoundingBox:" field. */
 
     char *title;		/* Title, retrieved from the file's "Title:"
-				 * field, to be displayed over the top of
-				 * the EPS preview (malloc-ed).  */
+				 * field, to be displayed over the top of the
+				 * EPS preview (malloc-ed).  */
 
-    Tcl_DString dString;	/* Contains the encapsulate PostScript. */
+    Tcl_DString dString;	/* Contains the encapsulated PostScript. */
 
     /* User configurable fields */
 
-    double x, y;		/* Canvas coordinates of the item */
+    double x, y;		/* Requested anchor in canvas coordinates of
+				 * the item */
     Tk_Anchor anchor;
 
+    Region2d bb;
+
     char *fileName;		/* Name of the encapsulated PostScript file.
-				 * If NULL, indicates that no EPS file
-				 * has be successfully loaded yet. */
+				 * If NULL, indicates that no EPS file has be
+				 * successfully loaded yet. */
 
     char *reqTitle;		/* Title to be displayed in the EPS item.
 				 * Supersedes the title found in the EPS
 				 * file. If NULL, indicates that the title
 				 * found in the EPS file should be used. */
 
-    int width, height;		/* Dimensions of EPS item. If set to zero,
-				 * the dimension found in the "%%BoundingBox:"
-				 * specification from the EPS file are
-				 * used. */
+    int width, height;		/* Requested dimension of EPS item in canvas
+				 * coordinates.  If non-zero, this overrides
+				 * the dimension computed from the
+				 * "%%BoundingBox:" specification in the EPS
+				 * file used. */
 
     int showImage;		/* Indicates if the image or the outline
 				 * rectangle should be displayed */
 
     int quick;
+    unsigned int flags;
 
     XColor *fillColor;		/* Fill color of the image outline. */
 
@@ -239,116 +224,150 @@ typedef struct {
     int relief;
 
     TextStyle titleStyle;	/* Font, color, etc. for title */
-
+    Blt_Font font;		
     Pixmap stipple;		/* Stipple for image fill */
 
     ClientData tiffPtr;
 #ifdef WIN32
     HENHMETAFILE *hMetaFile;	/* Windows metafile. */
 #endif
-} EpsItem;
+} Eps;
+
+static int StringToFont(ClientData clientData, Tcl_Interp *interp,
+	Tk_Window tkwin, const char *string, char *widgRec, int offset);
+static char *FontToString (ClientData clientData, Tk_Window tkwin, 
+	char *widgRec, int offset, Tcl_FreeProc **proc);
+
+static Tk_CustomOption bltFontOption =
+{
+    StringToFont, FontToString, (ClientData)0
+};
+
 
 static Tk_ConfigSpec configSpecs[] =
 {
-    {TK_CONFIG_ANCHOR, "-anchor", (char *)NULL, (char *)NULL,
-	DEF_EPS_ANCHOR, Tk_Offset(EpsItem, anchor),
+    {TK_CONFIG_ANCHOR, (char *)"-anchor", (char *)NULL, (char *)NULL,
+	DEF_EPS_ANCHOR, Blt_Offset(Eps, anchor),
 	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_SYNONYM, "-bd", "borderWidth", (char *)NULL, (char *)NULL, 0, 0},
-    {TK_CONFIG_CUSTOM, "-borderwidth", "borderWidth", (char *)NULL,
-	DEF_EPS_BORDERWIDTH, Tk_Offset(EpsItem, borderWidth),
+    {TK_CONFIG_SYNONYM, (char *)"-bd", "borderWidth", (char *)NULL, (char *)NULL, 0, 0},
+    {TK_CONFIG_CUSTOM, (char *)"-borderwidth", "borderWidth", (char *)NULL,
+	DEF_EPS_BORDERWIDTH, Blt_Offset(Eps, borderWidth),
 	TK_CONFIG_DONT_SET_DEFAULT, &bltDistanceOption},
-    {TK_CONFIG_STRING, "-file", (char *)NULL, (char *)NULL,
-	DEF_EPS_FILE_NAME, Tk_Offset(EpsItem, fileName), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_FONT, "-font", "font", "Font",
-	DEF_EPS_FONT, Tk_Offset(EpsItem, titleStyle.font), 0},
-    {TK_CONFIG_COLOR, "-fill", "fill", (char *)NULL,
-	DEF_EPS_FILL_COLOR, Tk_Offset(EpsItem, fillColor), TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-fill", "fill", (char *)NULL,
-	DEF_EPS_FILL_MONO, Tk_Offset(EpsItem, fillColor), TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_CUSTOM, "-height", (char *)NULL, (char *)NULL,
-	DEF_EPS_HEIGHT, Tk_Offset(EpsItem, height),
+    {TK_CONFIG_STRING, (char *)"-file", (char *)NULL, (char *)NULL,
+	DEF_EPS_FILE_NAME, Blt_Offset(Eps, fileName), TK_CONFIG_NULL_OK},
+    {TK_CONFIG_CUSTOM, (char *)"-font", "font", "Font",
+        DEF_EPS_FONT, Blt_Offset(Eps, font), 0, &bltFontOption},
+    {TK_CONFIG_COLOR, (char *)"-fill", "fill", (char *)NULL,
+	DEF_EPS_FILL_COLOR, Blt_Offset(Eps, fillColor), 0},
+    {TK_CONFIG_CUSTOM, (char *)"-height", (char *)NULL, (char *)NULL,
+	DEF_EPS_HEIGHT, Blt_Offset(Eps, height),
 	TK_CONFIG_DONT_SET_DEFAULT, &bltDistanceOption},
-    {TK_CONFIG_STRING, "-image", (char *)NULL, (char *)NULL,
-	DEF_EPS_IMAGE_NAME, Tk_Offset(EpsItem, previewName),
+    {TK_CONFIG_STRING, (char *)"-image", (char *)NULL, (char *)NULL,
+	DEF_EPS_IMAGE_NAME, Blt_Offset(Eps, previewImageName),
 	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_JUSTIFY, "-justify", "justify", "Justify",
-	DEF_EPS_JUSTIFY, Tk_Offset(EpsItem, titleStyle.justify),
+    {TK_CONFIG_JUSTIFY, (char *)"-justify", "justify", "Justify",
+	DEF_EPS_JUSTIFY, Blt_Offset(Eps, titleStyle.justify),
 	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_BORDER, "-outline", "outline", (char *)NULL,
-	DEF_EPS_OUTLINE_COLOR, Tk_Offset(EpsItem, border),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BORDER, "-outline", "outline", (char *)NULL,
-	DEF_EPS_OUTLINE_MONO, Tk_Offset(EpsItem, border),
-	TK_CONFIG_MONO_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BOOLEAN, "-quick", "quick", "Quick",
-	DEF_EPS_QUICK_RESIZE, Tk_Offset(EpsItem, quick),
+    {TK_CONFIG_BORDER, (char *)"-outline", "outline", (char *)NULL,
+	DEF_EPS_OUTLINE_COLOR, Blt_Offset(Eps, border),
+	TK_CONFIG_NULL_OK},
+    {TK_CONFIG_BOOLEAN, (char *)"-quick", "quick", "Quick",
+	DEF_EPS_QUICK_RESIZE, Blt_Offset(Eps, quick),
 	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_RELIEF, "-relief", (char *)NULL, (char *)NULL,
-	DEF_EPS_RELIEF, Tk_Offset(EpsItem, relief),
+    {TK_CONFIG_RELIEF, (char *)"-relief", (char *)NULL, (char *)NULL,
+	DEF_EPS_RELIEF, Blt_Offset(Eps, relief),
 	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-shadow", "shadow", "Shadow",
-	DEF_EPS_SHADOW_COLOR, Tk_Offset(EpsItem, titleStyle.shadow),
-	TK_CONFIG_COLOR_ONLY, &bltShadowOption},
-    {TK_CONFIG_CUSTOM, "-shadow", "shadow", "Shadow",
-	DEF_EPS_SHADOW_MONO, Tk_Offset(EpsItem, titleStyle.shadow),
-	TK_CONFIG_MONO_ONLY, &bltShadowOption},
-    {TK_CONFIG_BOOLEAN, "-showimage", "showImage", "ShowImage",
-	DEF_EPS_SHOW_IMAGE, Tk_Offset(EpsItem, showImage),
+    {TK_CONFIG_BOOLEAN, (char *)"-showimage", "showImage", "ShowImage",
+	DEF_EPS_SHOW_IMAGE, Blt_Offset(Eps, showImage),
 	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_BITMAP, "-stipple", (char *)NULL, (char *)NULL,
-	DEF_EPS_STIPPLE, Tk_Offset(EpsItem, stipple), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-tags", (char *)NULL, (char *)NULL,
+    {TK_CONFIG_BITMAP, (char *)"-stipple", (char *)NULL, (char *)NULL,
+	DEF_EPS_STIPPLE, Blt_Offset(Eps, stipple), TK_CONFIG_NULL_OK},
+    {TK_CONFIG_CUSTOM, (char *)"-tags", (char *)NULL, (char *)NULL,
 	DEF_EPS_TAGS, 0, TK_CONFIG_NULL_OK, &tagsOption},
-    {TK_CONFIG_STRING, "-title", (char *)NULL, (char *)NULL,
-	DEF_EPS_TITLE, Tk_Offset(EpsItem, reqTitle), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_ANCHOR, "-titleanchor", (char *)NULL, (char *)NULL,
-	DEF_EPS_TITLE_ANCHOR, Tk_Offset(EpsItem, titleStyle.anchor), 0},
-    {TK_CONFIG_COLOR, "-titlecolor", (char *)NULL, (char *)NULL,
-	DEF_EPS_TITLE_COLOR, Tk_Offset(EpsItem, titleStyle.color),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_DOUBLE, "-titlerotate", "titleRotate", "TitleRotate",
-	DEF_EPS_TITLE_ROTATE, Tk_Offset(EpsItem, titleStyle.theta),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-width", (char *)NULL, (char *)NULL,
-	DEF_EPS_WIDTH, Tk_Offset(EpsItem, width),
+    {TK_CONFIG_STRING, (char *)"-title", (char *)NULL, (char *)NULL,
+	DEF_EPS_TITLE, Blt_Offset(Eps, reqTitle), TK_CONFIG_NULL_OK},
+    {TK_CONFIG_ANCHOR, (char *)"-titleanchor", (char *)NULL, (char *)NULL,
+	DEF_EPS_TITLE_ANCHOR, Blt_Offset(Eps, titleStyle.anchor), 0},
+    {TK_CONFIG_COLOR, (char *)"-titlecolor", (char *)NULL, (char *)NULL,
+	DEF_EPS_TITLE_COLOR, Blt_Offset(Eps, titleStyle.color), 0},
+    {TK_CONFIG_CUSTOM, (char *)"-width", (char *)NULL, (char *)NULL,
+	DEF_EPS_WIDTH, Blt_Offset(Eps, width),
 	TK_CONFIG_DONT_SET_DEFAULT, &bltDistanceOption},
     {TK_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
 	(char *)NULL, 0, 0}
 };
 
-/*
- * Prototypes for procedures defined in this file:
- */
+/* Prototypes for procedures defined in this file: */
+static Tk_ImageChangedProc ImageChangedProc;
+static Tk_ItemCoordProc EpsCoords;
+static Tk_ItemAreaProc EpsToArea;
+static Tk_ItemPointProc EpsToPoint;
+static Tk_ItemConfigureProc ConfigureEps;
+static Tk_ItemCreateProc CreateEps;
+static Tk_ItemDeleteProc DeleteEps;
+static Tk_ItemDisplayProc DisplayEps;
+static Tk_ItemScaleProc ScaleEps;
+static Tk_ItemTranslateProc TranslateEps;
+static Tk_ItemPostscriptProc EpsToPostScript;
 
-static void ImageChangedProc _ANSI_ARGS_((ClientData clientData, int x, int y,
-	int width, int height, int imgWidth, int imgHeight));
-static int EpsCoords _ANSI_ARGS_((Tcl_Interp *interp, Tk_Canvas canvas,
-	Tk_Item * itemPtr, int argc, char **argv));
-static int EpsToArea _ANSI_ARGS_((Tk_Canvas canvas, Tk_Item * itemPtr,
-	double *rectPtr));
-static double EpsToPoint _ANSI_ARGS_((Tk_Canvas canvas, Tk_Item * itemPtr,
-	double *coordPtr));
-static void ComputeEpsBbox _ANSI_ARGS_((Tk_Canvas canvas, EpsItem *imgPtr));
-static int ConfigureEps _ANSI_ARGS_((Tcl_Interp *interp, Tk_Canvas canvas,
-	Tk_Item * itemPtr, int argc, char **argv, int flags));
-static int CreateEps _ANSI_ARGS_((Tcl_Interp *interp, Tk_Canvas canvas,
-	struct Tk_Item * itemPtr, int argc, char **argv));
-static void DeleteEps _ANSI_ARGS_((Tk_Canvas canvas, Tk_Item * itemPtr,
-	Display *display));
-static void DisplayEps _ANSI_ARGS_((Tk_Canvas canvas, Tk_Item * itemPtr,
-	Display *display, Drawable dst, int x, int y, int width, int height));
-static void ScaleEps _ANSI_ARGS_((Tk_Canvas canvas, Tk_Item * itemPtr,
-	double originX, double originY, double scaleX, double scaleY));
-static void TranslateEps _ANSI_ARGS_((Tk_Canvas canvas, Tk_Item * itemPtr,
-	double deltaX, double deltaY));
-static int EpsToPostScript _ANSI_ARGS_((Tcl_Interp *interp, Tk_Canvas canvas,
-	Tk_Item * itemPtr, int prepass));
-static int ReadPostScript _ANSI_ARGS_((Tcl_Interp *interp, EpsItem *epsPtr));
-
+static void ComputeEpsBbox(Tk_Canvas canvas, Eps *imgPtr);
+static int ReadPostScript(Tcl_Interp *interp, Eps *epsPtr);
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * StringToFont --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+StringToFont(
+    ClientData clientData,	/* Indicated how to check distance */
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tk_Window tkwin,		/* Window */
+    const char *string,		/* Pixel value string */
+    char *widgRec,		/* Widget record */
+    int offset)			/* Offset of pixel size in record */
+{
+    Blt_Font *fontPtr = (Blt_Font *)(widgRec + offset);
+    Blt_Font font;
+
+    font = Blt_GetFont(interp, tkwin, string);
+    if (font == NULL) {
+	return TCL_ERROR;
+    }
+    *fontPtr = font;
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * FontToString --
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static char *
+FontToString(
+    ClientData clientData,	/* Not used. */
+    Tk_Window tkwin,		/* Not used. */
+    char *widgRec,		/* Widget structure record */
+    int offset,			/* Offset in widget record */
+    Tcl_FreeProc **freeProcPtr)	/* Not used. */
+{
+    Blt_Font font = *(Blt_Font *)(widgRec + offset);
+    const char *string;
+
+    string = Blt_NameOfFont(font);
+    *freeProcPtr = (Tcl_FreeProc *)TCL_STATIC;
+    return (char *)string;
+}
 
 static char *
-SkipBlanks(piPtr) 
-     ParseInfo *piPtr;
+SkipBlanks(ParseInfo *piPtr)
 {
     char *s;
 
@@ -359,38 +378,49 @@ SkipBlanks(piPtr)
 }
 
 static int
-ReadPsLine(piPtr)
-     ParseInfo *piPtr;
+ReadPsLine(ParseInfo *piPtr)
 {
+    int nBytes;
+
+    nBytes = 0;
     if (ftell(piPtr->f) < piPtr->maxBytes) {
-	if (fgets(piPtr->line, MAX_EPS_LINE_LENGTH, piPtr->f) != NULL) {
-	    piPtr->lineNumber++;
-#if DEBUG_READER
-	    PurifyPrintf("%d: %s\n", piPtr->lineNumber, piPtr->line);
-#endif
-	    return TRUE;
+	char *cp;
+
+	cp = piPtr->line;
+	while ((*cp = fgetc(piPtr->f)) != EOF) {
+	    if (*cp == '\r') {
+		continue;
+	    }
+	    nBytes++;
+	    if ((*cp == '\n') || (nBytes >= MAX_EPS_LINE_LENGTH)) {
+		break;
+	    }
+	    cp++;
 	}
+	if (*cp == '\n') {
+	    piPtr->lineNumber++;
+	}
+	*cp = '\0';
     }
-    return FALSE;
+    return nBytes;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ReverseBits --
  *
- *	Convert a byte from a X image into PostScript image order.
- *	This requires not only the nybbles to be reversed but also
- *	their bit values.
+ *	Convert a byte from a X image into PostScript image order.  This
+ *	requires not only the nybbles to be reversed but also their bit
+ *	values.
  *
  * Results:
  *	The converted byte is returned.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 INLINE static unsigned char
-ReverseBits(byte)
-    register unsigned char byte;
+ReverseBits(unsigned char byte)
 {
     byte = ((byte >> 1) & 0x55) | ((byte << 1) & 0xaa);
     byte = ((byte >> 2) & 0x33) | ((byte << 2) & 0xcc);
@@ -399,15 +429,14 @@ ReverseBits(byte)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * GetHexValue --
  *
- *	Reads the next ASCII hex value from EPS preview image and
- *	converts it.
+ *	Reads the next ASCII hex value from EPS preview image and converts it.
  *
  * Results:
- *	One of three Tcl return values is possible.
+ *	One of three TCL return values is possible.
  *
  *	TCL_OK		the next byte was successfully parsed.
  *	TCL_ERROR	an error occurred processing the next hex value.
@@ -415,18 +444,18 @@ ReverseBits(byte)
  *
  *	The converted hex value is returned via "bytePtr".
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-GetHexValue(piPtr, bytePtr)
-    ParseInfo *piPtr;
-    unsigned char *bytePtr;
+GetHexValue(ParseInfo *piPtr, unsigned char *bytePtr)
 {
-    register char *p;
+    char *p;
     unsigned int byte;
+    unsigned char a, b;
 
     p = piPtr->nextPtr;
     if (p == NULL) {
+
       nextLine:
 	if (!ReadPsLine(piPtr)) {
 #if DEBUG_READER
@@ -455,13 +484,17 @@ GetHexValue(piPtr, bytePtr)
     if (*p == '\0') {
 	goto nextLine;
     }
-    if ((!isxdigit((int)p[0])) || (!isxdigit((int)p[1]))) {
+
+    a = piPtr->hexTable[(int)p[0]];
+    b = piPtr->hexTable[(int)p[1]];
+
+    if ((a == 0xFF) || (b == 0xFF)) {
 #if DEBUG_READER
 	PurifyPrintf("not a hex digit (%s)\n", piPtr->line);
 #endif
 	return TCL_ERROR;
     }
-    byte = (piPtr->hexTable[(int)p[0]] << 4) | piPtr->hexTable[(int)p[1]];
+    byte = (a << 4) | b;
     p += 2;
     piPtr->nextPtr = p;
     *bytePtr = byte;
@@ -470,25 +503,23 @@ GetHexValue(piPtr, bytePtr)
 
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ReadEPSI --
  *
- *	Reads the EPS preview image from the PostScript file, converting
- *	the image into a Blt_ColorImage.  If an error occurs when parsing
- *	the preview, the preview is silently ignored.
+ *	Reads the EPS preview image from the PostScript file, converting it
+ *	into a picture.  If an error occurs when parsing the preview, the
+ *	preview is silently ignored.
  *
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-ReadEPSI(epsPtr, piPtr)
-    EpsItem *epsPtr;
-    ParseInfo *piPtr;
+ReadEPSI(Eps *epsPtr, ParseInfo *piPtr)
 {
-    Blt_ColorImage image;
+    Blt_Picture picture;
     int width, height, bitsPerPixel, nLines;
     char *dscBeginPreview;
 
@@ -510,17 +541,23 @@ ReadEPSI(epsPtr, piPtr)
     epsPtr->firstLine = piPtr->lineNumber;
     Blt_InitHexTable(piPtr->hexTable);
     piPtr->nextPtr = NULL;
-    image = Blt_CreateColorImage(width, height);
+    picture = Blt_CreatePicture(width, height);
 
     if (bitsPerPixel == 8) {
-	int result;
-	register Pix32 *destPtr;
-	register int x, y;
-	unsigned char byte;
+	Blt_Pixel *destRowPtr;
+	int y;
 
+	destRowPtr = Blt_PictureBits(picture) + 
+	    (height - 1) * Blt_PictureStride(picture);
 	for (y = height - 1; y >= 0; y--) {
-	    destPtr = Blt_ColorImageBits(image) + (y * width);
-	    for (x = 0; x < width; x++, destPtr++) {
+	    Blt_Pixel *dp;
+	    int x;
+
+	    dp = destRowPtr;
+	    for (x = 0; x < width; x++, dp++) {
+		int result;
+		unsigned char byte;
+
 		result = GetHexValue(piPtr, &byte);
 		if (result == TCL_ERROR) {
 		    goto error;
@@ -528,22 +565,27 @@ ReadEPSI(epsPtr, piPtr)
 		if (result == TCL_RETURN) {
 		    goto done;
 		}
-		destPtr->Red = destPtr->Green = destPtr->Blue = ~byte;
-		destPtr->Alpha = 0xFF;
+		dp->Red = dp->Green = dp->Blue = ~byte;
+		dp->Alpha = ALPHA_OPAQUE;
 	    }
+	    destRowPtr -= Blt_PictureStride(picture);
 	}
     } else if (bitsPerPixel == 1) {
-	int result;
-	register Pix32 *destPtr;
-	register int x, y;
-	unsigned char byte;
-	register int bit;
+	Blt_Pixel *destRowPtr;
+	int y;
 
-	destPtr = Blt_ColorImageBits(image);
+	destRowPtr = Blt_PictureBits(picture);
 	for (y = 0; y < height; y++) {
+	    Blt_Pixel *dp, *dend;
+	    int bit;
+	    unsigned char byte;
+
 	    bit = 8;
-	    for (x = 0; x < width; x++, destPtr++) {
+	    byte = 0; 		/* Suppress compiler warning. */
+	    for (dp = destRowPtr, dend = dp + width; dp < dend; dp++) {
 		if (bit == 8) {
+		    int result;
+
 		    result = GetHexValue(piPtr, &byte);
 		    if (result == TCL_ERROR) {
 			goto error;
@@ -555,36 +597,40 @@ ReadEPSI(epsPtr, piPtr)
 		    bit = 0;
 		}
 		if (((byte >> bit) & 0x01) == 0) {
-		    destPtr->value = 0xFFFFFFFF;
+		    dp->u32 = 0xFFFFFFFF;
 		}
 		bit++;
 	    }
+	    destRowPtr += Blt_PictureStride(picture);
 	}
     } else {
 	fprintf(stderr, "unknown EPSI bitsPerPixel (%d)\n", bitsPerPixel);
     }
   done:
-    epsPtr->colorImage = image;
+    epsPtr->original = picture;
+    epsPtr->origFromPicture = FALSE;
+    epsPtr->lastWidth = Blt_PictureWidth(picture);
+    epsPtr->lastHeight = Blt_PictureHeight(picture);
     epsPtr->lastLine = piPtr->lineNumber + 1;
     return;
 
   error:
     epsPtr->firstLine = epsPtr->lastLine = -1;
-    if (image != NULL) {
-	Blt_FreeColorImage(image);
+    if (picture != NULL) {
+	Blt_FreePicture(picture);
     }
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ReadPostScript --
  *
- *	This routine reads and parses the few fields we need out
- *	of an EPS file.
+ *	This routine reads and parses the few fields we need out of an EPS
+ *	file.
  *
- *	The EPS standards are outlined from Appendix H of the
- *	"PostScript Language Reference Manual" pp. 709-736.
+ *	The EPS standards are outlined from Appendix H of the "PostScript
+ *	Language Reference Manual" pp. 709-736.
  *
  *	Mandatory fields:
  *
@@ -597,12 +643,10 @@ ReadEPSI(epsPtr, piPtr)
  *      - "%%EndPreview"
  *	- "%%Title: (string)"
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ReadPostScript(interp, epsPtr)
-    Tcl_Interp *interp;
-    EpsItem *epsPtr;
+ReadPostScript(Tcl_Interp *interp, Eps *epsPtr)
 {
     char *field;
     char *dscTitle, *dscBoundingBox;
@@ -638,9 +682,9 @@ ReadPostScript(interp, epsPtr)
     }
 
     /*
-     * Initialize field flags to NULL. We want to look only at the
-     * first appearance of these comment fields.  The file itself may
-     * have another EPS file embedded into it.  
+     * Initialize field flags to NULL. We want to look only at the first
+     * appearance of these comment fields.  The file itself may have another
+     * EPS file embedded into it.
      */
     dscBoundingBox = dscTitle = dscEndComments = NULL;
     pi.lineNumber = 1;
@@ -661,8 +705,8 @@ ReadPostScript(interp, epsPtr)
 		    
 		    dscBoundingBox = field + 12;
 		    nFields = sscanf(dscBoundingBox, "%d %d %d %d",
-				     &(epsPtr->llx), &(epsPtr->lly),
-				     &(epsPtr->urx), &(epsPtr->ury));
+				     &epsPtr->llx, &epsPtr->lly,
+				     &epsPtr->urx, &epsPtr->ury);
 		    if (nFields != 4) {
 			Tcl_AppendResult(interp,
 					 "bad \"%%BoundingBox\" values: \"",
@@ -673,7 +717,18 @@ ReadPostScript(interp, epsPtr)
 	    } else if ((field[0] == 'T') &&
 		(strncmp(field, "Title:", 6) == 0)) {
 		if (dscTitle == NULL) {
-		    dscTitle = Blt_Strdup(field + 6);
+		    char *lp, *rp;
+
+		    lp = strchr(field + 6, '(');
+		    if (lp != NULL) {
+			rp = strrchr(field + 6, ')');
+			if (rp != NULL) {
+			    *rp = '\0';
+			}
+			dscTitle = Blt_AssertStrdup(lp + 1);
+		    } else {
+			dscTitle = Blt_AssertStrdup(field + 6);
+		    }
 		}
 	    } else if (field[0] == 'E') {
 		if (strncmp(field, "EndComments", 11) == 0) {
@@ -717,9 +772,7 @@ ReadPostScript(interp, epsPtr)
 }
 
 static int
-OpenEpsFile(interp, epsPtr)
-    Tcl_Interp *interp;
-    EpsItem *epsPtr;
+OpenEpsFile(Tcl_Interp *interp, Eps *epsPtr)
 {
     FILE *f;
 #ifdef WIN32
@@ -727,7 +780,7 @@ OpenEpsFile(interp, epsPtr)
     int nBytes;
 #endif
 
-    f = fopen(epsPtr->fileName, "rb");
+    f = Blt_OpenFile(interp, epsPtr->fileName, "rb");
     if (f == NULL) {
 	Tcl_AppendResult(epsPtr->interp, "can't open \"", epsPtr->fileName,
 	    "\": ", Tcl_PosixError(epsPtr->interp), (char *)NULL);
@@ -766,8 +819,7 @@ OpenEpsFile(interp, epsPtr)
 }
 
 static void
-CloseEpsFile(epsPtr)
-    EpsItem *epsPtr;
+CloseEpsFile(Eps *epsPtr)
 {
     if (epsPtr->psFile != NULL) {
 	fclose(epsPtr->psFile);
@@ -775,28 +827,29 @@ CloseEpsFile(epsPtr)
     }
 }
 
+#ifdef WIN32
 #ifdef HAVE_TIFF_H
 static void
-ReadTiffPreview(epsPtr)
-    EpsItem *epsPtr;
+ReadTiffPreview(Eps *epsPtr)
 {
     unsigned int width, height;
-    Blt_ColorImage image;
-    Pix32 *dataPtr;
+    Blt_Picture picture;
+    Blt_Pixel *dataPtr;
     FILE *f;
     int n;
 
     TIFFGetField(epsPtr->tiffPtr, TIFFTAG_IMAGEWIDTH, &width);
     TIFFGetField(epsPtr->tiffPtr, TIFFTAG_IMAGELENGTH, &height);
-    image = Blt_CreateColorImage(width, height);
-    dataPtr = Blt_ColorImageBits(image);
+    picture = Blt_CreatePicture(width, height);
+    dataPtr = Blt_PictureBits(picture);
     if (!TIFFReadRGBAImage(epsPtr->tiffPtr, width, height, dataPtr, 0)) {
-	Blt_FreeColorImage(image);
+	Blt_FreePicture(picture);
 	return;
     }
     /* Reverse the order of the components for each pixel. */
     /* ... */
-    epsPtr->colorImage = image;
+    epsPtr->origFromPicture = FALSE;
+    epsPtr->picture = picture;
 }
 #endif
 
@@ -829,20 +882,20 @@ ReadWMF(f, epsPtr, headerPtr)
     hRefDC = TkWinGetDrawableDC(Tk_Display(tkwin), Tk_WindowId(tkwin), &state);
     hDC = CreateEnhMetaFile(hRefDC, NULL, NULL, NULL);
     mfp.hMF = CloseEnhMetaFile(hDC);
-    hMetaFile = SetWinMetaFileBits(size, buffer, MM_ANISOTROPIC, &pict);
+    hMetaFile = SetWinMetaFileBits(size, buffer, MM_ANISOTROPIC, &picture);
 	Tcl_AppendResult(graphPtr->interp, "can't get metafile data:", 
 		Blt_LastError(), (char *)NULL);
 	goto error;
 }
 #endif
-
+#endif /* WIN32 */
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DeleteEps --
  *
- *	This procedure is called to clean up the data structure
- *	associated with a EPS item.
+ *	This procedure is called to clean up the data structure associated
+ *	with a EPS item.
  *
  * Results:
  *	None.
@@ -850,37 +903,33 @@ ReadWMF(f, epsPtr, headerPtr)
  * Side effects:
  *	Resources associated with itemPtr are released.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static void
-DeleteEps(canvas, itemPtr, display)
-    Tk_Canvas canvas;		/* Info about overall canvas widget. */
-    Tk_Item *itemPtr;		/* Item that is being deleted. */
-    Display *display;		/* Display containing window for
-					 * canvas. */
+DeleteEps( 
+    Tk_Canvas canvas,		/* Info about overall canvas widget. */
+    Tk_Item *itemPtr,		/* Item that is being deleted. */
+    Display *display)		/* Display containing window for canvas. */
 {
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
+    Eps *epsPtr = (Eps *)itemPtr;
 
     Tk_FreeOptions(configSpecs, (char *)epsPtr, display, 0);
     CloseEpsFile(epsPtr);
-    if (epsPtr->colorImage != NULL) {
-	Blt_FreeColorImage(epsPtr->colorImage);
+    if ((!epsPtr->origFromPicture) && (epsPtr->original != NULL)) {
+	Blt_FreePicture(epsPtr->original);
+    }
+    if (epsPtr->picture != NULL) {
+	Blt_FreePicture(epsPtr->picture);
+    }
+    if (epsPtr->painter != NULL) {
+	Blt_FreePainter(epsPtr->painter);
     }
     if (epsPtr->preview != NULL) {
 	Tk_FreeImage(epsPtr->preview);
     }
-    if (epsPtr->previewName != NULL) {
-	Blt_Free(epsPtr->previewName);
-    }
-    if (epsPtr->tmpImage != NULL) {
-	Blt_DestroyTemporaryImage(epsPtr->interp, epsPtr->tmpImage);
-    }
-    if (epsPtr->pixmap != None) {
-#ifdef notyet
-	Blt_FreeColorTable(epsPtr->colorTable);
-#endif
-	Tk_FreePixmap(display, epsPtr->pixmap);
+    if (epsPtr->previewImageName != NULL) {
+	Blt_Free(epsPtr->previewImageName);
     }
     if (epsPtr->stipple != None) {
 	Tk_FreePixmap(display, epsPtr->stipple);
@@ -888,7 +937,7 @@ DeleteEps(canvas, itemPtr, display)
     if (epsPtr->fillGC != NULL) {
 	Tk_FreeGC(display, epsPtr->fillGC);
     }
-    Blt_FreeTextStyle(display, &(epsPtr->titleStyle));
+    Blt_Ts_FreeStyle(display, &epsPtr->titleStyle);
 
     if (epsPtr->title != NULL) {
 	Blt_Free(epsPtr->title);
@@ -896,35 +945,35 @@ DeleteEps(canvas, itemPtr, display)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * CreateEps --
  *
- *	This procedure is invoked to create a new EPS item
- *	in a canvas.
+ *	This procedure is invoked to create a new EPS item in a canvas.
  *
  * Results:
- *	A standard Tcl return value.  If an error occurred in
- *	creating the item, then an error message is left in
- *	interp->result;  in this case itemPtr is left uninitialized,
- *	so it can be safely freed by the caller.
+ *	A standard TCL return value.  If an error occurred in creating the
+ *	item, then an error message is left in interp->result; in this case
+ *	itemPtr is left uninitialized, so it can be safely freed by the
+ *	caller.
  *
  * Side effects:
  *	A new EPS item is created.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-CreateEps(interp, canvas, itemPtr, argc, argv)
-    Tcl_Interp *interp;		/* Interpreter for error reporting. */
-    Tk_Canvas canvas;		/* Canvas to hold new item. */
-    Tk_Item *itemPtr;		/* Record to hold new item;  header
-					 * has been initialized by caller. */
-    int argc;			/* Number of arguments in argv. */
-    char **argv;		/* Arguments describing rectangle. */
+CreateEps(
+    Tcl_Interp *interp,		/* Interpreter for error reporting. */
+    Tk_Canvas canvas,		/* Canvas to hold new item. */
+    Tk_Item *itemPtr,		/* Record to hold new item; header has been
+				 * initialized by caller. */
+    int argc,			/* Number of arguments in argv. */
+    char **argv)		/* Arguments describing rectangle. */
 {
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
+    Eps *epsPtr = (Eps *)itemPtr;
     Tk_Window tkwin;
+    double x, y;
 
     tkwin = Tk_CanvasTkwin(canvas);
     if (argc < 2) {
@@ -933,23 +982,23 @@ CreateEps(interp, canvas, itemPtr, argc, argv)
 	    " x1 y1 ?options?\"", (char *)NULL);
 	return TCL_ERROR;
     }
-    /*
-     * Initialize the item's record by hand (bleah).
-     */
+
+    /* Initialize the item's record by hand (bleah). */
     epsPtr->anchor = TK_ANCHOR_NW;
     epsPtr->border = NULL;
-    epsPtr->borderWidth = 2;
+    epsPtr->borderWidth = 0;
     epsPtr->canvas = canvas;
     epsPtr->fileName = NULL;
     epsPtr->psFile = NULL;
     epsPtr->fillGC = NULL;
     epsPtr->fillColor = NULL;
-    epsPtr->colorImage = NULL;
-    epsPtr->previewName = NULL;
+    epsPtr->painter = NULL;
+    epsPtr->original = NULL;
+    epsPtr->origFromPicture = FALSE;
+    epsPtr->previewImageName = NULL;
     epsPtr->preview = NULL;
     epsPtr->interp = interp;
-    epsPtr->tmpImage = NULL;
-    epsPtr->pixmap = None;
+    epsPtr->picture = NULL;
     epsPtr->firstLine = epsPtr->lastLine = -1;
     epsPtr->relief = TK_RELIEF_SUNKEN;
     epsPtr->reqTitle = NULL;
@@ -959,24 +1008,22 @@ CreateEps(interp, canvas, itemPtr, argc, argv)
     epsPtr->title = NULL;
     epsPtr->lastWidth = epsPtr->lastHeight = 0;
     epsPtr->width = epsPtr->height = 0;
-    epsPtr->x = epsPtr->y = 0.0;
+    epsPtr->x = epsPtr->y = 0.0; 
     epsPtr->llx = epsPtr->lly = epsPtr->urx = epsPtr->ury = 0;
-    epsPtr->canvasX = epsPtr->canvasY = 0;
+    epsPtr->bb.left = epsPtr->bb.right = epsPtr->bb.top = epsPtr->bb.bottom = 0;
     Tcl_DStringInit(&epsPtr->dString);
-    memset(&(epsPtr->titleStyle), 0, sizeof(TextStyle));
+    Blt_Ts_InitStyle(epsPtr->titleStyle);
 #define PAD	8
-    epsPtr->titleStyle.padLeft = epsPtr->titleStyle.padRight = PAD;
-    epsPtr->titleStyle.padTop = epsPtr->titleStyle.padBottom = PAD;
+    Blt_Ts_SetPadding(epsPtr->titleStyle, PAD, PAD, PAD, PAD);
 
-    /*
-     * Process the arguments to fill in the item record.
-     */
-
-    if ((Tk_CanvasGetCoord(interp, canvas, argv[0], &(epsPtr->x)) != TCL_OK) ||
-	(Tk_CanvasGetCoord(interp, canvas, argv[1], &(epsPtr->y)) != TCL_OK)) {
+    /* Process the arguments to fill in the item record. */
+    if ((Tk_CanvasGetCoord(interp, canvas, argv[0], &x) != TCL_OK) ||
+	(Tk_CanvasGetCoord(interp, canvas, argv[1], &y) != TCL_OK)) {
 	return TCL_ERROR;
     }
-    if (ConfigureEps(interp, canvas, itemPtr, argc - 2, argv + 2, 0)
+    epsPtr->x = x;
+    epsPtr->y = y;
+    if (ConfigureEps(interp, canvas, itemPtr, argc - 2, argv + 2, 0) 
 	!= TCL_OK) {
 	DeleteEps(canvas, itemPtr, Tk_Display(tkwin));
 	return TCL_ERROR;
@@ -985,130 +1032,168 @@ CreateEps(interp, canvas, itemPtr, argc, argv)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ImageChangedProc
  *
- *	The image is over-written each time the EPS item is resized.
- *	So we only worry if the image is deleted.
+ *	The image is over-written each time the EPS item is resized.  So we
+ *	only worry if the image is deleted.
  *
- *	We always resample from the color image we saved when the
- *	photo image was specified (-image option).
+ *	We always resample from the picture we saved when the photo image was
+ *	specified (-image option).
  *
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /* ARGSUSED */
 static void
-ImageChangedProc(clientData, x, y, width, height, imageWidth, imageHeight)
-    ClientData clientData;
-    int x, y, width, height;	/* Not used. */
-    int imageWidth, imageHeight;/* Not used. */
+ImageChangedProc(
+    ClientData clientData,
+    int x, int y, int width, int height, /* Not used. */
+    int imageWidth, int imageHeight)	 /* Not used. */
 {
-    EpsItem *epsPtr = clientData;
+    Eps *epsPtr = clientData;
 
-    if ((epsPtr->preview == NULL) || (Tk_ImageIsDeleted(epsPtr->preview))) {
+    if ((epsPtr->preview == NULL) || (Blt_ImageIsDeleted(epsPtr->preview))) {
 	epsPtr->preview = NULL;
-	if (epsPtr->previewName != NULL) {
-	    Blt_Free(epsPtr->previewName);
-	    epsPtr->previewName = NULL;
+	if (epsPtr->previewImageName != NULL) {
+	    Blt_Free(epsPtr->previewImageName);
+	    epsPtr->previewImageName = NULL;
 	}
-	Tk_CanvasEventuallyRedraw(epsPtr->canvas, epsPtr->xLeft, epsPtr->yTop,
-	    epsPtr->xRight, epsPtr->yBottom);
+	Tk_CanvasEventuallyRedraw(epsPtr->canvas, epsPtr->item.x1, 
+		epsPtr->item.y1, epsPtr->item.x2, epsPtr->item.y2);
+    }
+    if (epsPtr->preview != NULL) {
+	int result;
+
+	if ((!epsPtr->origFromPicture) && (epsPtr->original != NULL)) {
+	    Blt_FreePicture(epsPtr->original);
+	}
+	result = Blt_GetPicture(epsPtr->interp, epsPtr->previewImageName, 
+				&epsPtr->original);
+	if (result == TCL_OK) {
+	    epsPtr->origFromPicture = TRUE;
+	} else {
+	    Tk_PhotoHandle photo;	/* Photo handle to Tk image. */
+	    
+	    photo = Tk_FindPhoto(epsPtr->interp, epsPtr->previewImageName);
+	    if (photo == NULL) {
+		fprintf(stderr, "image \"%s\" isn't a picture or photo image\n",
+			epsPtr->previewImageName);
+		return;
+	    }
+	    epsPtr->original = Blt_PhotoToPicture(photo);
+	    epsPtr->origFromPicture = FALSE;
+	}
     }
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ConfigureEps --
  *
- *	This procedure is invoked to configure various aspects
- *	of an EPS item, such as its background color.
+ *	This procedure is invoked to configure various aspects of an EPS item,
+ *	such as its background color.
  *
  * Results:
- *	A standard Tcl result code.  If an error occurs, then
- *	an error message is left in interp->result.
+ *	A standard TCL result code.  If an error occurs, then an error message
+ *	is left in interp->result.
  *
  * Side effects:
  *	Configuration information may be set for itemPtr.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigureEps(interp, canvas, itemPtr, argc, argv, flags)
-    Tcl_Interp *interp;		/* Used for error reporting. */
-    Tk_Canvas canvas;		/* Canvas containing itemPtr. */
-    Tk_Item *itemPtr;		/* EPS item to reconfigure. */
-    int argc;			/* Number of elements in argv.  */
-    char **argv;		/* Arguments describing things to configure. */
-    int flags;			/* Flags to pass to Tk_ConfigureWidget. */
+ConfigureEps(
+    Tcl_Interp *interp,		/* Used for error reporting. */
+    Tk_Canvas canvas,		/* Canvas containing itemPtr. */
+    Tk_Item *itemPtr,		/* EPS item to reconfigure. */
+    int argc,			/* Number of elements in argv.  */
+    char **argv,		/* Arguments describing things to configure. */
+    int flags)			/* Flags to pass to Tk_ConfigureWidget. */
 {
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
+    Eps *epsPtr = (Eps *)itemPtr;
     Tk_Window tkwin;
     XGCValues gcValues;
     unsigned long gcMask;
     GC newGC;
     int width, height;
+    Blt_Painter painter;
 
     tkwin = Tk_CanvasTkwin(canvas);
-    if (Tk_ConfigureWidget(interp, tkwin, configSpecs, argc,
-	    argv, (char *)epsPtr, flags) != TCL_OK) {
+    if (Tk_ConfigureWidget(interp, tkwin, configSpecs, argc, (const char**)argv,
+		(char *)epsPtr, flags) != TCL_OK) {
 	return TCL_ERROR;
     }
+    painter = Blt_GetPainter(tkwin, 1.0);
+    if (epsPtr->painter != NULL) {
+	Blt_FreePainter(epsPtr->painter);
+    }
+    epsPtr->painter = painter;
     /* Determine the size of the EPS item */
-    width = height = 0;
     /*
      * Check for a "-image" option specifying an image to be displayed
      * representing the EPS canvas item.
      */
-    if (Blt_ConfigModified(configSpecs, "-image", (char *)NULL)) {
+    if (Blt_OldConfigModified(configSpecs, "-image", (char *)NULL)) {
 	if (epsPtr->preview != NULL) {
 	    Tk_FreeImage(epsPtr->preview);	/* Release old Tk image */
-	    Blt_FreeColorImage(epsPtr->colorImage);
-	    epsPtr->preview = NULL;
-	    epsPtr->colorImage = NULL;
-	}
-	if (epsPtr->previewName != NULL) {
-	    Tk_PhotoHandle photo;	/* Photo handle to Tk image. */
-	    /*
-	     * Allocate a new image, if one was named.
-	     */
-	    photo = Blt_FindPhoto(interp, epsPtr->previewName);
-	    if (photo == NULL) {
-		Tcl_AppendResult(interp, "image \"", epsPtr->previewName,
-		    "\" doesn't  exist or is not a photo image",
-		    (char *)NULL);
-		return TCL_ERROR;
+	    if ((!epsPtr->origFromPicture) && (epsPtr->original != NULL)) {
+		Blt_FreePicture(epsPtr->original);
 	    }
-	    epsPtr->preview = Tk_GetImage(interp, tkwin, epsPtr->previewName, 
-			ImageChangedProc, epsPtr);
+	    epsPtr->original = NULL;
+	    if (epsPtr->picture != NULL) {
+		Blt_FreePicture(epsPtr->picture);
+	    }
+	    epsPtr->picture = NULL;
+	    epsPtr->preview = NULL;
+	    epsPtr->origFromPicture = FALSE;
+	}
+	if (epsPtr->previewImageName != NULL) {
+	    int result;
+
+	    /* Allocate a new image, if one was named. */
+	    epsPtr->preview = Tk_GetImage(interp, tkwin, 
+			epsPtr->previewImageName, ImageChangedProc, epsPtr);
 	    if (epsPtr->preview == NULL) {
 		Tcl_AppendResult(interp, "can't find an image \"",
-		    epsPtr->previewName, "\"", (char *)NULL);
-		Blt_Free(epsPtr->previewName);
-		epsPtr->previewName = NULL;
+		    epsPtr->previewImageName, "\"", (char *)NULL);
+		Blt_Free(epsPtr->previewImageName);
+		epsPtr->previewImageName = NULL;
 		return TCL_ERROR;
 	    }
-	    epsPtr->colorImage = Blt_PhotoToColorImage(photo);
-	    width = Blt_ColorImageWidth(epsPtr->colorImage);
-	    height = Blt_ColorImageHeight(epsPtr->colorImage);
+	    result = Blt_GetPicture(interp, epsPtr->previewImageName, 
+				    &epsPtr->original);
+	    if (result == TCL_OK) {
+		epsPtr->origFromPicture = TRUE;
+	    } else {
+		Tk_PhotoHandle photo;	/* Photo handle to Tk image. */
+
+		photo = Tk_FindPhoto(interp, epsPtr->previewImageName);
+		if (photo == NULL) {
+		    Tcl_AppendResult(interp, "image \"", 
+			epsPtr->previewImageName,
+			"\" is not a picture or photo image", (char *)NULL);
+		    return TCL_ERROR;
+		}
+		epsPtr->original = Blt_PhotoToPicture(photo);
+		epsPtr->origFromPicture = FALSE;
+	    }
 	}
     }
-    if (Blt_ConfigModified(configSpecs, "-file", (char *)NULL)) {
+    if (Blt_OldConfigModified(configSpecs, "-file", (char *)NULL)) {
 	CloseEpsFile(epsPtr);
-	if (epsPtr->pixmap != None) {
-#ifdef notyet
-	    Blt_FreeColorTable(epsPtr->colorTable);
-#endif
-	    Tk_FreePixmap(Tk_Display(tkwin), epsPtr->pixmap);
-	    epsPtr->pixmap = None;
+	if ((!epsPtr->origFromPicture) && (epsPtr->original != NULL)) {
+	    Blt_FreePicture(epsPtr->original);
+	    epsPtr->original = NULL;
 	}
-	if (epsPtr->colorImage != NULL) {
-	    Blt_FreeColorImage(epsPtr->colorImage);
-	    epsPtr->colorImage = NULL;
+	if (epsPtr->picture != NULL) {
+	    Blt_FreePicture(epsPtr->picture);
+	    epsPtr->picture = NULL;
 	}
 	epsPtr->firstLine = epsPtr->lastLine = -1;
 	if (epsPtr->fileName != NULL) {
@@ -1117,32 +1202,26 @@ ConfigureEps(interp, canvas, itemPtr, argc, argv, flags)
 	    }
 	}
     }
-    if ((epsPtr->colorImage != NULL) && (epsPtr->tmpImage == NULL)) {
-	epsPtr->tmpImage = Blt_CreateTemporaryImage(interp, tkwin, epsPtr);
-	if (epsPtr->tmpImage == NULL) {
-	    return TCL_ERROR;
-	}
-    } else if ((epsPtr->colorImage == NULL) && (epsPtr->tmpImage != NULL)) {
-	Blt_DestroyTemporaryImage(epsPtr->interp, epsPtr->tmpImage);
-    }
+    /* Compute the normal width and height of the item, but let the
+     * user-requested dimensions override them. */
+    width = height = 0;
     if (epsPtr->preview != NULL) {
+	/* Default dimension is the size of the image. */
 	Tk_SizeOfImage(epsPtr->preview, &width, &height);
     }
+    if (epsPtr->fileName != NULL) {
+	/* Use dimensions provided by the BoundingBox. */
+	width = (epsPtr->urx - epsPtr->llx); 
+	height = (epsPtr->ury - epsPtr->lly); 
+    }
     if (epsPtr->width == 0) {
-	if (epsPtr->fileName != NULL) {
-	    width = (epsPtr->urx - epsPtr->llx);
-	}
 	epsPtr->width = width;
     }
     if (epsPtr->height == 0) {
-	if (epsPtr->fileName != NULL) {
-	    height = (epsPtr->ury - epsPtr->lly);
-	}
 	epsPtr->height = height;
     }
-    Blt_ResetTextStyle(tkwin, &(epsPtr->titleStyle));
 
-    if (Blt_ConfigModified(configSpecs, "-quick", (char *)NULL)) {
+    if (Blt_OldConfigModified(configSpecs, "-quick", (char *)NULL)) {
 	epsPtr->lastWidth = epsPtr->lastHeight = 0;
     }
     /* Fill color GC */
@@ -1175,13 +1254,12 @@ ConfigureEps(interp, canvas, itemPtr, argc, argv, flags)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * EpsCoords --
  *
- *	This procedure is invoked to process the "coords" widget
- *	command on EPS items.  See the user documentation for
- *	details on what it does.
+ *	This procedure is invoked to process the "coords" widget command on
+ *	EPS items.  See the user documentation for details on what it does.
  *
  * Results:
  *	Returns TCL_OK or TCL_ERROR, and sets interp->result.
@@ -1189,20 +1267,19 @@ ConfigureEps(interp, canvas, itemPtr, argc, argv, flags)
  * Side effects:
  *	The coordinates for the given item may be changed.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-EpsCoords(interp, canvas, itemPtr, argc, argv)
-    Tcl_Interp *interp;		/* Used for error reporting. */
-    Tk_Canvas canvas;		/* Canvas containing item. */
-    Tk_Item *itemPtr;		/* Item whose coordinates are to be
-					 * read or modified. */
-    int argc;			/* Number of coordinates supplied in
-					 * argv. */
-    char **argv;		/* Array of coordinates: x1, y1,
-					 * x2, y2, ... */
+EpsCoords(
+    Tcl_Interp *interp,		/* Used for error reporting. */
+    Tk_Canvas canvas,		/* Canvas containing item. */
+    Tk_Item *itemPtr,		/* Item whose coordinates are to be read or
+				 * modified. */
+    int argc,			/* Number of coordinates supplied in argv. */
+    char **argv)		/* Array of coordinates: x1, y1, x2, y2,
+				 * ... */
 {
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
+    Eps *epsPtr = (Eps *)itemPtr;
 
     if ((argc != 0) && (argc != 2)) {
 	Tcl_AppendResult(interp, "wrong # coordinates: expected 0 or 2, got ",
@@ -1227,163 +1304,190 @@ EpsCoords(interp, canvas, itemPtr, argc, argv)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ComputeEpsBbox --
  *
- *	This procedure is invoked to compute the bounding box of
- *	all the pixels that may be drawn as part of a EPS item.
- *	This procedure is where the preview image's placement is
- *	computed.
+ *	This procedure is invoked to compute the bounding box of all the
+ *	pixels that may be drawn as part of a EPS item.  This procedure is
+ *	where the preview image's placement is computed.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	The fields x1, y1, x2, and y2 are updated in the header
- *	for itemPtr.
+ *	The fields x1, y1, x2, and y2 are updated in the item for itemPtr.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
  /* ARGSUSED */
 static void
-ComputeEpsBbox(canvas, epsPtr)
-    Tk_Canvas canvas;		/* Canvas that contains item. */
-    EpsItem *epsPtr;		/* Item whose bbox is to be recomputed. */
+ComputeEpsBbox(
+    Tk_Canvas canvas,		/* Canvas that contains item. */
+    Eps *epsPtr)		/* Item whose bbox is to be recomputed. */
 {
-    int x, y;
+    Point2d anchorPos;
 
-    x = ROUND(epsPtr->x), y = ROUND(epsPtr->y);
-    Blt_TranslateAnchor(x, y, epsPtr->width, epsPtr->height, epsPtr->anchor,
-	&x, &y);
-    epsPtr->xLeft = epsPtr->canvasX = x;
-    epsPtr->yTop = epsPtr->canvasY = y;
-
+    /* Translate the coordinates wrt the anchor. */
+    anchorPos = Blt_AnchorPoint(epsPtr->x, epsPtr->y, (double)epsPtr->width, 
+	(double)epsPtr->height, epsPtr->anchor);
     /*
-     * The right and bottom are (weirdly) exterior to the item.  Can't
-     * complain much since it's documented in the Tk_CreateItemType
-     * manual page.
-     *
-     * "These fields give a bounding box for the items using integer
-     * canvas coordinates: the item should not cover any pixels with
-     * x-coordinate lower than x1 or y-coordinate lower than y1, nor
-     * should it cover any pixels with x-coordinate greater than or
-     * equal to x2 or y-coordinate greater than or equal to y2."
+     * Note: The right and bottom are exterior to the item.  
      */
-    epsPtr->xRight = x + epsPtr->width;
-    epsPtr->yBottom = y + epsPtr->height;
+    epsPtr->bb.left = anchorPos.x;
+    epsPtr->bb.top = anchorPos.y;
+    epsPtr->bb.right = epsPtr->bb.left + epsPtr->width;
+    epsPtr->bb.bottom = epsPtr->bb.top + epsPtr->height;
+
+    epsPtr->item.x1 = ROUND(epsPtr->bb.left);
+    epsPtr->item.y1 = ROUND(epsPtr->bb.top);
+    epsPtr->item.x2 = ROUND(epsPtr->bb.right);
+    epsPtr->item.y2 = ROUND(epsPtr->bb.bottom);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DisplayEps --
  *
- *	This procedure is invoked to draw the EPS item in a
- *	given drawable.  The EPS item may be drawn as either
- *	a solid rectangle or a pixmap of the preview image.
+ *	This procedure is invoked to draw the EPS item in a given drawable.
+ *	The EPS item may be drawn as either a solid rectangle or a pixmap of
+ *	the preview image.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	ItemPtr is drawn in drawable using the transformation
- *	information in canvas.
+ *	ItemPtr is drawn in drawable using the transformation information in
+ *	canvas.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DisplayEps(canvas, itemPtr, display, drawable, x, y, width, height)
-    Tk_Canvas canvas;		/* Canvas that contains item. */
-    Tk_Item *itemPtr;		/* Item to be displayed. */
-    Display *display;		/* Display on which to draw item. */
-    Drawable drawable;		/* Pixmap or window in which to draw
-				 * item. */
-    int x, y, width, height;	/* Describes region of canvas that
-				 * must be redisplayed (not used). */
+DisplayEps(
+    Tk_Canvas canvas,		/* Canvas that contains item. */
+    Tk_Item *itemPtr,		/* Item to be displayed. */
+    Display *display,		/* Display on which to draw item. */
+    Drawable drawable,		/* Pixmap or window in which to draw item. */
+    int rx, int ry, 
+    int rw, int rh)		/* Describes region of canvas that must be
+				 * redisplayed (not used). */
 {
+    Blt_Picture picture;
+    Eps *epsPtr = (Eps *)itemPtr;
     Tk_Window tkwin;
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
-    short int drawableX, drawableY;
     char *title;
-    int twiceBW;
-    int noImage;
+    int width, height;
+    short int drawX, drawY;
 
-    if ((epsPtr->width < 1) || (epsPtr->height < 1)) {
+    width = (int)(epsPtr->bb.right - epsPtr->bb.left);
+    height = (int)(epsPtr->bb.bottom - epsPtr->bb.top);
+    if ((width < 1) || (height < 1)) {
 	return;
     }
     tkwin = Tk_CanvasTkwin(canvas);
-    epsPtr->showImage = TRUE;
-    if ((epsPtr->showImage) && (epsPtr->colorImage != NULL) &&
-	((epsPtr->lastWidth != epsPtr->width) ||
-	    (epsPtr->lastHeight != epsPtr->height))) {
-	Blt_ColorImage image;
-
-	if (epsPtr->quick) {
-	    image = Blt_ResizeColorImage(epsPtr->colorImage, 0, 0,
-			Blt_ColorImageWidth(epsPtr->colorImage),
-			Blt_ColorImageHeight(epsPtr->colorImage),
-			epsPtr->width, epsPtr->height);
-	} else {
-	    image = Blt_ResampleColorImage(epsPtr->colorImage, epsPtr->width,
-		epsPtr->height, bltBoxFilterPtr, bltBoxFilterPtr);
-	}
-	if (epsPtr->tmpImage != NULL) {
-	    Tk_PhotoHandle photo;
-	    /*
-	     * Resize the Tk photo image used to represent the EPS item.
-	     * We will over-write the temporary image with a resampled one.
-	     */
-	    photo = Blt_FindPhoto(epsPtr->interp, 
-				  Blt_NameOfImage(epsPtr->tmpImage));
-	    Blt_ColorImageToPhoto(image, photo);
-	} else {
-#ifdef notyet
-	    epsPtr->pixmap = Blt_ColorImageToPixmap(epsPtr->interp, tkwin,
-		image, &(epsPtr->colorTable));
-#endif
-	}
-	epsPtr->lastHeight = epsPtr->height;
-	epsPtr->lastWidth = epsPtr->width;
-	Blt_FreeColorImage(image);
+    if (epsPtr->original != NULL) {
+	if ((epsPtr->lastWidth != width) || (epsPtr->lastHeight != height)) {
+	    if (epsPtr->quick) {
+		picture = Blt_ScalePicture(epsPtr->original, 0, 0,
+			Blt_PictureWidth(epsPtr->original),
+			Blt_PictureHeight(epsPtr->original), width, height);
+	    } else {
+		fprintf(stderr, "orig=%dx%d new=width=%dx%d last=%dx%d\n", 
+			Blt_PictureWidth(epsPtr->original),
+			Blt_PictureHeight(epsPtr->original),
+			width, height,
+			epsPtr->lastWidth, epsPtr->lastHeight);
+		picture = Blt_CreatePicture(width, height);
+		Blt_ResamplePicture(picture, epsPtr->original, bltBoxFilter, 
+			bltBoxFilter);
+	    }
+	    if (epsPtr->picture != NULL) {
+		Blt_FreePicture(epsPtr->picture);
+	    }
+	    epsPtr->picture = picture;
+	    epsPtr->lastHeight = height;
+	    epsPtr->lastWidth = width;
+	} 
     }
+    picture = epsPtr->picture;
+    if (picture == NULL) {
+	picture = epsPtr->original;
+    }
+
     /*
      * Translate the coordinates to those of the EPS item, then redisplay it.
      */
-    Tk_CanvasDrawableCoords(canvas, (double)epsPtr->canvasX,
-	(double)epsPtr->canvasY, &drawableX, &drawableY);
-    x = (int)drawableX;
-    y = (int)drawableY;
+    Tk_CanvasDrawableCoords(canvas, epsPtr->bb.left, epsPtr->bb.top, 
+			    &drawX, &drawY);
 
-    twiceBW = epsPtr->borderWidth * 2;
     title = epsPtr->title;
 
     if (epsPtr->reqTitle != NULL) {
 	title = epsPtr->reqTitle;
     }
-    width = epsPtr->width;
-    height = epsPtr->height;
-    noImage = ((!epsPtr->showImage) || ((epsPtr->tmpImage == NULL) &&
-	    (epsPtr->pixmap == None)));
-    if (noImage) {
-	if ((twiceBW >= width) || (twiceBW >= height)) {
-	    return;
+    if ((epsPtr->showImage) && (picture != NULL)) {
+	struct region {
+	    short int left, right, top, bottom;
+	} p, r;
+	short int destX, destY;
+
+	/* The eps item may only partially exposed. Be careful to clip the
+	 * unexposed portions. */
+
+	/* Convert everything to screen coordinates since the origin of the
+	 * item is only available in */
+
+	p.left = drawX, p.top = drawY;
+	Tk_CanvasDrawableCoords(canvas, epsPtr->bb.right, epsPtr->bb.bottom,
+		&p.right, &p.bottom);
+	Tk_CanvasDrawableCoords(canvas, (double)rx, (double)ry, 
+		&r.left, &r.top);
+	Tk_CanvasDrawableCoords(canvas,(double)(rx+rw), (double)(ry+rh), 
+		&r.right, &r.bottom);
+	destX = (int)drawX, destY = (int)drawY;
+	if (p.left < r.left) {
+	    p.left = r.left;
 	}
-	width -= twiceBW;
-	height -= twiceBW;
-	if (epsPtr->fillGC != NULL) {
-	    XSetTSOrigin(display, epsPtr->fillGC, x, y);
-	    XFillRectangle(display, drawable, epsPtr->fillGC, x, y,
-		epsPtr->width, epsPtr->height);
-	    XSetTSOrigin(display, epsPtr->fillGC, 0, 0);
+	if (p.top < r.top) {
+	    p.top = r.top;
+	}
+	if (p.right > r.right) {
+	    p.right = r.right;
+	}
+	if (p.bottom > r.bottom) {
+	    p.bottom = r.bottom;
+	}
+	if (destX < r.left) {
+	    destX = r.left;
+	}
+	if (destY < r.top) {
+	    destY = r.top;
+	}
+	p.left -= drawX, p.right -= drawX;
+	p.top -= drawY, p.bottom -= drawY;;
+	if (0 /* epsPtr->quick */) {
+	    Blt_Picture fade;
+
+	    fade = Blt_CreatePicture(Blt_PictureWidth(picture), 
+				     Blt_PictureHeight(picture));
+	    Blt_FadePicture(fade, picture, 0, 0, Blt_PictureWidth(picture), 
+		Blt_PictureHeight(picture), 0, 0, 150);
+	    Blt_PaintPicture(epsPtr->painter, drawable, fade, 
+		(int)p.left, (int)p.top, (int)(p.right - p.left), 
+		(int)(p.bottom - p.top), destX, destY, FALSE);
+	    Blt_FreePicture(fade);
+	} else {
+	    Blt_PaintPicture(epsPtr->painter, drawable, picture, (int)p.left, 
+		(int)p.top, (int)(p.right - p.left), (int)(p.bottom - p.top), 
+		destX, destY, FALSE);
 	}
     } else {
-	if (epsPtr->pixmap != None) {
-	    XCopyArea(Tk_Display(tkwin), epsPtr->pixmap, drawable,
-		epsPtr->fillGC, 0, 0, width, height, x, y);
-	} else {
-	    Tk_RedrawImage(epsPtr->tmpImage, 0, 0, width, height, drawable, 
-			   x, y);
+	if (epsPtr->fillGC != NULL) {
+	    XSetTSOrigin(display, epsPtr->fillGC, drawX, drawY);
+	    XFillRectangle(display, drawable, epsPtr->fillGC, drawX, drawY,
+		epsPtr->width, epsPtr->height);
+	    XSetTSOrigin(display, epsPtr->fillGC, 0, 0);
 	}
     }
 
@@ -1393,123 +1497,123 @@ DisplayEps(canvas, itemPtr, display, drawable, x, y, width, height)
 	int destWidth, destHeight;
 
 	/* Translate the title to an anchor position within the EPS item */
-	textPtr = Blt_GetTextLayout(title, &(epsPtr->titleStyle));
+	epsPtr->titleStyle.font = epsPtr->font;
+	textPtr = Blt_Ts_CreateLayout(title, -1, &epsPtr->titleStyle);
 	Blt_GetBoundingBox(textPtr->width, textPtr->height, 
-	     epsPtr->titleStyle.theta, &rotWidth, &rotHeight, (Point2D *)NULL);
+	     epsPtr->titleStyle.angle, &rotWidth, &rotHeight, (Point2d *)NULL);
 	destWidth = (int)ceil(rotWidth);
 	destHeight = (int)ceil(rotHeight);
 	if ((destWidth <= width) && (destHeight <= height)) {
 	    int titleX, titleY;
 
-	    Blt_TranslateAnchor(x, y, width, height, epsPtr->titleStyle.anchor,
-		&titleX, &titleY);
-	    if (noImage) {
+	    Blt_TranslateAnchor(drawX, drawY, width, height, 
+		epsPtr->titleStyle.anchor, &titleX, &titleY);
+	    if (picture == NULL) {
 		titleX += epsPtr->borderWidth;
 		titleY += epsPtr->borderWidth;
 	    }
-	    Blt_DrawTextLayout(tkwin, drawable, textPtr, &(epsPtr->titleStyle),
-			       titleX, titleY);
+	    Blt_Ts_DrawLayout(tkwin, drawable, textPtr, &epsPtr->titleStyle, 
+		titleX, titleY, -1);
 	}
 	Blt_Free(textPtr);
     }
-    if ((noImage) && (epsPtr->border != NULL)) {
-	Blt_Draw3DRectangle(tkwin, drawable, epsPtr->border, x, y,
+    if ((picture == NULL) && (epsPtr->border != NULL) && 
+	(epsPtr->borderWidth > 0)) {
+	Blt_Draw3DRectangle(tkwin, drawable, epsPtr->border, drawX, drawY,
 	    epsPtr->width, epsPtr->height, epsPtr->borderWidth, epsPtr->relief);
     }
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * EpsToPoint --
  *
- *	Computes the distance from a given point to a given
- *	rectangle, in canvas units.
+ *	Computes the distance from a given point to a given rectangle, in
+ *	canvas units.
  *
  * Results:
- *	The return value is 0 if the point whose x and y coordinates
- *	are coordPtr[0] and coordPtr[1] is inside the EPS item.  If the
- *	point isn't inside the item then the return value is the
- *	distance from the point to the EPS item.
+ *	The return value is 0 if the point whose x and y coordinates are
+ *	coordPtr[0] and coordPtr[1] is inside the EPS item.  If the point
+ *	isn't inside the item then the return value is the distance from the
+ *	point to the EPS item.
  *
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static double
-EpsToPoint(canvas, itemPtr, coordArr)
-    Tk_Canvas canvas;		/* Canvas containing item. */
-    Tk_Item *itemPtr;		/* Item to check against point. */
-    double *coordArr;		/* Pointer to x and y coordinates. */
+EpsToPoint(
+    Tk_Canvas canvas,		/* Canvas containing item. */
+    Tk_Item *itemPtr,		/* Item to check against point. */
+    double *pts)		/* Array of x and y coordinates. */
 {
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
-    double dx, dy;
+    Eps *epsPtr = (Eps *)itemPtr;
+    double x, y, dx, dy;
+
+    x = pts[0], y = pts[1];
 
     /*
-     * Point is outside rectangle.
+     * Check if point is outside the bounding rectangle and compute the
+     * distance to the closest side.
      */
-    if (coordArr[0] < epsPtr->xLeft) {
-	dx = epsPtr->xLeft - coordArr[0];
-    } else if (coordArr[0] > epsPtr->xRight) {
-	dx = coordArr[0] - epsPtr->xRight;
-    } else {
-	dx = 0;
+    dx = dy = 0;
+    if (x < epsPtr->item.x1) {
+	dx = epsPtr->item.x1 - x;
+    } else if (x > epsPtr->item.x2) {
+	dx = x - epsPtr->item.x2;
     }
-    if (coordArr[1] < epsPtr->yTop) {
-	dy = epsPtr->yTop - coordArr[1];
-    } else if (coordArr[1] > epsPtr->yBottom) {
-	dy = coordArr[1] - epsPtr->yBottom;
-    } else {
-	dy = 0;
+    if (y < epsPtr->item.y1) {
+	dy = epsPtr->item.y1 - y;
+    } else if (y > epsPtr->item.y2) {
+	dy = y - epsPtr->item.y2;
     }
     return hypot(dx, dy);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * EpsToArea --
  *
- *	This procedure is called to determine whether an item
- *	lies entirely inside, entirely outside, or overlapping
- *	a given rectangle.
+ *	This procedure is called to determine whether an item lies entirely
+ *	inside, entirely outside, or overlapping a given rectangle.
  *
  * Results:
- *	-1 is returned if the item is entirely outside the area
- *	given by rectPtr, 0 if it overlaps, and 1 if it is entirely
- *	inside the given area.
+ *	-1 is returned if the item is entirely outside the area given by
+ *	rectPtr, 0 if it overlaps, and 1 if it is entirely inside the given
+ *	area.
  *
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-EpsToArea(canvas, itemPtr, area)
-    Tk_Canvas canvas;		/* Canvas containing item. */
-    Tk_Item *itemPtr;		/* Item to check against rectangle. */
-    double area[];		/* Pointer to array of four coordinates
-				 * (x1, y1, x2, y2) describing rectangular
-				 * area.  */
+EpsToArea(
+    Tk_Canvas canvas,		/* Canvas containing the item. */
+    Tk_Item *itemPtr,		/* Item to check against bounding rectangle. */
+    double pts[])		/* Array of four coordinates (x1, y1,
+				 * x2, y2) describing area.  */
 {
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
+    Eps *epsPtr = (Eps *)itemPtr;
 
-    if ((area[2] <= epsPtr->xLeft) || (area[0] >= epsPtr->xRight) ||
-	(area[3] <= epsPtr->yTop) || (area[1] >= epsPtr->yBottom)) {
-	return -1;
+    if ((pts[2] <= epsPtr->bb.left) || (pts[0] >= epsPtr->bb.right) ||
+	(pts[3] <= epsPtr->bb.top) || (pts[1] >= epsPtr->bb.bottom)) {
+	return -1;		/* Outside. */
     }
-    if ((area[0] <= epsPtr->xLeft) && (area[1] <= epsPtr->yTop) &&
-	(area[2] >= epsPtr->xRight) && (area[3] >= epsPtr->yBottom)) {
-	return 1;
+    if ((pts[0] <= epsPtr->bb.left) && (pts[1] <= epsPtr->bb.top) &&
+	(pts[2] >= epsPtr->bb.right) && (pts[3] >= epsPtr->bb.bottom)) {
+	return 1;		/* Inside. */
     }
-    return 0;
+    return 0;			/* Overlap. */
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ScaleEps --
  *
@@ -1521,28 +1625,39 @@ EpsToArea(canvas, itemPtr, area)
  * Side effects:
  *	The item referred to by itemPtr is rescaled so that the
  *	following transformation is applied to all point coordinates:
- *		x' = originX + scaleX*(x-originX)
- *		y' = originY + scaleY*(y-originY)
+ *		x' = xOrigin + xScale*(x-xOrigin)
+ *		y' = yOrigin + yScale*(y-yOrigin)
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-ScaleEps(canvas, itemPtr, originX, originY, scaleX, scaleY)
-    Tk_Canvas canvas;		/* Canvas containing rectangle. */
-    Tk_Item *itemPtr;		/* Rectangle to be scaled. */
-    double originX, originY;	/* Origin about which to scale rect. */
-    double scaleX;		/* Amount to scale in X direction. */
-    double scaleY;		/* Amount to scale in Y direction. */
+ScaleEps(
+    Tk_Canvas canvas,		/* Canvas containing rectangle. */
+    Tk_Item *itemPtr,		/* Rectangle to be scaled. */
+    double xOrigin, double yOrigin, /* Origin wrt scale rect. */
+    double xScale, double yScale)
 {
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
+    Eps *epsPtr = (Eps *)itemPtr;
 
-    epsPtr->x = originX + scaleX * (epsPtr->x - originX);
-    epsPtr->y = originY + scaleY * (epsPtr->y - originY);
-    ComputeEpsBbox(canvas, epsPtr);
+    epsPtr->bb.left = xOrigin + xScale * (epsPtr->bb.left - xOrigin);
+    epsPtr->bb.right = xOrigin + xScale * (epsPtr->bb.right - xOrigin);
+    epsPtr->bb.top = yOrigin + yScale * (epsPtr->bb.top - yOrigin);
+    epsPtr->bb.bottom = yOrigin + yScale *(epsPtr->bb.bottom - yOrigin);
+
+    /* Reset the user-requested values to the newly scaled values. */
+    epsPtr->width = ROUND(epsPtr->bb.right - epsPtr->bb.left);
+    epsPtr->height = ROUND(epsPtr->bb.bottom - epsPtr->bb.top);
+    epsPtr->x = ROUND(epsPtr->bb.left);
+    epsPtr->y = ROUND(epsPtr->bb.top);
+
+    epsPtr->item.x1 = ROUND(epsPtr->bb.left);
+    epsPtr->item.y1 = ROUND(epsPtr->bb.top);
+    epsPtr->item.x2 = ROUND(epsPtr->bb.right);
+    epsPtr->item.y2 = ROUND(epsPtr->bb.bottom);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * TranslateEps --
  *
@@ -1552,140 +1667,143 @@ ScaleEps(canvas, itemPtr, originX, originY, scaleX, scaleY)
  *	None.
  *
  * Side effects:
- *	The position of the item is offset by (xDelta, yDelta), and
- *	the bounding box is updated in the generic part of the item
- *	structure.
+ *	The position of the item is offset by (dx, dy), and the bounding box
+ *	is updated in the generic part of the item structure.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-TranslateEps(canvas, itemPtr, deltaX, deltaY)
-    Tk_Canvas canvas;		/* Canvas containing item. */
-    Tk_Item *itemPtr;		/* Item that is being moved. */
-    double deltaX, deltaY;	/* Amount by which item is to be
-				 * moved. */
+TranslateEps(
+    Tk_Canvas canvas,		/* Canvas containing item. */
+    Tk_Item *itemPtr,		/* Item that is being moved. */
+    double dx, double dy)	/* Amount by which item is to be moved. */
 {
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
+    Eps *epsPtr = (Eps *)itemPtr;
 
-    epsPtr->x += deltaX;
-    epsPtr->y += deltaY;
-    ComputeEpsBbox(canvas, epsPtr);
+    epsPtr->bb.left += dx;
+    epsPtr->bb.right += dx;
+    epsPtr->bb.top += dy;
+    epsPtr->bb.bottom += dy;
+
+    epsPtr->x = epsPtr->bb.left;
+    epsPtr->y = epsPtr->bb.top;
+
+    epsPtr->item.x1 = ROUND(epsPtr->bb.left);
+    epsPtr->item.x2 = ROUND(epsPtr->bb.right);
+    epsPtr->item.y1 = ROUND(epsPtr->bb.top);
+    epsPtr->item.y2 = ROUND(epsPtr->bb.bottom);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * EpsToPostscript --
+ * EpsToPostScript --
  *
- *	This procedure is called to generate Postscript for EPS
- *	canvas items.
+ *	This procedure is called to generate PostScript for EPS canvas items.
  *
  * Results:
- *	The return value is a standard Tcl result.  If an error
- *	occurs in generating Postscript then an error message is
- *	left in interp->result, replacing whatever used
- *	to be there.  If no error occurs, then Postscript for the
- *	item is appended to the result.
+ *	The return value is a standard TCL result.  If an error occurs in
+ *	generating PostScript then an error message is left in interp->result,
+ *	replacing whatever used to be there.  If no errors occur, then
+ *	PostScript output for the item is appended to the interpreter result.
  *
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
+
 static int
-EpsToPostScript(interp, canvas, itemPtr, prepass)
-    Tcl_Interp *interp;		/* Leave Postscript or error message
-				 * here. */
-    Tk_Canvas canvas;		/* Information about overall canvas. */
-    Tk_Item *itemPtr;		/* Item for which Postscript is
-				 * wanted. */
-    int prepass;		/* 1 means this is a prepass to
-				 * collect font information;  0 means
-				 * final Postscript is being created. */
+EpsToPostScript(
+    Tcl_Interp *interp,		/* Interpreter to hold generated PostScript
+				 * or reports errors back to. */
+    Tk_Canvas canvas,		/* Information about overall canvas. */
+    Tk_Item *itemPtr,		/* eps item. */
+    int prepass)		/* If 1, this is a prepass to collect
+				 * font information; 0 means final
+				 * PostScript is being created. */
 {
-    EpsItem *epsPtr = (EpsItem *)itemPtr;
-    PsToken psToken;
-    Tk_Window tkwin;
+    Eps *epsPtr = (Eps *)itemPtr;
+    Blt_Ps ps;
     double xScale, yScale;
-    int x, y, width, height;
+    double x, y, width, height;
+    PageSetup setup;
 
     if (prepass) {
-	return TCL_OK;
+	return TCL_OK;		/* Don't worry about fonts. */
     }
-    tkwin = Tk_CanvasTkwin(epsPtr->canvas);
-    psToken = Blt_GetPsToken(interp, tkwin);
-    x = epsPtr->canvasX;
-    y = (int)Tk_CanvasPsY(canvas, (double)epsPtr->canvasY + epsPtr->height);
+    memset(&setup, 0, sizeof(setup));
+    ps = Blt_Ps_Create(interp, &setup);
+
+    /* Lower left corner of item on page. */
+    x = epsPtr->bb.left;
+    y = Tk_CanvasPsY(canvas, epsPtr->bb.bottom);
+    width = epsPtr->bb.right - epsPtr->bb.left;
+    height = epsPtr->bb.bottom - epsPtr->bb.top;
 
     if (epsPtr->fileName == NULL) {
 	/* No PostScript file, generate PostScript of resized image instead. */
-	if (epsPtr->tmpImage != NULL) {
-	    Tk_PhotoHandle photo;
-
-	    Blt_FormatToPostScript(psToken, "gsave\n");
+	if (epsPtr->picture != NULL) {
+	    Blt_Ps_Format(ps, "gsave\n");
 	    /*
-	     * First flip the PostScript y-coordinate axis so that the
-	     * origin is the upper-left corner like our color image.
+	     * First flip the PostScript y-coordinate axis so that the origin
+	     * is the upper-left corner like our picture.
 	     */
-	    Blt_FormatToPostScript(psToken, "  %d %d translate\n",
-		x, y + epsPtr->height);
-	    Blt_FormatToPostScript(psToken, "  1 -1 scale\n");
+	    Blt_Ps_Format(ps, "  %g %g translate\n", x, y + height);
+	    Blt_Ps_Format(ps, "  1 -1 scale\n");
 
-	    photo = Blt_FindPhoto(epsPtr->interp, 
-			Blt_NameOfImage(epsPtr->tmpImage));
-	    Blt_PhotoToPostScript(psToken, photo, 0.0, 0.0);
-	    Blt_FormatToPostScript(psToken, "grestore\n");
+	    Blt_Ps_DrawPicture(ps, epsPtr->picture, 0.0, 0.0);
+	    Blt_Ps_Format(ps, "grestore\n");
 
-	    Tcl_AppendResult(interp, Blt_PostScriptFromToken(psToken), 
-		     (char *)NULL);
-	    Blt_ReleasePsToken(psToken);
+	    Blt_Ps_SetInterp(ps, interp);
+	    Blt_Ps_Free(ps);
 	}
 	return TCL_OK;
     }
 
     /* Copy in the PostScript prolog for EPS encapsulation. */
 
-    if (Blt_FileToPostScript(psToken, "bltCanvEps.pro") != TCL_OK) {
+    if (Blt_Ps_IncludeFile(interp, ps, "bltCanvEps.pro") != TCL_OK) {
 	goto error;
     }
-    Blt_AppendToPostScript(psToken, "BeginEPSF\n", (char *)NULL);
+    Blt_Ps_Append(ps, "BeginEPSF\n");
 
-    width = epsPtr->width;
-    height = epsPtr->height;
-    xScale = (double)width / (double)(epsPtr->urx - epsPtr->llx);
-    yScale = (double)height / (double)(epsPtr->ury - epsPtr->lly);
+    xScale = width / (double)(epsPtr->urx - epsPtr->llx);
+    yScale = height / (double)(epsPtr->ury - epsPtr->lly);
 
     /* Set up scaling and translation transformations for the EPS item */
 
-    Blt_FormatToPostScript(psToken, "%d %d translate\n", x, y);
-    Blt_FormatToPostScript(psToken, "%g %g scale\n", xScale, yScale);
-    Blt_FormatToPostScript(psToken, "%d %d translate\n", -(epsPtr->llx),
-	-(epsPtr->lly));
-    Blt_FormatToPostScript(psToken, "%d %d %d %d SetClipRegion\n", 
-	epsPtr->llx, epsPtr->lly, epsPtr->urx, epsPtr->ury);
-    Blt_AppendToPostScript(psToken, "%% including \"", epsPtr->fileName, 
-			   "\"\n\n", (char *)NULL);
+    Blt_Ps_Format(ps, "%g %g translate\n", x, y);
+    Blt_Ps_Format(ps, "%g %g scale\n", xScale, yScale);
+    Blt_Ps_Format(ps, "%d %d translate\n", -(epsPtr->llx), -(epsPtr->lly));
 
-    Blt_AppendToPostScript(psToken, Tcl_DStringValue(&epsPtr->dString),
-		   (char *)NULL);
-    Blt_AppendToPostScript(psToken, "EndEPSF\n", (char *)NULL);
-    Tcl_AppendResult(interp, Blt_PostScriptFromToken(psToken), (char *)NULL);
-    Blt_ReleasePsToken(psToken);
+    /* FIXME: Why clip against the old bounding box? */
+    Blt_Ps_Format(ps, "%d %d %d %d SetClipRegion\n", epsPtr->llx, 
+	epsPtr->lly, epsPtr->urx, epsPtr->ury);
+
+    Blt_Ps_VarAppend(ps, "%% including \"", epsPtr->fileName, "\"\n\n",
+	 (char *)NULL);
+
+    Blt_Ps_AppendBytes(ps, Tcl_DStringValue(&epsPtr->dString), 
+	Tcl_DStringLength(&epsPtr->dString));
+    Blt_Ps_Append(ps, "EndEPSF\n");
+    Blt_Ps_SetInterp(ps, interp);
+    Blt_Ps_Free(ps);
     return TCL_OK;
 
   error:
-    Blt_ReleasePsToken(psToken);
+    Blt_Ps_Free(ps);
     return TCL_ERROR;
 }
 
+
 /*
- * The structures below defines the EPS item type in terms of
- * procedures that can be invoked by generic item code.
+ * The structures below defines the EPS item type in terms of procedures that
+ * can be invoked by generic item code.
  */
-static Tk_ItemType epsItemType =
-{
-    "eps",			/* name */
-    sizeof(EpsItem),		/* itemSize */
+static Tk_ItemType itemType = {
+    (char *)"eps",		/* name */
+    sizeof(Eps),		/* itemSize */
     CreateEps,			/* createProc */
     configSpecs,		/* configSpecs */
     ConfigureEps,		/* configureProc */
@@ -1698,20 +1816,19 @@ static Tk_ItemType epsItemType =
     EpsToPostScript,		/* postscriptProc */
     ScaleEps,			/* scaleProc */
     TranslateEps,		/* translateProc */
-    (Tk_ItemIndexProc *) NULL,	/* indexProc */
-    (Tk_ItemCursorProc *) NULL,	/* icursorProc */
-    (Tk_ItemSelectionProc *) NULL,	/* selectionProc */
-    (Tk_ItemInsertProc *) NULL,	/* insertProc */
-    (Tk_ItemDCharsProc *) NULL,	/* dTextProc */
-    (Tk_ItemType *) NULL	/* nextPtr */
+    (Tk_ItemIndexProc *)NULL,	/* indexProc */
+    (Tk_ItemCursorProc *)NULL,	/* icursorProc */
+    (Tk_ItemSelectionProc *)NULL, /* selectionProc */
+    (Tk_ItemInsertProc *)NULL,	/* insertProc */
+    (Tk_ItemDCharsProc *)NULL,	/* dTextProc */
+    (Tk_ItemType *)NULL		/* nextPtr */
 };
 
 /*ARGSUSED*/
 void
-Blt_InitEpsCanvasItem(interp)
-    Tcl_Interp *interp;		/* Not used. */
+Blt_RegisterEpsCanvasItem(void)
 {
-    Tk_CreateItemType(&epsItemType);
+    Tk_CreateItemType(&itemType);
     /* Initialize custom canvas option routines. */
     tagsOption.parseProc = Tk_CanvasTagsParseProc;
     tagsOption.printProc = Tk_CanvasTagsPrintProc;

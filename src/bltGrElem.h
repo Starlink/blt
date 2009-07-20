@@ -1,29 +1,38 @@
+
 /*
  * bltGrElem.h --
  *
- * Copyright 1991-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #ifndef _BLT_GR_ELEM_H
 #define _BLT_GR_ELEM_H
+
+#include <bltVector.h>
+#include <bltDataTable.h>
+
+#define ELEM_SOURCE_VALUES	0
+#define ELEM_SOURCE_VECTOR	1
+#define ELEM_SOURCE_TABLE		2
 
 #define SEARCH_X	0
 #define SEARCH_Y	1
@@ -35,37 +44,33 @@
 #define SHOW_BOTH	3
 
 #define SEARCH_POINTS	0	/* Search for closest data point. */
-#define SEARCH_TRACES	1	/* Search for closest point on trace. 
-				 * Interpolate the connecting line segments
-				 * if necessary. */
+#define SEARCH_TRACES	1	/* Search for closest point on trace.
+				 * Interpolate the connecting line segments if
+				 * necessary. */
 #define SEARCH_AUTO	2	/* Automatically determine whether to search
-				 * for data points or traces.  Look for
-				 * traces if the linewidth is > 0 and if 
-				 * there is more than one data point. */
+				 * for data points or traces.  Look for traces
+				 * if the linewidth is > 0 and if there is
+				 * more than one data point. */
 
-#define	ELEM_ACTIVE	(1<<8)	/* Non-zero indicates that the element
-				 * should be drawn in its active
-				 * foreground and background
-				 * colors. */
-#define	ACTIVE_PENDING	(1<<7)
-
-#define	LABEL_ACTIVE 	(1<<9)	/* Non-zero indicates that the
-				 * element's entry in the legend
-				 * should be drawn in its active
-				 * foreground and background
-				 * colors. */
+#define	LABEL_ACTIVE 	(1<<9)	/* Non-zero indicates that the element's entry
+				 * in the legend should be drawn in its active
+				 * foreground and background colors. */
 #define SCALE_SYMBOL	(1<<10)
 
-#define NumberOfPoints(e)	MIN((e)->x.nValues, (e)->y.nValues)
+#define NUMBEROFPOINTS(e)	MIN((e)->x.nValues, (e)->y.nValues)
+
+#define NORMALPEN(e)		((((e)->normalPenPtr == NULL) ?  \
+				  (e)->builtinPenPtr :		 \
+				  (e)->normalPenPtr))
 
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Weight --
  *
  *	Designates a range of values by a minimum and maximum limit.
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
     double min, max, range;
@@ -78,31 +83,20 @@ typedef struct {
 #define SetWeight(l, lo, hi) \
 	((l).min = (lo), (l).max = (hi), SetRange(l))
 
+typedef struct {
+    Segment2d *segments;	/* Point to start of this pen's X-error bar
+				 * segments in the element's array. */
+    int nSegments;
+} ErrorBarSegments;
+
 /* 
- * An element has one or more vectors plus several attributes, such as
- * line style, thickness, color, and symbol type.  It has an
- * identifier which distinguishes it among the list of all elements.  
+ * An element has one or more vectors plus several attributes, such as line
+ * style, thickness, color, and symbol type.  It has an identifier which
+ * distinguishes it among the list of all elements.
  */
 typedef struct {
     Weight weight;		/* Weight range where this pen is valid. */
-
     Pen *penPtr;		/* Pen to use. */
-
-    Segment2D *xErrorBars;	/* Point to start of this pen's X-error bar 
-				 * segments in the element's array. */
-
-    Segment2D *yErrorBars;	/* Point to start of this pen's Y-error bar 
-				 * segments in the element's array. */
-
-    int xErrorBarCnt;		/* # of error bars for this pen. */
-
-    int yErrorBarCnt;		/* # of error bars for this pen. */
-
-    int errorBarCapWidth;	/* Length of the cap ends on each
-				 * error bar. */
-
-    int symbolSize;		/* Size of the pen's symbol scaled to
-				 * the current graph size. */
 } PenStyle;
 
 
@@ -111,29 +105,28 @@ typedef struct {
     int lineWidth;		/* Width of the error bar segments. */
     GC gc;
     int show;			/* Flags for errorbars: none, x, y, or both */
-
 } ErrorBarAttributes;
 
 typedef struct {
-    int halo;			/* Maximal distance a candidate point
-				 * can be from the sample window
-				 * coordinate */
+    /* Inputs */
+    int halo;			/* Maximal screen distance a candidate point
+				 * can be from the sample window coordinate */
 
-    int mode;			/* Indicates whether to find the closest 
-				 * data point or the closest point on the 
-				 * trace by interpolating the line segments.
-				 * Can also be SEARCH_AUTO, indicating to 
-				 * choose how to search.*/
+    int mode;			/* Indicates whether to find the closest data
+				 * point or the closest point on the trace by
+				 * interpolating the line segments.  Can also
+				 * be SEARCH_AUTO, indicating to choose how to
+				 * search.*/
 
     int x, y;			/* Screen coordinates of test point */
 
-    int along;			/* Indicates to let search run along a 
+    int along;			/* Indicates to let search run along a
 				 * particular axis: x, y, or both. */
 
-    /* Output */
+    /* Outputs */
     Element *elemPtr;		/* Name of the closest element */
 
-    Point2D point;		/* Graph coordinates of closest point */
+    Point2d point;		/* Graph coordinates of closest point */
 
     int index;			/* Index of closest data point */
 
@@ -141,24 +134,28 @@ typedef struct {
 
 } ClosestSearch;
 
-typedef void (ElementDrawProc) _ANSI_ARGS_((Graph *graphPtr, Drawable drawable,
-	Element *elemPtr));
-typedef void (ElementToPostScriptProc) _ANSI_ARGS_((Graph *graphPtr, 
-	PsToken psToken, Element *elemPtr));
-typedef void (ElementDestroyProc) _ANSI_ARGS_((Graph *graphPtr, 
-	Element *elemPtr));
-typedef int (ElementConfigProc) _ANSI_ARGS_((Graph *graphPtr, 
-	Element *elemPtr));
-typedef void (ElementMapProc) _ANSI_ARGS_((Graph *graphPtr,
-	Element *elemPtr));
-typedef void (ElementExtentsProc) _ANSI_ARGS_((Element *elemPtr,
-	Extents2D *extsPtr));
-typedef void (ElementClosestProc) _ANSI_ARGS_((Graph *graphPtr, 
-	Element *elemPtr, ClosestSearch *searchPtr));
-typedef void (ElementDrawSymbolProc) _ANSI_ARGS_((Graph *graphPtr,
-	Drawable drawable, Element *elemPtr, int x, int y, int symbolSize));
-typedef void (ElementSymbolToPostScriptProc) _ANSI_ARGS_((Graph *graphPtr,
-	PsToken psToken, Element *elemPtr, double x, double y, int symSize));
+typedef void (ElementDrawProc) (Graph *graphPtr, Drawable drawable, 
+	Element *elemPtr);
+
+typedef void (ElementToPostScriptProc) (Graph *graphPtr, Blt_Ps ps, 
+	Element *elemPtr);
+
+typedef void (ElementDestroyProc) (Graph *graphPtr, Element *elemPtr);
+
+typedef int (ElementConfigProc) (Graph *graphPtr, Element *elemPtr);
+
+typedef void (ElementMapProc) (Graph *graphPtr, Element *elemPtr);
+
+typedef void (ElementExtentsProc) (Element *elemPtr, Region2d *extsPtr);
+
+typedef void (ElementClosestProc) (Graph *graphPtr, Element *elemPtr, 
+	ClosestSearch *searchPtr);
+
+typedef void (ElementDrawSymbolProc) (Graph *graphPtr, Drawable drawable, 
+	Element *elemPtr, int x, int y, int symbolSize);
+
+typedef void (ElementSymbolToPostScriptProc) (Graph *graphPtr, 
+	Blt_Ps ps, Element *elemPtr, double x, double y, int symSize);
 
 typedef struct {
     ElementClosestProc *closestProc;
@@ -174,122 +171,107 @@ typedef struct {
     ElementMapProc *mapProc;
 } ElementProcs;
 
-/* 
- * The data structure below contains information pertaining to a line
- * vector.  It consists of an array of floating point data values and
- * for convenience, the number and minimum/maximum values.  
- */
+typedef struct {
+    Blt_VectorId vector;
+} VectorDataSource;
 
 typedef struct {
-    Blt_Vector *vecPtr;
+    Blt_DataTable table;		/* Data table. */ 
+    Blt_DataTableColumn column;	/* Column of data used. */
+    Blt_DataTableNotifier notifier;	/* Notifier used for column (destroy). */
+    Blt_DataTableTrace trace;		/* Trace used for column (set/get/unset). */
+    Blt_HashEntry *hashPtr;	/* Pointer to entry of source in graph's hash
+				 * table of datatables. One graph may use
+				 * multiple columns from the same data
+				 * table. */
+} TableDataSource;
 
-    double *valueArr;
+/* 
+ * The data structure below contains information pertaining to a line vector.
+ * It consists of an array of floating point data values and for convenience,
+ * the number and minimum/maximum values.
+ */
+typedef struct {
+    Element *elemPtr;		/* Element associated with vector. */
+    int type;			/* Selects the type of data populating this
+				 * vector: ELEM_SOURCE_VECTOR,
+				 * ELEM_SOURCE_TABLE, or ELEM_SOURCE_VALUES
+				 */
+    union {
+	TableDataSource tableSource;
+	VectorDataSource vectorSource;
+    };
 
+    double *values;
     int nValues;
-
     int arraySize;
-
     double min, max;
 
-    Blt_VectorId clientId;	/* If non-NULL, a client token identifying the
-				 * external vector. */
-
-    Element *elemPtr;		/* Element associated with vector. */
-
-} ElemVector;
+} ElemValues;
 
 
-struct ElementStruct {
-    char *name;			/* Identifier to refer the element.
-				 * Used in the "insert", "delete", or
-				 * "show", commands. */
+struct _Element {
+    GraphObj obj;		/* Must be first field in element. */
 
-    Blt_Uid classUid;		/* Type of element */
-
-    Graph *graphPtr;		/* Graph widget of element*/
-
-    unsigned int flags;		/* Indicates if the entire element is
-				 * active, or if coordinates need to
-				 * be calculated */
-
-    char **tags;
-
-    int hidden;			/* If non-zero, don't display the element. */
+    unsigned int flags;		
 
     Blt_HashEntry *hashPtr;
 
-    char *label;		/* Label displayed in legend */
+    /* Fields specific to elements. */
 
+    const char *label;		/* Label displayed in legend */
+    unsigned short row, col;  	/* Position of the entry in the legend. */
     int labelRelief;		/* Relief of label in legend. */
 
-    Axis2D axes;		/* X-axis and Y-axis mapping the element */
+    Axis2d axes;		/* X-axis and Y-axis mapping the element */
 
-    ElemVector x, y, w;		/* Contains array of floating point
-				 * graph coordinate values. Also holds
-				 * min/max and the number of
-				 * coordinates */
+    ElemValues x, y, w;		/* Contains array of floating point graph
+				 * coordinate values. Also holds min/max and
+				 * the number of coordinates */
 
-    ElemVector xError;		/* Relative/symmetric X error values. */
-    ElemVector yError;		/* Relative/symmetric Y error values. */
-    ElemVector xHigh, xLow;	/* Absolute/asymmetric X-coordinate high/low
-				   error values. */
-    ElemVector yHigh, yLow;	/* Absolute/asymmetric Y-coordinate high/low
-				   error values. */
 
-    int *activeIndices;		/* Array of indices (malloc-ed) which
-				 * indicate which data points are
-				 * active (drawn with "active"
-				 * colors). */
+    int *activeIndices;		/* Array of indices (malloc-ed) which indicate
+				 * which data points are active (drawn with
+				 * "active" colors). */
 
-    int nActiveIndices;		/* Number of active data points.
-				 * Special case: if nActiveIndices < 0
-				 * and the active bit is set in
-				 * "flags", then all data points are
-				 * drawn active. */
+    int nActiveIndices;		/* Number of active data points.  Special
+				 * case: if nActiveIndices < 0 and the active
+				 * bit is set in "flags", then all data points
+				 * are drawn active. */
 
     ElementProcs *procsPtr;
 
-    Tk_ConfigSpec *specsPtr;	/* Configuration specifications. */
-
-    Segment2D *xErrorBars;	/* Point to start of this pen's X-error bar 
-				 * segments in the element's array. */
-    Segment2D *yErrorBars;	/* Point to start of this pen's Y-error bar 
-				 * segments in the element's array. */
-    int xErrorBarCnt;		/* # of error bars for this pen. */
-    int yErrorBarCnt;		/* # of error bars for this pen. */
-
-    int *xErrorToData;		/* Maps error bar segments back to the data
-				 * point. */
-    int *yErrorToData;		/* Maps error bar segments back to the data
-				 * point. */
-
-    int errorBarCapWidth;	/* Length of cap on error bars */
+    Blt_ConfigSpec *configSpecs; /* Configuration specifications. */
 
     Pen *activePenPtr;		/* Standard Pens */
     Pen *normalPenPtr;
+    Pen *builtinPenPtr;
 
-    Blt_Chain *palette;		/* Palette of pens. */
+    Blt_Chain stylePalette;	/* Palette of pens. */
 
     /* Symbol scaling */
-    int scaleSymbols;		/* If non-zero, the symbols will scale
-				 * in size as the graph is zoomed
-				 * in/out.  */
+    int scaleSymbols;		/* If non-zero, the symbols will scale in size
+				 * as the graph is zoomed in/out.  */
 
-    double xRange, yRange;	/* Initial X-axis and Y-axis ranges:
-				 * used to scale the size of element's
-				 * symbol. */
+    double xRange, yRange;	/* Initial X-axis and Y-axis ranges: used to
+				 * scale the size of element's symbol. */
     int state;
+
+    Blt_ChainLink link;		/* Element's link in display list. */
 };
 
 
-extern double Blt_FindElemVectorMinimum _ANSI_ARGS_((ElemVector *vecPtr,
-	double minLimit));
-extern void Blt_ResizeStatusArray _ANSI_ARGS_((Element *elemPtr, int nPoints));
-extern int Blt_GetPenStyle _ANSI_ARGS_((Graph *graphPtr, char *name,
-	Blt_Uid classUid, PenStyle *stylePtr));
-extern void Blt_FreePalette _ANSI_ARGS_((Graph *graphPtr, Blt_Chain *palette));
-extern PenStyle **Blt_StyleMap _ANSI_ARGS_((Element *elemPtr));
-extern void Blt_MapErrorBars _ANSI_ARGS_((Graph *graphPtr, Element *elemPtr, 
-	       PenStyle **dataToStyle));
+BLT_EXTERN double Blt_FindElemValuesMinimum(ElemValues *vecPtr, double minLimit);
+BLT_EXTERN void Blt_ResizeStatusArray(Element *elemPtr, int nPoints);
+BLT_EXTERN int Blt_GetPenStyle(Graph *graphPtr, char *name, size_t classId, 
+	PenStyle *stylePtr);
+BLT_EXTERN void Blt_FreeStylePalette (Blt_Chain stylePalette);
+BLT_EXTERN PenStyle **Blt_StyleMap (Element *elemPtr);
+BLT_EXTERN void Blt_MapErrorBars(Graph *graphPtr, Element *elemPtr, 
+	PenStyle **dataToStyle);
+BLT_EXTERN void Blt_FreeDataValues(ElemValues *evPtr);
+BLT_EXTERN int Blt_GetElement(Tcl_Interp *interp, Graph *graphPtr, 
+	Tcl_Obj *objPtr, Element **elemPtrPtr);
+BLT_EXTERN void Blt_DestroyTableClients(Graph *graphPtr);
 
 #endif /* _BLT_GR_ELEM_H */

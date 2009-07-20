@@ -1,29 +1,6 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
 
 proc AddDirEntries { w dir } {
@@ -37,8 +14,8 @@ proc AddDirEntries { w dir } {
 
 #blt::bltdebug 100
 
-image create photo openFolder -file images/open.gif
-image create photo closeFolder -file images/close.gif
+image create picture openFolder -file images/open.gif
+image create picture closeFolder -file images/close.gif
 
 option add *Hierbox.icons "closeFolder openFolder"
 
@@ -61,13 +38,13 @@ button .test -text Test -command {
     puts "selected names are $names"
 }
 
-table . \
+blt::table . \
     0,0 .h  -fill both \
     0,1 .vs -fill y \
     1,0 .hs -fill x \
     2,0 .test 
 
-table configure . c1 r1 -resize none
+blt::table configure . c1 r1 -resize none
 
 .h configure -autocreate yes  -font { Helvetica 34 }
 focus .h

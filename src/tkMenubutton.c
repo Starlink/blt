@@ -13,9 +13,41 @@
  * SCCS: @(#) tkMenubutton.c 1.77 96/02/15 18:52:22
  */
 
-#include "tkPort.h"
-#include "default.h"
-#include "tkInt.h"
+#include "bltInt.h"
+
+/*
+ * Defaults for menubuttons:
+ */
+
+#define DEF_MENUBUTTON_ANCHOR		"center"
+#define DEF_MENUBUTTON_ACTIVE_BG	STD_ACTIVE_BACKGROUND
+#define DEF_MENUBUTTON_ACTIVE_FG	STD_ACTIVE_FOREGROUND
+#define DEF_MENUBUTTON_BG		STD_NORMAL_BACKGROUND
+#define DEF_MENUBUTTON_BITMAP		""
+#define DEF_MENUBUTTON_BORDERWIDTH	"2"
+#define DEF_MENUBUTTON_CURSOR		""
+#define DEF_MENUBUTTON_DIRECTION	"below"
+#define DEF_MENUBUTTON_DISABLED_FG	STD_DISABLED_FOREGROUND
+#define DEF_MENUBUTTON_FONT		"Helvetica -12 bold"
+#define DEF_MENUBUTTON_FG		STD_NORMAL_FOREGROUND
+#define DEF_MENUBUTTON_HEIGHT		"0"
+#define DEF_MENUBUTTON_HIGHLIGHT_BG	DEF_MENUBUTTON_BG
+#define DEF_MENUBUTTON_HIGHLIGHT	RGB_BLACK
+#define DEF_MENUBUTTON_HIGHLIGHT_WIDTH	"0"
+#define DEF_MENUBUTTON_IMAGE		(char *) NULL
+#define DEF_MENUBUTTON_INDICATOR	"0"
+#define DEF_MENUBUTTON_JUSTIFY		"center"
+#define DEF_MENUBUTTON_MENU		""
+#define DEF_MENUBUTTON_PADX		"4p"
+#define DEF_MENUBUTTON_PADY		"3p"
+#define DEF_MENUBUTTON_RELIEF		"flat"
+#define DEF_MENUBUTTON_STATE		"normal"
+#define DEF_MENUBUTTON_TAKE_FOCUS	"0"
+#define DEF_MENUBUTTON_TEXT		""
+#define DEF_MENUBUTTON_TEXT_VARIABLE	""
+#define DEF_MENUBUTTON_UNDERLINE	"-1"
+#define DEF_MENUBUTTON_WIDTH		"0"
+#define DEF_MENUBUTTON_WRAP_LENGTH	"0"
 
 /*
  * A data structure of the following type is kept for each
@@ -59,7 +91,7 @@ typedef struct {
      * Information used when displaying widget:
      */
 
-    Tk_Uid state;		/* State of button for display purposes:
+    int state;			/* State of button for display purposes:
 				 * normal, active, or disabled. */
     Tk_3DBorder normalBorder;	/* Structure used to draw 3-D
 				 * border and background when window
@@ -114,7 +146,7 @@ typedef struct {
     int wrapLength;		/* Line length (in pixels) at which to wrap
 				 * onto next line.  <= 0 means don't wrap
 				 * except at newlines. */
-    int padX, padY;		/* Extra space around text or bitmap (pixels
+    int xPad, yPad;		/* Extra space around text or bitmap (pixels
 				 * on each side). */
     Tk_Anchor anchor;		/* Where text/bitmap should be displayed
 				 * inside window region. */
@@ -174,97 +206,76 @@ typedef struct {
  * Information used for parsing configuration specs:
  */
 
-static Tk_ConfigSpec configSpecs[] =
+static Blt_ConfigSpec configSpecs[] =
 {
-    {TK_CONFIG_BORDER, "-activebackground", "activeBackground", "Foreground",
-	DEF_MENUBUTTON_ACTIVE_BACKGROUND, Tk_Offset(MenuButton, activeBorder),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-activebackground", "activeBackground", "Foreground",
-	DEF_MENUBUTTON_ACTIVE_BG_MONO, Tk_Offset(MenuButton, activeBorder),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_COLOR, "-activeforeground", "activeForeground", "Background",
-	DEF_MENUBUTTON_ACTIVE_FOREGROUND, Tk_Offset(MenuButton, activeFg),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-activeforeground", "activeForeground", "Background",
-	DEF_MENUBUTTON_ACTIVE_FG_MONO, Tk_Offset(MenuButton, activeFg),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
-	DEF_MENUBUTTON_ANCHOR, Tk_Offset(MenuButton, anchor), 0},
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_MENUBUTTON_BACKGROUND, Tk_Offset(MenuButton, normalBorder),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_MENUBUTTON_BG_MONO, Tk_Offset(MenuButton, normalBorder),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_SYNONYM, "-bd", "borderWidth", (char *)NULL,
+    {BLT_CONFIG_BORDER, "-activebackground", "activeBackground", "Foreground",
+	DEF_MENUBUTTON_ACTIVE_BG, Blt_Offset(MenuButton, activeBorder), 0},
+    {BLT_CONFIG_COLOR, "-activeforeground", "activeForeground", "Background",
+	DEF_MENUBUTTON_ACTIVE_FG, Blt_Offset(MenuButton, activeFg), 0},
+    {BLT_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
+	DEF_MENUBUTTON_ANCHOR, Blt_Offset(MenuButton, anchor), 0},
+    {BLT_CONFIG_BORDER, "-background", "background", "Background",
+	DEF_MENUBUTTON_BG, Blt_Offset(MenuButton, normalBorder), 0},
+    {BLT_CONFIG_SYNONYM, "-bd", "borderWidth", (char *)NULL,
 	(char *)NULL, 0, 0},
-    {TK_CONFIG_SYNONYM, "-bg", "background", (char *)NULL,
+    {BLT_CONFIG_SYNONYM, "-bg", "background", (char *)NULL,
 	(char *)NULL, 0, 0},
-    {TK_CONFIG_BITMAP, "-bitmap", "bitmap", "Bitmap",
-	DEF_MENUBUTTON_BITMAP, Tk_Offset(MenuButton, bitmap),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_PIXELS, "-borderwidth", "borderWidth", "BorderWidth",
-	DEF_MENUBUTTON_BORDERWIDTH, Tk_Offset(MenuButton, borderWidth), 0},
-    {TK_CONFIG_ACTIVE_CURSOR, "-cursor", "cursor", "Cursor",
-	DEF_MENUBUTTON_CURSOR, Tk_Offset(MenuButton, cursor),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_COLOR, "-disabledforeground", "disabledForeground",
-	"DisabledForeground", DEF_MENUBUTTON_DISABLED_FOREGROUND,
-	Tk_Offset(MenuButton, disabledFg),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_COLOR, "-disabledforeground", "disabledForeground",
-	"DisabledForeground", DEF_MENUBUTTON_DISABLED_FG_MONO,
-	Tk_Offset(MenuButton, disabledFg),
-	TK_CONFIG_MONO_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_SYNONYM, "-fg", "foreground", (char *)NULL,
-	(char *)NULL, 0, 0},
-    {TK_CONFIG_FONT, "-font", "font", "Font",
-	DEF_MENUBUTTON_FONT, Tk_Offset(MenuButton, fontPtr), 0},
-    {TK_CONFIG_COLOR, "-foreground", "foreground", "Foreground",
-	DEF_MENUBUTTON_FG, Tk_Offset(MenuButton, normalFg), 0},
-    {TK_CONFIG_STRING, "-height", "height", "Height",
-	DEF_MENUBUTTON_HEIGHT, Tk_Offset(MenuButton, heightString), 0},
-    {TK_CONFIG_COLOR, "-highlightbackground", "highlightBackground",
+    {BLT_CONFIG_BITMAP, "-bitmap", "bitmap", "Bitmap", DEF_MENUBUTTON_BITMAP, 
+	Blt_Offset(MenuButton, bitmap), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", "BorderWidth",
+	DEF_MENUBUTTON_BORDERWIDTH, Blt_Offset(MenuButton, borderWidth), 0},
+    {BLT_CONFIG_ACTIVE_CURSOR, "-cursor", "cursor", "Cursor", 
+	DEF_MENUBUTTON_CURSOR, Blt_Offset(MenuButton, cursor), 
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-disabledforeground", "disabledForeground",
+	"DisabledForeground", DEF_MENUBUTTON_DISABLED_FG, 
+	Blt_Offset(MenuButton, disabledFg), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_SYNONYM, "-fg", "foreground", (char *)NULL, (char *)NULL, 0, 0},
+    {BLT_CONFIG_FONT, "-font", "font", "Font", DEF_MENUBUTTON_FONT, 
+	Blt_Offset(MenuButton, fontPtr), 0},
+    {BLT_CONFIG_COLOR, "-foreground", "foreground", "Foreground",
+	DEF_MENUBUTTON_FG, Blt_Offset(MenuButton, normalFg), 0},
+    {BLT_CONFIG_STRING, "-height", "height", "Height",
+	DEF_MENUBUTTON_HEIGHT, Blt_Offset(MenuButton, heightString), 0},
+    {BLT_CONFIG_COLOR, "-highlightbackground", "highlightBackground",
 	"HighlightBackground", DEF_MENUBUTTON_HIGHLIGHT_BG,
-	Tk_Offset(MenuButton, highlightBgColorPtr), 0},
-    {TK_CONFIG_COLOR, "-highlightcolor", "highlightColor", "HighlightColor",
-	DEF_MENUBUTTON_HIGHLIGHT, Tk_Offset(MenuButton, highlightColorPtr), 0},
-    {TK_CONFIG_PIXELS, "-highlightthickness", "highlightThickness",
+	Blt_Offset(MenuButton, highlightBgColorPtr), 0},
+    {BLT_CONFIG_COLOR, "-highlightcolor", "highlightColor", "HighlightColor",
+	DEF_MENUBUTTON_HIGHLIGHT, Blt_Offset(MenuButton, highlightColorPtr), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-highlightthickness", "highlightThickness",
 	"HighlightThickness", DEF_MENUBUTTON_HIGHLIGHT_WIDTH,
-	Tk_Offset(MenuButton, highlightWidth), 0},
-    {TK_CONFIG_STRING, "-image", "image", "Image",
-	DEF_MENUBUTTON_IMAGE, Tk_Offset(MenuButton, imageString),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BOOLEAN, "-indicatoron", "indicatorOn", "IndicatorOn",
-	DEF_MENUBUTTON_INDICATOR, Tk_Offset(MenuButton, indicatorOn), 0},
-    {TK_CONFIG_JUSTIFY, "-justify", "justify", "Justify",
-	DEF_MENUBUTTON_JUSTIFY, Tk_Offset(MenuButton, justify), 0},
-    {TK_CONFIG_STRING, "-menu", "menu", "Menu",
-	DEF_MENUBUTTON_MENU, Tk_Offset(MenuButton, menuName),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_PIXELS, "-padx", "padX", "Pad",
-	DEF_MENUBUTTON_PADX, Tk_Offset(MenuButton, padX), 0},
-    {TK_CONFIG_PIXELS, "-pady", "padY", "Pad",
-	DEF_MENUBUTTON_PADY, Tk_Offset(MenuButton, padY), 0},
-    {TK_CONFIG_RELIEF, "-relief", "relief", "Relief",
-	DEF_MENUBUTTON_RELIEF, Tk_Offset(MenuButton, relief), 0},
-    {TK_CONFIG_UID, "-state", "state", "State",
-	DEF_MENUBUTTON_STATE, Tk_Offset(MenuButton, state), 0},
-    {TK_CONFIG_STRING, "-takefocus", "takeFocus", "TakeFocus",
-	DEF_MENUBUTTON_TAKE_FOCUS, Tk_Offset(MenuButton, takeFocus),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_STRING, "-text", "text", "Text",
-	DEF_MENUBUTTON_TEXT, Tk_Offset(MenuButton, text), 0},
-    {TK_CONFIG_STRING, "-textvariable", "textVariable", "Variable",
-	DEF_MENUBUTTON_TEXT_VARIABLE, Tk_Offset(MenuButton, textVarName),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_INT, "-underline", "underline", "Underline",
-	DEF_MENUBUTTON_UNDERLINE, Tk_Offset(MenuButton, underline), 0},
-    {TK_CONFIG_STRING, "-width", "width", "Width",
-	DEF_MENUBUTTON_WIDTH, Tk_Offset(MenuButton, widthString), 0},
-    {TK_CONFIG_PIXELS, "-wraplength", "wrapLength", "WrapLength",
-	DEF_MENUBUTTON_WRAP_LENGTH, Tk_Offset(MenuButton, wrapLength), 0},
-    {TK_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
+	Blt_Offset(MenuButton, highlightWidth), 0},
+    {BLT_CONFIG_STRING, "-image", "image", "Image", DEF_MENUBUTTON_IMAGE, 
+	Blt_Offset(MenuButton, imageString), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BOOLEAN, "-indicatoron", "indicatorOn", "IndicatorOn",
+	DEF_MENUBUTTON_INDICATOR, Blt_Offset(MenuButton, indicatorOn), 0},
+    {BLT_CONFIG_JUSTIFY, "-justify", "justify", "Justify", 
+	DEF_MENUBUTTON_JUSTIFY, Blt_Offset(MenuButton, justify), 0},
+    {BLT_CONFIG_STRING, "-menu", "menu", "Menu", DEF_MENUBUTTON_MENU, 
+	Blt_Offset(MenuButton, menuName), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_PIXELS_NNEG, "-padx", "padX", "Pad", DEF_MENUBUTTON_PADX, 
+	Blt_Offset(MenuButton, xPad), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-pady", "padY", "Pad", DEF_MENUBUTTON_PADY, 
+	Blt_Offset(MenuButton, yPad), 0}, 
+    {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief", DEF_MENUBUTTON_RELIEF, 
+	Blt_Offset(MenuButton, relief), 0},
+    {BLT_CONFIG_STATE, "-state", "state", "State", DEF_MENUBUTTON_STATE, 
+	Blt_Offset(MenuButton, state), 0},
+    {BLT_CONFIG_STRING, "-takefocus", "takeFocus", "TakeFocus",
+	DEF_MENUBUTTON_TAKE_FOCUS, Blt_Offset(MenuButton, takeFocus),
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_STRING, "-text", "text", "Text", DEF_MENUBUTTON_TEXT, 
+	Blt_Offset(MenuButton, text), 0},
+    {BLT_CONFIG_STRING, "-textvariable", "textVariable", "Variable",
+	DEF_MENUBUTTON_TEXT_VARIABLE, Blt_Offset(MenuButton, textVarName),
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_INT, "-underline", "underline", "Underline",
+	DEF_MENUBUTTON_UNDERLINE, Blt_Offset(MenuButton, underline), 0},
+    {BLT_CONFIG_STRING, "-width", "width", "Width", DEF_MENUBUTTON_WIDTH, 
+	Blt_Offset(MenuButton, widthString), 0},
+    {BLT_CONFIG_PIXELS_NNEG, "-wraplength", "wrapLength", "WrapLength",
+	DEF_MENUBUTTON_WRAP_LENGTH, Blt_Offset(MenuButton, wrapLength), 0},
+    {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
 	(char *)NULL, 0, 0}
 };
 
@@ -272,66 +283,57 @@ static Tk_ConfigSpec configSpecs[] =
  * Forward declarations for procedures defined later in this file:
  */
 
-static void ComputeMenuButtonGeometry _ANSI_ARGS_((
-	MenuButton *mbPtr));
-static void MenuButtonCmdDeletedProc _ANSI_ARGS_((
-	ClientData clientData));
-static void MenuButtonEventProc _ANSI_ARGS_((ClientData clientData,
-	XEvent *eventPtr));
-static void MenuButtonImageProc _ANSI_ARGS_((ClientData clientData,
-	int x, int y, int width, int height, int imgWidth,
-	int imgHeight));
-static char *MenuButtonTextVarProc _ANSI_ARGS_((
-	ClientData clientData, Tcl_Interp *interp,
-	char *name1, char *name2, int flags));
-static int MenuButtonWidgetCmd _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, int argc, char **argv));
-static int ConfigureMenuButton _ANSI_ARGS_((Tcl_Interp *interp,
-	MenuButton *mbPtr, int argc, char **argv,
-	int flags));
-static void DestroyMenuButton _ANSI_ARGS_((char *memPtr));
-static void DisplayMenuButton _ANSI_ARGS_((ClientData clientData));
-
+static Tcl_CmdDeleteProc MenuButtonCmdDeletedProc;
+static Tk_EventProc MenuButtonEventProc;
+static Tk_ImageChangedProc MenuButtonImageProc;
+static Tcl_VarTraceProc MenuButtonTextVarProc;
+static Tcl_ObjCmdProc MenuButtonWidgetCmd;
+static Tcl_FreeProc DestroyMenuButton;
+static Tcl_IdleProc DisplayMenuButton;
+
+static int ConfigureMenuButton (Tcl_Interp *interp, MenuButton *mbPtr, 
+	int objc, Tcl_Obj *const *objv, int flags);
+static void ComputeMenuButtonGeometry (MenuButton *mbPtr);
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Tk_MenubuttonCmd --
  *
  *	This procedure is invoked to process the "button", "label",
- *	"radiobutton", and "checkbutton" Tcl commands.  See the
+ *	"radiobutton", and "checkbutton" TCL commands.  See the
  *	user documentation for details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 int
-Tk_MenubuttonCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Main window associated with
+Tk_MenubuttonCmd(
+    ClientData clientData,	/* Main window associated with
 				 * interpreter. */
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
+    Tcl_Interp *interp,		/* Current interpreter. */
+    int objc,			/* Number of arguments. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
     register MenuButton *mbPtr;
     Tk_Window tkwin;
 
-    if (argc < 2) {
+    if (objc < 2) {
 	Tcl_AppendResult(interp, "wrong # args: should be \"",
-	    argv[0], " pathName ?options?\"", (char *)NULL);
+	    Tcl_GetString(objv[0]), " pathName ?options?\"", (char *)NULL);
 	return TCL_ERROR;
     }
     /*
      * Create the new window.
      */
 
-    tkwin = Tk_CreateWindowFromPath(interp, Tk_MainWindow(interp), argv[1],
-	(char *)NULL);
+    tkwin = Tk_CreateWindowFromPath(interp, Tk_MainWindow(interp), 
+		Tcl_GetString(objv[1]), (char *)NULL);
     if (tkwin == NULL) {
 	return TCL_ERROR;
     }
@@ -339,143 +341,105 @@ Tk_MenubuttonCmd(clientData, interp, argc, argv)
      * Initialize the data structure for the button.
      */
 
-    mbPtr = Blt_Malloc(sizeof(MenuButton));
+    mbPtr = Blt_AssertCalloc(1, sizeof(MenuButton));
     mbPtr->tkwin = tkwin;
     mbPtr->display = Tk_Display(tkwin);
     mbPtr->interp = interp;
-    mbPtr->widgetCmd = Tcl_CreateCommand(interp, Tk_PathName(mbPtr->tkwin),
+    mbPtr->widgetCmd = Tcl_CreateObjCommand(interp, Tk_PathName(mbPtr->tkwin),
 	MenuButtonWidgetCmd, (ClientData)mbPtr, MenuButtonCmdDeletedProc);
-    mbPtr->menuName = NULL;
-    mbPtr->text = NULL;
-    mbPtr->numChars = 0;
     mbPtr->underline = -1;
-    mbPtr->textVarName = NULL;
-    mbPtr->bitmap = None;
-    mbPtr->imageString = NULL;
-    mbPtr->image = NULL;
-    mbPtr->state = tkNormalUid;
-    mbPtr->normalBorder = NULL;
-    mbPtr->activeBorder = NULL;
-    mbPtr->borderWidth = 0;
+    mbPtr->state = STATE_NORMAL;
     mbPtr->relief = TK_RELIEF_FLAT;
-    mbPtr->highlightWidth = 0;
-    mbPtr->highlightBgColorPtr = NULL;
-    mbPtr->highlightColorPtr = NULL;
-    mbPtr->inset = 0;
-    mbPtr->fontPtr = NULL;
-    mbPtr->normalFg = NULL;
-    mbPtr->activeFg = NULL;
-    mbPtr->disabledFg = NULL;
-    mbPtr->normalTextGC = None;
-    mbPtr->activeTextGC = None;
-    mbPtr->gray = None;
-    mbPtr->disabledGC = None;
-    mbPtr->leftBearing = 0;
-    mbPtr->rightBearing = 0;
-    mbPtr->widthString = NULL;
-    mbPtr->heightString = NULL;
-    mbPtr->width = 0;
-    mbPtr->width = 0;
-    mbPtr->wrapLength = 0;
-    mbPtr->padX = 0;
-    mbPtr->padY = 0;
     mbPtr->anchor = TK_ANCHOR_CENTER;
     mbPtr->justify = TK_JUSTIFY_CENTER;
-    mbPtr->indicatorOn = 0;
-    mbPtr->indicatorWidth = 0;
-    mbPtr->indicatorHeight = 0;
-    mbPtr->cursor = None;
-    mbPtr->takeFocus = NULL;
-    mbPtr->flags = 0;
 
     Tk_SetClass(mbPtr->tkwin, "Menubutton");
     Tk_CreateEventHandler(mbPtr->tkwin,
 	ExposureMask | StructureNotifyMask | FocusChangeMask,
 	MenuButtonEventProc, (ClientData)mbPtr);
-    if (ConfigureMenuButton(interp, mbPtr, argc - 2, argv + 2, 0) != TCL_OK) {
+    if (ConfigureMenuButton(interp, mbPtr, objc - 2, objv + 2, 0) != TCL_OK) {
 	Tk_DestroyWindow(mbPtr->tkwin);
 	return TCL_ERROR;
     }
-    Tcl_SetResult(interp, Tk_PathName(mbPtr->tkwin), TCL_VOLATILE);
+    Tcl_SetObjResult(interp, objv[1]);
     return TCL_OK;
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * MenuButtonWidgetCmd --
  *
- *	This procedure is invoked to process the Tcl command
+ *	This procedure is invoked to process the TCL command
  *	that corresponds to a widget managed by this module.
  *	See the user documentation for details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static int
-MenuButtonWidgetCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Information about button widget. */
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
+MenuButtonWidgetCmd(
+    ClientData clientData,	/* Information about button widget. */
+    Tcl_Interp *interp,		/* Current interpreter. */
+    int objc,			/* Number of arguments. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
-    register MenuButton *mbPtr = clientData;
-    int result = TCL_OK;
-    size_t length;
+    MenuButton *mbPtr = clientData;
+    char *string;
     int c;
+    int length;
+    int result = TCL_OK;
 
-    if (argc < 2) {
-	Tcl_AppendResult(interp, "wrong # args: should be \"", argv[0],
-	    " option ?arg arg ...?\"", (char *)NULL);
+    if (objc < 2) {
+	Tcl_AppendResult(interp, "wrong # args: should be \"", 
+		Tcl_GetString(objv[0]), " option ?arg arg ...?\"", 
+		(char *)NULL);
 	return TCL_ERROR;
     }
-    Tcl_Preserve((ClientData)mbPtr);
-    c = argv[1][0];
-    length = strlen(argv[1]);
-    if ((c == 'c') && (strncmp(argv[1], "cget", length) == 0)
-	&& (length >= 2)) {
-	if (argc != 3) {
+    Tcl_Preserve(mbPtr);
+    string = Tcl_GetString(objv[1], &length);
+    c = string[0];
+    if ((c == 'c') && (length >= 2) && (strncmp(string, "cget", length) == 0)) {
+	if (objc != 3) {
 	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " cget option\"",
-		(char *)NULL);
+		Tcl_GetString(objv[0]), " cget option\"", (char *)NULL);
 	    goto error;
 	}
-	result = Tk_ConfigureValue(interp, mbPtr->tkwin, configSpecs,
-	    (char *)mbPtr, argv[2], 0);
-    } else if ((c == 'c') && (strncmp(argv[1], "configure", length) == 0)
-	&& (length >= 2)) {
-	if (argc == 2) {
-	    result = Tk_ConfigureInfo(interp, mbPtr->tkwin, configSpecs,
-		(char *)mbPtr, (char *)NULL, 0);
-	} else if (argc == 3) {
-	    result = Tk_ConfigureInfo(interp, mbPtr->tkwin, configSpecs,
-		(char *)mbPtr, argv[2], 0);
+	result = Blt_ConfigureValueFromObj(interp, mbPtr->tkwin, configSpecs,
+	    (char *)mbPtr, objv[2], 0);
+    } else if ((c == 'c') && (length >= 2) && 
+	       (strncmp(string, "configure", length) == 0)) {
+	if (objc == 2) {
+	    result = Blt_ConfigureInfoFromObj(interp, mbPtr->tkwin, configSpecs,
+		(char *)mbPtr, (Tcl_Obj *)NULL, 0);
+	} else if (objc == 3) {
+	    result = Blt_ConfigureInfoFromObj(interp, mbPtr->tkwin, configSpecs,
+		(char *)mbPtr, objv[2], 0);
 	} else {
-	    result = ConfigureMenuButton(interp, mbPtr, argc - 2, argv + 2,
-		TK_CONFIG_ARGV_ONLY);
+	    result = ConfigureMenuButton(interp, mbPtr, objc - 2, objv + 2,
+		BLT_CONFIG_OBJV_ONLY);
 	}
     } else {
-	Tcl_AppendResult(interp, "bad option \"", argv[1],
-	    "\": must be cget or configure",
-	    (char *)NULL);
+	Tcl_AppendResult(interp, "bad option \"", string,
+	    "\": must be cget or configure", (char *)NULL);
 	goto error;
     }
-    Tcl_Release((ClientData)mbPtr);
+    Tcl_Release(mbPtr);
     return result;
 
   error:
-    Tcl_Release((ClientData)mbPtr);
+    Tcl_Release(mbPtr);
     return TCL_ERROR;
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DestroyMenuButton --
  *
@@ -490,18 +454,17 @@ MenuButtonWidgetCmd(clientData, interp, argc, argv)
  * Side effects:
  *	Everything associated with the widget is freed up.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-DestroyMenuButton(memPtr)
-    char *memPtr;		/* Info about button widget. */
+DestroyMenuButton(char *memPtr)	/* Info about button widget. */
 {
     register MenuButton *mbPtr = (MenuButton *)memPtr;
 
     /*
      * Free up all the stuff that requires special handling, then
-     * let Tk_FreeOptions handle all the standard option-related
+     * let Blt_FreeOptions handle all the standard option-related
      * stuff.
      */
 
@@ -525,21 +488,21 @@ DestroyMenuButton(memPtr)
     if (mbPtr->disabledGC != None) {
 	Tk_FreeGC(mbPtr->display, mbPtr->disabledGC);
     }
-    Tk_FreeOptions(configSpecs, (char *)mbPtr, mbPtr->display, 0);
-    ckBlt_Free(mbPtr);
+    Blt_FreeOptions(configSpecs, (char *)mbPtr, mbPtr->display, 0);
+    Blt_Free(mbPtr);
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ConfigureMenuButton --
  *
- *	This procedure is called to process an argv/argc list, plus
+ *	This procedure is called to process an objv/objc list, plus
  *	the Tk option database, in order to configure (or
  *	reconfigure) a menubutton widget.
  *
  * Results:
- *	The return value is a standard Tcl result.  If TCL_ERROR is
+ *	The return value is a standard TCL result.  If TCL_ERROR is
  *	returned, then interp->result contains an error message.
  *
  * Side effects:
@@ -547,17 +510,17 @@ DestroyMenuButton(memPtr)
  *	etc. get set for mbPtr;  old resources get freed, if there
  *	were any.  The menubutton is redisplayed.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static int
-ConfigureMenuButton(interp, mbPtr, argc, argv, flags)
-    Tcl_Interp *interp;		/* Used for error reporting. */
-    register MenuButton *mbPtr;	/* Information about widget;  may or may
+ConfigureMenuButton(
+    Tcl_Interp *interp,		/* Used for error reporting. */
+    MenuButton *mbPtr,		/* Information about widget;  may or may
 				 * not already have values for some fields. */
-    int argc;			/* Number of valid entries in argv. */
-    char **argv;		/* Arguments. */
-    int flags;			/* Flags to pass to Tk_ConfigureWidget. */
+    int objc,			/* Number of valid entries in objv. */
+    Tcl_Obj *const *objv,	/* Arguments. */
+    int flags)			/* Flags to pass to Blt_ConfigureWidget. */
 {
     XGCValues gcValues;
     GC newGC;
@@ -574,26 +537,27 @@ ConfigureMenuButton(interp, mbPtr, argc, argv, flags)
 	    TCL_GLOBAL_ONLY | TCL_TRACE_WRITES | TCL_TRACE_UNSETS,
 	    MenuButtonTextVarProc, (ClientData)mbPtr);
     }
-    result = Tk_ConfigureWidget(interp, mbPtr->tkwin, configSpecs,
-	argc, argv, (char *)mbPtr, flags);
+    result = Blt_ConfigureWidgetFromObj(interp, mbPtr->tkwin, configSpecs,
+	objc, objv, (char *)mbPtr, flags);
     if (result != TCL_OK) {
 	return TCL_ERROR;
     }
     /*
      * A few options need special processing, such as setting the
      * background from a 3-D border, or filling in complicated
-     * defaults that couldn't be specified to Tk_ConfigureWidget.
+     * defaults that couldn't be specified to Blt_ConfigureWidget.
      */
 
-    if ((mbPtr->state == tkActiveUid) && !Tk_StrictMotif(mbPtr->tkwin)) {
+    if ((mbPtr->state == STATE_ACTIVE) && !Tk_StrictMotif(mbPtr->tkwin)) {
 	Tk_SetBackgroundFromBorder(mbPtr->tkwin, mbPtr->activeBorder);
     } else {
 	Tk_SetBackgroundFromBorder(mbPtr->tkwin, mbPtr->normalBorder);
-	if ((mbPtr->state != tkNormalUid) && (mbPtr->state != tkActiveUid)
-	    && (mbPtr->state != tkDisabledUid)) {
-	    Tcl_AppendResult(interp, "bad state value \"", mbPtr->state,
+	if ((mbPtr->state != STATE_NORMAL) && (mbPtr->state != STATE_ACTIVE)
+	    && (mbPtr->state != STATE_DISABLED)) {
+	    Tcl_AppendResult(interp, "bad state value \"", 
+		Blt_Itoa(mbPtr->state),
 		"\": must be normal, active, or disabled", (char *)NULL);
-	    mbPtr->state = tkNormalUid;
+	    mbPtr->state = STATE_NORMAL;
 	    return TCL_ERROR;
 	}
     }
@@ -653,11 +617,11 @@ ConfigureMenuButton(interp, mbPtr, argc, argv, flags)
     }
     mbPtr->disabledGC = newGC;
 
-    if (mbPtr->padX < 0) {
-	mbPtr->padX = 0;
+    if (mbPtr->xPad < 0) {
+	mbPtr->xPad = 0;
     }
-    if (mbPtr->padY < 0) {
-	mbPtr->padY = 0;
+    if (mbPtr->yPad < 0) {
+	mbPtr->yPad = 0;
     }
     /*
      * Get the image for the widget, if there is one.  Allocate the
@@ -694,10 +658,9 @@ ConfigureMenuButton(interp, mbPtr, argc, argv, flags)
 		TCL_GLOBAL_ONLY);
 	} else {
 	    if (mbPtr->text != NULL) {
-		ckBlt_Free(mbPtr->text);
+		Blt_Free(mbPtr->text);
 	    }
-	    mbPtr->text = Blt_Malloc(strlen(value) + 1);
-	    strcpy(mbPtr->text, value);
+	    mbPtr->text = Blt_StrdupAsset(value);
 	}
 	Tcl_TraceVar(interp, mbPtr->textVarName,
 	    TCL_GLOBAL_ONLY | TCL_TRACE_WRITES | TCL_TRACE_UNSETS,
@@ -742,9 +705,9 @@ ConfigureMenuButton(interp, mbPtr, argc, argv, flags)
     }
     return TCL_OK;
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DisplayMenuButton --
  *
@@ -757,12 +720,11 @@ ConfigureMenuButton(interp, mbPtr, argc, argv, flags)
  *	Commands are output to X to display the menubutton in its
  *	current mode.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-DisplayMenuButton(clientData)
-    ClientData clientData;	/* Information about widget. */
+DisplayMenuButton(ClientData clientData) /* Information about widget. */
 {
     register MenuButton *mbPtr = clientData;
     GC gc;
@@ -778,10 +740,10 @@ DisplayMenuButton(clientData)
     if ((mbPtr->tkwin == NULL) || !Tk_IsMapped(tkwin)) {
 	return;
     }
-    if ((mbPtr->state == tkDisabledUid) && (mbPtr->disabledFg != NULL)) {
+    if ((mbPtr->state == STATE_DISABLED) && (mbPtr->disabledFg != NULL)) {
 	gc = mbPtr->disabledGC;
 	border = mbPtr->normalBorder;
-    } else if ((mbPtr->state == tkActiveUid) && !Tk_StrictMotif(mbPtr->tkwin)) {
+    } else if ((mbPtr->state == STATE_ACTIVE) && !Tk_StrictMotif(mbPtr->tkwin)) {
 	gc = mbPtr->activeTextGC;
 	border = mbPtr->activeBorder;
     } else {
@@ -858,7 +820,7 @@ DisplayMenuButton(clientData)
 	case TK_ANCHOR_NW:
 	case TK_ANCHOR_W:
 	case TK_ANCHOR_SW:
-	    x = mbPtr->inset + mbPtr->padX;
+	    x = mbPtr->inset + mbPtr->xPad;
 	    break;
 	case TK_ANCHOR_N:
 	case TK_ANCHOR_CENTER:
@@ -867,7 +829,7 @@ DisplayMenuButton(clientData)
 		    - mbPtr->indicatorWidth)) / 2;
 	    break;
 	default:
-	    x = Tk_Width(tkwin) - width - mbPtr->padX - mbPtr->inset
+	    x = Tk_Width(tkwin) - width - mbPtr->xPad - mbPtr->inset
 		- mbPtr->indicatorWidth;
 	    break;
 	}
@@ -875,7 +837,7 @@ DisplayMenuButton(clientData)
 	case TK_ANCHOR_NW:
 	case TK_ANCHOR_N:
 	case TK_ANCHOR_NE:
-	    y = mbPtr->inset + mbPtr->padY;
+	    y = mbPtr->inset + mbPtr->yPad;
 	    break;
 	case TK_ANCHOR_W:
 	case TK_ANCHOR_CENTER:
@@ -883,7 +845,7 @@ DisplayMenuButton(clientData)
 	    y = ((int)(Tk_Height(tkwin) - height)) / 2;
 	    break;
 	default:
-	    y = Tk_Height(tkwin) - mbPtr->inset - mbPtr->padY - height;
+	    y = Tk_Height(tkwin) - mbPtr->inset - mbPtr->yPad - height;
 	    break;
 	}
 	TkDisplayText(mbPtr->display, pixmap, mbPtr->fontPtr,
@@ -896,7 +858,7 @@ DisplayMenuButton(clientData)
      * foreground color, generate the stippled effect.
      */
 
-    if ((mbPtr->state == tkDisabledUid)
+    if ((mbPtr->state == STATE_DISABLED)
 	&& ((mbPtr->disabledFg == NULL) || (mbPtr->image != NULL))) {
 	XFillRectangle(mbPtr->display, pixmap, mbPtr->disabledGC,
 	    mbPtr->inset, mbPtr->inset,
@@ -955,9 +917,9 @@ DisplayMenuButton(clientData)
 	(unsigned)Tk_Height(tkwin), 0, 0);
     Tk_FreePixmap(mbPtr->display, pixmap);
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * MenuButtonEventProc --
  *
@@ -971,13 +933,13 @@ DisplayMenuButton(clientData)
  *	When the window gets deleted, internal structures get
  *	cleaned up.  When it gets exposed, it is redisplayed.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-MenuButtonEventProc(clientData, eventPtr)
-    ClientData clientData;	/* Information about window. */
-    XEvent *eventPtr;		/* Information about event. */
+MenuButtonEventProc(
+    ClientData clientData,	/* Information about window. */
+    XEvent *eventPtr)		/* Information about event. */
 {
     MenuButton *mbPtr = clientData;
     if ((eventPtr->type == Expose) && (eventPtr->xexpose.count == 0)) {
@@ -1021,9 +983,9 @@ MenuButtonEventProc(clientData, eventPtr)
 	mbPtr->flags |= REDRAW_PENDING;
     }
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * MenuButtonCmdDeletedProc --
  *
@@ -1037,12 +999,13 @@ MenuButtonEventProc(clientData, eventPtr)
  * Side effects:
  *	The widget is destroyed.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-MenuButtonCmdDeletedProc(clientData)
-    ClientData clientData;	/* Pointer to widget record for widget. */
+MenuButtonCmdDeletedProc(ClientData clientData)	/* Pointer to widget
+						   record for
+						   widget. */
 {
     MenuButton *mbPtr = clientData;
     Tk_Window tkwin = mbPtr->tkwin;
@@ -1059,9 +1022,9 @@ MenuButtonCmdDeletedProc(clientData)
 	Tk_DestroyWindow(tkwin);
     }
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ComputeMenuButtonGeometry --
  *
@@ -1075,12 +1038,11 @@ MenuButtonCmdDeletedProc(clientData)
  * Side effects:
  *	The menu button's window may change size.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-ComputeMenuButtonGeometry(mbPtr)
-    register MenuButton *mbPtr;	/* Widget record for menu button. */
+ComputeMenuButtonGeometry(MenuButton *mbPtr) 
 {
     int width, height, mm, pixels;
 
@@ -1115,8 +1077,8 @@ ComputeMenuButtonGeometry(mbPtr)
 	    height = mbPtr->height * (mbPtr->fontPtr->ascent
 		+ mbPtr->fontPtr->descent);
 	}
-	width += 2 * mbPtr->padX;
-	height += 2 * mbPtr->padY;
+	width += 2 * mbPtr->xPad;
+	height += 2 * mbPtr->yPad;
     }
 
     if (mbPtr->indicatorOn) {
@@ -1135,9 +1097,9 @@ ComputeMenuButtonGeometry(mbPtr)
 	(int)(height + 2 * mbPtr->inset));
     Tk_SetInternalBorder(mbPtr->tkwin, mbPtr->inset);
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * MenuButtonTextVarProc --
  *
@@ -1151,17 +1113,17 @@ ComputeMenuButtonGeometry(mbPtr)
  *	The text displayed in the menu button will change to match the
  *	variable.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
  /* ARGSUSED */
 static char *
-MenuButtonTextVarProc(clientData, interp, name1, name2, flags)
-    ClientData clientData;	/* Information about button. */
-    Tcl_Interp *interp;		/* Interpreter containing variable. */
-    char *name1;		/* Name of variable. */
-    char *name2;		/* Second part of variable name. */
-    int flags;			/* Information about what happened. */
+MenuButtonTextVarProc(
+    ClientData clientData,	/* Information about button. */
+    Tcl_Interp *interp,		/* Interpreter containing variable. */
+    char *name1,		/* Name of variable. */
+    char *name2,		/* Second part of variable name. */
+    int flags)			/* Information about what happened. */
 {
     register MenuButton *mbPtr = clientData;
     char *value;
@@ -1186,10 +1148,9 @@ MenuButtonTextVarProc(clientData, interp, name1, name2, flags)
 	value = "";
     }
     if (mbPtr->text != NULL) {
-	ckBlt_Free(mbPtr->text);
+	Blt_Free(mbPtr->text);
     }
-    mbPtr->text = Blt_Malloc(strlen(value) + 1);
-    strcpy(mbPtr->text, value);
+    mbPtr->text = Blt_AssertStrdup(value);
     ComputeMenuButtonGeometry(mbPtr);
 
     if ((mbPtr->tkwin != NULL) && Tk_IsMapped(mbPtr->tkwin)
@@ -1199,9 +1160,9 @@ MenuButtonTextVarProc(clientData, interp, name1, name2, flags)
     }
     return (char *) NULL;
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * MenuButtonImageProc --
  *
@@ -1215,17 +1176,17 @@ MenuButtonTextVarProc(clientData, interp, name1, name2, flags)
  * Side effects:
  *	Arranges for the button to get redisplayed.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-MenuButtonImageProc(clientData, x, y, width, height, imgWidth, imgHeight)
-    ClientData clientData;	/* Pointer to widget record. */
-    int x, y;			/* Upper left pixel (within image)
-					 * that must be redisplayed. */
-    int width, height;		/* Dimensions of area to redisplay
-					 * (may be <= 0). */
-    int imgWidth, imgHeight;	/* New dimensions of image. */
+MenuButtonImageProc(
+    ClientData clientData,	/* Pointer to widget record. */
+    int x, int y,		/* Upper left pixel (within image)
+				 * that must be redisplayed. */
+    int width, int height,	/* Dimensions of area to redisplay
+				 * (may be <= 0). */
+    int imgWidth, int imgHeight) /* New dimensions of image. */
 {
     register MenuButton *mbPtr = clientData;
 

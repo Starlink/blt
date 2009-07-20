@@ -1,36 +1,25 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -resize both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -resize both
-#
-# --------------------------------------------------------------------------
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-    namespace import -force blt::tile::*
-}
 source scripts/demo.tcl
-bltdebug watch ResizeEpsItem
+blt::debug watch ResizeEpsItem
+
+proc StartMove { canvas tagName x y } {
+    SaveImageCoords $canvas $tagName $x $y
+    $canvas itemconfigure $tagName-image -quick yes 
+}
+
+proc EndMove { canvas tagName } {
+    $canvas configure -cursor {}
+    $canvas itemconfigure $tagName-image -quick no 
+}
 
 proc MoveEpsItem { canvas tagName x y } {
     global lastX lastY
-    $canvas move $tagName [expr $x - $lastX] [expr $y - $lastY]
-    set lastX $x; set lastY $y
+    $canvas move $tagName \
+	[expr $x - $lastX($tagName)] [expr $y - $lastY($tagName)]
+    set lastX($tagName) $x
+    set lastY($tagName) $y
 }
 
 proc GetEpsBBox { canvas tagName } {
@@ -38,17 +27,24 @@ proc GetEpsBBox { canvas tagName } {
     set anchor [$canvas coords $tagName-image]
     set left [lindex $anchor 0]
     set top [lindex $anchor 1]
-    set width [$canvas itemcget $tagName-image -width]
-    set height [$canvas itemcget $tagName-image -height]
+    if { [$canvas type $tagName-image] == "image" } {
+	set image [$canvas itemcget $tagName-image -image]
+	set width [image width $image]
+	set height [image height $image]
+    } else {
+	set width [$canvas itemcget $tagName-image -width]
+	set height [$canvas itemcget $tagName-image -height]
+    }
     set right [expr $left + $width]
     set bottom [expr $top + $height]
 }
     
-proc SaveImageCoords { canvas x y } {
+proc SaveImageCoords { canvas tagName x y } {
     global lastX lastY 
-    set lastX $x
-    set lastY $y
+    set lastX($tagName) $x
+    set lastY($tagName) $y
     $canvas configure -cursor sb_h_double_arrow
+    $canvas itemconfigure $tagName-image -quick yes 
 }
 
 array set cursors {
@@ -75,8 +71,8 @@ proc StartResize { canvas tagName x y anchor } {
     global cursors
     $canvas configure -cursor $cursors($anchor)
     global lastX lastY 
-    set lastX $x
-    set lastY $y
+    set lastX($tagName) $x
+    set lastY($tagName) $y
 }
 
 proc EndResize { canvas tagName x y anchor } {
@@ -106,7 +102,7 @@ proc ResetGrips { canvas tagName } {
 }
 
 proc ResizeEpsItem { canvas anchor tagName x y } {
-    global lastX lastY left top right bottom 
+    global left top right bottom 
 
     GetEpsBBox $canvas $tagName
     switch $anchor {
@@ -151,25 +147,74 @@ set id 0
 proc MakeEps { canvas {epsFile ""} {imageFile ""} } {
     global numGroups id gripSize image
 
-#    set image [image create photo -width 200 -height 200]
-#    if { $imageFile != "" } {
-#	$image configure -file $imageFile
-#    }
+    set image ""
+    if { $imageFile != "" } {
+        set image [image create picture -file $imageFile]
+    }
     set tagName "epsGroup[incr numGroups]"
     $canvas create eps 20 20 \
 	-anchor nw \
-	-borderwidth 4 \
 	-tags "$tagName $tagName-image" \
 	-titlecolor white \
-	-titlerotate 90 \
+	-titlerotate 0 \
 	-titleanchor nw \
-	-font *helvetica*24* \
+	-font { Courier 24 } \
 	-stipple BLT \
 	-outline orange4 \
 	-fill orange \
 	-file $epsFile \
+	-showimage yes \
+	-image $image 
+    
+    set gripSize 8
+    GetEpsBBox $canvas $tagName
+    global left top right bottom
+    $canvas create rectangle \
+	$left $top [expr $left + $gripSize] [expr $top + $gripSize] \
+	-tags "$tagName $tagName-grip $tagName-nw" \
+	-fill red -outline ""
+    $canvas create rectangle \
+	[expr $right - $gripSize] [expr $bottom - $gripSize] $right $bottom \
+	-tags "$tagName $tagName-grip $tagName-se" \
+	-fill red -outline ""
+    $canvas create rectangle \
+	[expr $right - $gripSize] [expr $top + $gripSize] $right $top \
+	-tags "$tagName $tagName-grip $tagName-ne" \
+	-fill red -outline ""
+    $canvas create rectangle \
+	$left $bottom [expr $left + $gripSize] [expr $bottom - $gripSize] \
+	-tags "$tagName $tagName-grip $tagName-sw" \
+	-fill red -outline ""
 
-#	-image $image 
+    $canvas bind $tagName-image <ButtonPress-1> \
+	 "StartMove $canvas $tagName %x %y"
+    $canvas bind $tagName-image <B1-Motion> \
+	"MoveEpsItem $canvas $tagName %x %y"
+    $canvas bind $tagName <ButtonRelease-1> \
+	"EndMove $canvas $tagName"
+
+    foreach grip { sw ne se nw } {
+	$canvas bind $tagName-$grip <ButtonPress-1> \
+	    "StartResize $canvas $tagName %x %y $grip"
+	$canvas bind $tagName-$grip <B1-Motion> \
+	    "ResizeEpsItem $canvas $grip $tagName %x %y"
+	$canvas bind $tagName-$grip <ButtonRelease-1> \
+	    "EndResize $canvas $tagName %x %y $grip"
+	$canvas raise $tagName-$grip
+    }
+}
+
+proc MakeImage { canvas fileName } {
+    global numGroups id gripSize image
+
+    set image ""
+    set image [image create picture -file $fileName]
+
+    set tagName "epsGroup[incr numGroups]"
+    $canvas create image 20 20 \
+	-anchor nw \
+	-tags "$tagName $tagName-image" \
+	-image $image 
     
     set gripSize 8
     GetEpsBBox $canvas $tagName
@@ -194,7 +239,7 @@ proc MakeEps { canvas {epsFile ""} {imageFile ""} } {
     $canvas bind $tagName <ButtonRelease-1> \
 	"$canvas configure -cursor {}"
     $canvas bind $tagName-image <ButtonPress-1> \
-	"SaveImageCoords $canvas %x %y"
+	"SaveImageCoords $canvas $tagName %x %y"
     $canvas bind $tagName-image <B1-Motion> \
 	"MoveEpsItem $canvas $tagName %x %y"
 
@@ -228,12 +273,14 @@ button .quit -text "Quit" -command {
     exit 0
 }
 
-table . \
+blt::table . \
     0,0 .layout -fill both -cspan 2 \
     1,0 .print \
     1,1 .quit \
 
-table configure . r1 -resize none
+blt::table configure . r1 -resize none
+
+MakeImage .layout test2.gif
 
 foreach file { ./images/out.ps xy.ps test.ps } {
     if { [file exists $file] } {
@@ -241,13 +288,25 @@ foreach file { ./images/out.ps xy.ps test.ps } {
     }
 }
 
+if 0 {
+set image [image create picture -file testImg.jpg]
+.layout create eps 20 20 \
+	-anchor nw \
+        -outline blue \
+        -fill yellow \
+	-showimage yes \
+	-image $image 
+}
+
+
 .layout create rectangle 10 10 50 50 -fill blue -outline white
 
 .layout create text 200 200 \
     -text "This is a text item" \
     -fill yellow \
     -anchor w \
-    -font *helvetica*24*
+    -font { Times 24 }
+
 
 .layout create rectangle 50 50 150 150 -fill green -outline red
 

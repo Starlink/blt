@@ -1,48 +1,51 @@
+
 /*
  * bltCutbuffer.c --
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-1998 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltInt.h"
 
 #ifndef NO_CUTBUFFER
-
+#include "bltOp.h"
 #ifndef WIN32
 #include <X11/Xproto.h>
 #endif
 
 static int
-GetCutNumber(interp, string, bufferPtr)
-    Tcl_Interp *interp;
-    char *string;
-    int *bufferPtr;
+GetCutNumberFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, int *bufferPtr)
 {
     int number;
 
-    if (Tcl_GetInt(interp, string, &number) != TCL_OK) {
+    if (Tcl_GetIntFromObj(interp, objPtr, &number) != TCL_OK) {
 	return TCL_ERROR;
     }
     if ((number < 0) || (number > 7)) {
-	Tcl_AppendResult(interp, "bad buffer # \"", string, "\"", (char *)NULL);
+	Tcl_AppendResult(interp, "bad buffer # \"", Tcl_GetString(objPtr), 
+		"\"", (char *)NULL);
 	return TCL_ERROR;
     }
     *bufferPtr = number;
@@ -51,9 +54,7 @@ GetCutNumber(interp, string, bufferPtr)
 
 /* ARGSUSED */
 static int
-RotateErrorProc(clientData, errEventPtr)
-    ClientData clientData;
-    XErrorEvent *errEventPtr;
+RotateErrorProc(ClientData clientData, XErrorEvent *errEventPtr)
 {
     int *errorPtr = clientData;
 
@@ -62,28 +63,24 @@ RotateErrorProc(clientData, errEventPtr)
 }
 
 static int
-GetOp(interp, tkwin, argc, argv)
-    Tcl_Interp *interp;
-    Tk_Window tkwin;
-    int argc;
-    char **argv;
+GetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
+    Tk_Window tkwin = clientData;
     char *string;
     int buffer;
     int nBytes;
 
     buffer = 0;
-    if (argc == 3) {
-	if (GetCutNumber(interp, argv[2], &buffer) != TCL_OK) {
+    if (objc == 3) {
+	if (GetCutNumberFromObj(interp, objv[2], &buffer) != TCL_OK) {
 	    return TCL_ERROR;
 	}
     }
     string = XFetchBuffer(Tk_Display(tkwin), &nBytes, buffer);
     if (string != NULL) {
 	int limit;
-	register char *p;
-	register int i;
-	int c;
+	char *p;
+	int i;
 
 	if (string[nBytes - 1] == '\0') {
 	    limit = nBytes - 1;
@@ -91,6 +88,8 @@ GetOp(interp, tkwin, argc, argv)
 	    limit = nBytes;
 	}
 	for (p = string, i = 0; i < limit; i++, p++) {
+	    int c;
+
 	    c = (unsigned char)*p;
 	    if (c == 0) {
 		*p = ' ';	/* Convert embedded NUL bytes */
@@ -103,37 +102,33 @@ GetOp(interp, tkwin, argc, argv)
 	     * Need to copy the string into a bigger buffer so we can
 	     * add a NUL byte on the end.
 	     */
-	    newPtr = Blt_Malloc(nBytes + 1);
-	    assert(newPtr);
+	    newPtr = Blt_AssertMalloc(nBytes + 1);
 	    memcpy(newPtr, string, nBytes);
 	    newPtr[nBytes] = '\0';
 	    Blt_Free(string);
 	    string = newPtr;
 	}
-	Tcl_SetResult(interp, string, TCL_DYNAMIC);
+	Tcl_SetStringObj(Tcl_GetObjResult(interp), string, nBytes);
     }
     return TCL_OK;
 }
 
 static int
-RotateOp(interp, tkwin, argc, argv)
-    Tcl_Interp *interp;
-    Tk_Window tkwin;
-    int argc;
-    char **argv;
+RotateOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
+    Tk_Window tkwin = clientData;
     int count;
     int result;
     Tk_ErrorHandler handler;
 
     count = 1;			/* Default: rotate one position */
-    if (argc == 3) {
-	if (Tcl_GetInt(interp, argv[2], &count) != TCL_OK) {
+    if (objc == 3) {
+	if (Tcl_GetIntFromObj(interp, objv[2], &count) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	if ((count < 0) || (count > 8)) {
-	    Tcl_AppendResult(interp, "bad rotate count \"", argv[2], "\"",
-		(char *)NULL);
+	    Tcl_AppendResult(interp, "bad rotate count \"", 
+		Tcl_GetString(objv[2]), "\"", (char *)NULL);
 	    return TCL_ERROR;
 	}
     }
@@ -153,26 +148,26 @@ RotateOp(interp, tkwin, argc, argv)
 
 
 static int
-SetOp(interp, tkwin, argc, argv)
-    Tcl_Interp *interp;
-    Tk_Window tkwin;
-    int argc;
-    char **argv;
+SetOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
+    Tk_Window tkwin = clientData;
     int buffer;
+    char *string;
+    int length;
 
     buffer = 0;
-    if (argc == 4) {
-	if (GetCutNumber(interp, argv[3], &buffer) != TCL_OK) {
+    if (objc == 4) {
+	if (GetCutNumberFromObj(interp, objv[3], &buffer) != TCL_OK) {
 	    return TCL_ERROR;
 	}
     }
-    XStoreBuffer(Tk_Display(tkwin), argv[2], strlen(argv[2]) + 1, buffer);
+    string = Tcl_GetStringFromObj(objv[2],  &length);
+    XStoreBuffer(Tk_Display(tkwin), string, length + 1, buffer);
     return TCL_OK;
 }
 
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * BLT Sub-command specification:
  *
@@ -184,19 +179,19 @@ SetOp(interp, tkwin, argc, argv)
  *	- Maximum number of arguments accepted.
  *	- String to be displayed for usage.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Blt_OpSpec cbOps[] =
 {
-    {"get", 1, (Blt_Op)GetOp, 2, 3, "?buffer?",},
-    {"rotate", 1, (Blt_Op)RotateOp, 2, 3, "?count?",},
-    {"set", 1, (Blt_Op)SetOp, 3, 4, "value ?buffer?",},
+    {"get", 1, GetOp, 2, 3, "?buffer?",},
+    {"rotate", 1, RotateOp, 2, 3, "?count?",},
+    {"set", 1, SetOp, 3, 4, "value ?buffer?",},
 };
 static int numCbOps = sizeof(cbOps) / sizeof(Blt_OpSpec);
 
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * CutBufferCmd --
  *
@@ -204,62 +199,58 @@ static int numCbOps = sizeof(cbOps) / sizeof(Blt_OpSpec);
  *	command. See the user documentation for details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /* ARGSUSED */
 static int
-CutbufferCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Main window associated with
+CutbufferCmd(
+    ClientData clientData,	/* Main window associated with
 				 * interpreter.*/
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
+    Tcl_Interp *interp,		/* Current interpreter. */
+    int objc,			/* Number of arguments. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
     Tk_Window tkwin;
-    Blt_Op proc;
+    Tcl_ObjCmdProc *proc;
     int result;
 
-    proc = Blt_GetOp(interp, numCbOps, cbOps, BLT_OP_ARG1, argc, argv, 0);
+    proc = Blt_GetOpFromObj(interp, numCbOps, cbOps, BLT_OP_ARG1, 
+		    objc, objv, 0);
     if (proc == NULL) {
 	return TCL_ERROR;
     }
     tkwin = Tk_MainWindow(interp);
-    result = (*proc) (interp, tkwin, argc, argv);
+    result = (*proc) (tkwin, interp, objc, objv);
     return result;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Blt_CutbufferInit --
+ * Blt_CutbufferCmdInitProc --
  *
  *	This procedure is invoked to initialize the "cutbuffer" Tcl
  *	command. See the user documentation for details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_CutbufferInit(interp)
-    Tcl_Interp *interp;
+Blt_CutbufferCmdInitProc(Tcl_Interp *interp)
 {
-    static Blt_CmdSpec cmdSpec =
-    {"cutbuffer", CutbufferCmd,};
+    static Blt_InitCmdSpec cmdSpec = {"cutbuffer", CutbufferCmd,};
 
-    if (Blt_InitCmd(interp, "blt", &cmdSpec) == NULL) {
-	return TCL_ERROR;
-    }
-    return TCL_OK;
+    return Blt_InitCmd(interp, "::blt", &cmdSpec);
 }
 
 #endif /* NO_CUTBUFFER */

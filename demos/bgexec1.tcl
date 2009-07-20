@@ -23,7 +23,7 @@ package require BLT
 
 if { $tcl_version >= 8.0 } {
     namespace import blt::*
-    namespace import -force blt::tile::*
+    namespace import -force blt::tk::*
 }
 
 source scripts/demo.tcl
@@ -152,7 +152,7 @@ label .logo
 label .title
 
 # Layout widgets in table
-table . \
+blt::table . \
     .title      0,0 -columnspan 4 \
     .text 	1,0 -columnspan 3 \
     .vscroll 	1,3 -fill y \
@@ -161,10 +161,10 @@ table . \
     .quit  	2,2 
 
 set buttonWidth 1i
-table configure . c1 c2 -width 1i
-table configure . c3 -resize none
-table configure . .stop .quit -reqwidth $buttonWidth -anchor e
-table configure . .title .text -fill both
+blt::table configure . c1 c2 -width 1i
+blt::table configure . c3 -resize none
+blt::table configure . .stop .quit -reqwidth $buttonWidth -anchor e
+blt::table configure . .title .text -fill both
 
 wm min . 0 0
 

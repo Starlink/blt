@@ -1,30 +1,6 @@
 #!../src/bltwish
 
 package require BLT
-# --------------------------------------------------------------------------
-# Starting with Tcl 8.x, the BLT commands are stored in their own 
-# namespace called "blt".  The idea is to prevent name clashes with
-# Tcl commands and variables from other packages, such as a "table"
-# command in two different packages.  
-#
-# You can access the BLT commands in a couple of ways.  You can prefix
-# all the BLT commands with the namespace qualifier "blt::"
-#  
-#    blt::graph .g
-#    blt::table . .g -fill both
-# 
-# or you can import all the command into the global namespace.
-#
-#    namespace import blt::*
-#    graph .g
-#    table . .g -fill both
-#
-# --------------------------------------------------------------------------
-
-if { $tcl_version >= 8.0 } {
-    namespace import blt::*
-#    namespace import -force blt::tile::*
-}
 #source scripts/demo.tcl
 
 #
@@ -94,7 +70,7 @@ proc KeepRaised { w } {
 bind keepRaised <Visibility> { raise %W } 
 
 set file ./images/chalk.gif
-image create photo textureBg -file $file
+image create picture textureBg -file $file
 
 #
 # This never gets used; it's reset by the Animate proc. It's 
@@ -146,23 +122,23 @@ button .newButton -command {
     set name button#${numWin}
     button .f1.$name -text "$name" \
 	-command [list .f1 configure -bg blue]
-    table .f1 \
+    blt::table .f1 \
 	.f1.$name $numWin+3,0 -padx 10 -pady 10
 }
 
-button .holdButton -command {
+label .holdButton -command {
     if { [busy isbusy .f1] == "" } {
         global activeBg
 	.f1 configure -bg $activeBg
     }
-    busy .f1 
-    busy .#menu
+    blt::busy .f1 
+    blt::busy .#menu
     LoseFocus
 }
-button .releaseButton -command {
-    if { [busy isbusy .f1] == ".f1" } {
-        busy release .f1
-        busy release .#menu
+label .releaseButton -command {
+    if { [blt::busy isbusy .f1] == ".f1" } {
+        blt::busy release .f1
+        blt::busy release .#menu
     }
     global normalBg
     .f1 configure -bg $normalBg
@@ -171,33 +147,35 @@ button .releaseButton -command {
 #
 # Notice that the widgets packed in .f1 and .f2 are not their children
 #
-table .f1 \
+blt::table .f1 \
     .testButton 0,0 \
     .scale 1,0 \
     .entry 0,1 \
     .text 1,1 -fill both \
     .quitButton 2,0 
 
-table .f2 \
+blt::table .f2 \
     .newButton 0,0 \
     .holdButton 1,0 \
     .releaseButton 2,0  
 
-table configure .f1 .testButton .scale .entry .quitButton -padx 10 -pady 10 -fill both
-table configure .f2 .newButton .holdButton .releaseButton -padx 10 -pady 10 
-table configure .f2 c0 -resize none
+blt::table configure .f1 .testButton .scale .entry .quitButton \
+    -padx 10 -pady 10 -fill both
+blt::table configure .f2 .newButton .holdButton .releaseButton \
+    -padx 10 -pady 10 
+blt::table configure .f2 c0 -resize none
 #
 # Finally, realize and map the top level window
 #
-table . \
+blt::table . \
     .f1 0,0  \
     .f2 1,0 
 
-table configure . .f1 .f2 -fill both
+blt::table configure . .f1 .f2 -fill both
 # Initialize a list of bitmap file names which make up the animated 
 # fish cursor. The bitmap mask files have a "m" appended to them.
 
-table configure . r1 -resize none
+blt::table configure . r1 -resize none
 
 set bitmapList { left left1 mid right1 right }
 
@@ -212,7 +190,7 @@ proc StartAnimation { widget count } {
     global bitmapList
     set prefix "bitmaps/fish/[lindex $bitmapList $count]"
     set cursor [list @${prefix}.xbm ${prefix}m.xbm black white ]
-    busy configure $widget -cursor $cursor
+    blt::busy configure $widget -cursor $cursor
 
     incr count
     set limit [llength $bitmapList]

@@ -1,85 +1,90 @@
+
 /*
  * bltChain.h --
  *
- * Copyright 1993-2000 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 #ifndef _BLT_CHAIN_H
 #define _BLT_CHAIN_H
 
-typedef struct Blt_ChainLinkStruct Blt_ChainLink;
+typedef struct _Blt_Chain *Blt_Chain;
+typedef struct _Blt_ChainLink *Blt_ChainLink;
 
 /*
  * A Blt_ChainLink is the container structure for the Blt_Chain.
  */
 
-struct Blt_ChainLinkStruct {
-    Blt_ChainLink *prevPtr;	/* Link to the previous link */
-    Blt_ChainLink *nextPtr;	/* Link to the next link */
+struct _Blt_ChainLink {
+    Blt_ChainLink prev;		/* Link to the previous link */
+    Blt_ChainLink next;		/* Link to the next link */
     ClientData clientData;	/* Pointer to the data object */
 };
 
-typedef int (Blt_ChainCompareProc) _ANSI_ARGS_((Blt_ChainLink **l1PtrPtr, 
-	Blt_ChainLink **l2PtrPtr));
+typedef int (Blt_ChainCompareProc)(Blt_ChainLink *l1Ptr, Blt_ChainLink *l2Ptr);
 
 /*
  * A Blt_Chain is a doubly chained list structure.
  */
-typedef struct {
-    Blt_ChainLink *headPtr;	/* Pointer to first element in chain */
-    Blt_ChainLink *tailPtr;	/* Pointer to last element in chain */
-    int nLinks;			/* Number of elements in chain */
-} Blt_Chain;
+struct _Blt_Chain {
+    Blt_ChainLink head;		/* Pointer to first element in chain */
+    Blt_ChainLink tail;		/* Pointer to last element in chain */
+    long nLinks;		/* Number of elements in chain */
+};
 
-extern void Blt_ChainInit _ANSI_ARGS_((Blt_Chain * chainPtr));
-extern Blt_Chain *Blt_ChainCreate _ANSI_ARGS_(());
-extern void Blt_ChainDestroy _ANSI_ARGS_((Blt_Chain * chainPtr));
-extern Blt_ChainLink *Blt_ChainNewLink _ANSI_ARGS_((void));
-extern Blt_ChainLink *Blt_ChainAllocLink _ANSI_ARGS_((unsigned int size));
-extern Blt_ChainLink *Blt_ChainAppend _ANSI_ARGS_((Blt_Chain * chainPtr,
-	ClientData clientData));
-extern Blt_ChainLink *Blt_ChainPrepend _ANSI_ARGS_((Blt_Chain * chainPtr,
-	ClientData clientData));
-extern void Blt_ChainReset _ANSI_ARGS_((Blt_Chain * chainPtr));
-extern void Blt_ChainLinkAfter _ANSI_ARGS_((Blt_Chain * chainPtr,
-	Blt_ChainLink * linkPtr, Blt_ChainLink * afterLinkPtr));
-extern void Blt_ChainLinkBefore _ANSI_ARGS_((Blt_Chain * chainPtr,
-	Blt_ChainLink * linkPtr, Blt_ChainLink * beforeLinkPtr));
-extern void Blt_ChainUnlinkLink _ANSI_ARGS_((Blt_Chain * chainPtr,
-	Blt_ChainLink * linkPtr));
-extern void Blt_ChainDeleteLink _ANSI_ARGS_((Blt_Chain * chainPtr,
-	Blt_ChainLink * linkPtr));
-extern Blt_ChainLink *Blt_ChainGetNthLink _ANSI_ARGS_((Blt_Chain * chainPtr, int n));
-extern void Blt_ChainSort _ANSI_ARGS_((Blt_Chain * chainPtr,
-	Blt_ChainCompareProc * proc));
+BLT_EXTERN void Blt_Chain_Init(Blt_Chain chain);
+BLT_EXTERN Blt_Chain Blt_Chain_Create(void);
+BLT_EXTERN void Blt_Chain_Destroy(Blt_Chain chain);
+BLT_EXTERN Blt_ChainLink Blt_Chain_NewLink(void);
+BLT_EXTERN Blt_ChainLink Blt_Chain_AllocLink(size_t size);
+BLT_EXTERN Blt_ChainLink Blt_Chain_Append(Blt_Chain chain, 
+	ClientData clientData);
+BLT_EXTERN Blt_ChainLink Blt_Chain_Prepend(Blt_Chain chain, 
+	ClientData clientData);
+BLT_EXTERN void Blt_Chain_Reset(Blt_Chain chain);
+BLT_EXTERN void Blt_Chain_InitLink(Blt_ChainLink link);
+BLT_EXTERN void Blt_Chain_LinkAfter(Blt_Chain chain, Blt_ChainLink link, 
+	Blt_ChainLink after);
+BLT_EXTERN void Blt_Chain_LinkBefore(Blt_Chain chain, Blt_ChainLink link, 
+	Blt_ChainLink before);
+BLT_EXTERN void Blt_Chain_UnlinkLink(Blt_Chain chain, Blt_ChainLink link);
+BLT_EXTERN void Blt_Chain_DeleteLink(Blt_Chain chain, Blt_ChainLink link);
+BLT_EXTERN Blt_ChainLink Blt_Chain_GetNthLink(Blt_Chain chain, long position);
+BLT_EXTERN void Blt_Chain_Sort(Blt_Chain chain, Blt_ChainCompareProc *proc);
+BLT_EXTERN int Blt_Chain_IsBefore(Blt_ChainLink first, Blt_ChainLink last);
 
-#define Blt_ChainGetLength(c)	(((c) == NULL) ? 0 : (c)->nLinks)
-#define Blt_ChainFirstLink(c)	(((c) == NULL) ? NULL : (c)->headPtr)
-#define Blt_ChainLastLink(c)	(((c) == NULL) ? NULL : (c)->tailPtr)
-#define Blt_ChainPrevLink(l)	((l)->prevPtr)
-#define Blt_ChainNextLink(l) 	((l)->nextPtr)
-#define Blt_ChainGetValue(l)  	((l)->clientData)
-#define Blt_ChainSetValue(l, value) ((l)->clientData = (ClientData)(value))
-#define Blt_ChainAppendLink(c, l) \
-	(Blt_ChainLinkBefore((c), (l), (Blt_ChainLink *)NULL))
-#define Blt_ChainPrependLink(c, l) \
-	(Blt_ChainLinkAfter((c), (l), (Blt_ChainLink *)NULL))
+#define Blt_Chain_GetLength(c)	(((c) == NULL) ? 0 : (c)->nLinks)
+#define Blt_Chain_FirstLink(c)	(((c) == NULL) ? NULL : (c)->head)
+#define Blt_Chain_LastLink(c)	(((c) == NULL) ? NULL : (c)->tail)
+#define Blt_Chain_PrevLink(l)	((l)->prev)
+#define Blt_Chain_NextLink(l) 	((l)->next)
+#define Blt_Chain_GetValue(l)  	((l)->clientData)
+#define Blt_Chain_FirstValue(c)	(((c)->head == NULL) ? NULL : (c)->head->clientData)
+#define Blt_Chain_SetValue(l, value) ((l)->clientData = (ClientData)(value))
+#define Blt_Chain_AppendLink(c, l) \
+	(Blt_Chain_LinkAfter((c), (l), (Blt_ChainLink)NULL))
+#define Blt_Chain_PrependLink(c, l) \
+	(Blt_Chain_LinkBefore((c), (l), (Blt_ChainLink)NULL))
 
 #endif /* _BLT_CHAIN_H */

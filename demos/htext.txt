@@ -5,27 +5,27 @@ This widget combines text and other Tk widgets in the same window.
 It is sort of a cross between a read-only text widget and the pack command.
 Any widget can be attached to the hypertext window by the %% 
 set this $htext(widget)
-label $this.lab -text "append " -relief sunken \
+blt::tile::label $this.lab -text "append " -relief sunken \
         -font *-Courier-Bold-R-Normal-*-12-120-*
 $this append $this.lab 
 %% command.
 For example,
 %% message $this.msg -relief sunken -bd 2 -aspect 10000 -font \
  *-Courier-Medium-R-Normal-*-12-* -text {set w $htext(widget)
-label $w.face -bitmap @bitmaps/face.xbm \ 
+blt::tile::label $w.face -bitmap @bitmaps/face.xbm \ 
   -relief sunken -borderwidth 2
 $w append $w.face -padx 2 -pady 0.25i}
 $this append $this.msg \
         -fill both %% added this %%
 global tk_library
-label $this.face \
+blt::tile::label $this.face \
         -bitmap @bitmaps/face.xbm  \
         -relief sunken -borderwidth 2
 $this append $this.face -padx 2 -pady 0.25i 
 %%.
 There can be many types of widgets in the same document.  For example,
 this is a simple %% 
-button $this.but -bg pink -text { button } \
+blt::tile::button $this.but -bg pink -text { button } \
   -command { puts stderr { a stupid message } } 
 $this append $this.but 
 %%. If you click on the button, it prints a stupid message.
@@ -35,16 +35,16 @@ proc ChangeTile { w } {
    global whichTile
 
    if { $whichTile } {
-        $w configure -tile bgTexture2
+        $w configure -bg $bg2
    } else {
-	$w configure -tile bgTexture1
+	$w configure -bg $bg1
    }
 }
-checkbutton $this.ckbut -bg lightblue -text { check buttons } \
+blt::tile::checkbutton $this.ckbut -bg lightblue -text { check buttons } \
    -variable whichTile -command "ChangeTile $this" 
 $this append $this.ckbut -justify top
 %%, %%
-radiobutton $this.rdbut -bg mediumseagreen -text { radio buttons } \
+blt::tile::radiobutton $this.rdbut -bg mediumseagreen -text { radio buttons } \
         -command { puts stderr { radio button pressed } } 
 $this append $this.rdbut -justify bottom
 %%, 
@@ -137,7 +137,7 @@ $this append $w
 %%
 proc makeplot { widget } {
 
-    graph $widget
+    blt::graph $widget
     set X { 
         2.00000e-01 4.00000e-01 6.00000e-01 8.00000e-01 1.00000e+00 
         1.20000e+00 1.40000e+00 1.60000e+00 1.80000e+00 2.00000e+00 
@@ -583,7 +583,7 @@ option add *barchart.Axis.Font *-Courier-Bold-R-Normal-*-8-80-*
 option add *barchart.y2.hide yes
 
 set barchart $this.barchart
-barchart $barchart -bd 2 -relief raised  -tile bgTexture2
+blt::barchart $barchart -bd 2 -relief raised  -bg $bg2
 $barchart y2axis use y
 $this append $barchart -fill both -padx 10 -pady 10 -relwidth 0.8
 

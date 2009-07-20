@@ -3,13 +3,13 @@
 #       Makefile for demonstation shell of BLT library
 # ------------------------------------------------------------------------
 
-include ./win/makedefs
+include vc.config
+srcdir = $(TOP)
 
 # ------------------------------------------------------------------------
 #       Source and target installation directories
 # ------------------------------------------------------------------------
 
-srcdir =	.
 instdirs =	$(prefix) $(exec_prefix) $(bindir) $(libdir) $(includedir)
 
 # ------------------------------------------------------------------------

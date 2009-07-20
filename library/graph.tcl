@@ -1,4 +1,252 @@
 
+namespace eval ::blt::legend {
+    variable Priv 
+    array set Priv {
+	afterId ""
+	set scroll 0
+	set space   off
+	set x 0
+	set y 0
+    }
+}
+
+# ----------------------------------------------------------------------
+#
+# Initialize --
+#
+#	Invoked by internally by Treeview_Init routine.  Initializes
+#	the default bindings for the treeview widget entries.  These
+#	are local to the widget, so they can't be set through the
+#	widget's class bind tags.
+#
+# ----------------------------------------------------------------------
+proc blt::LegendSelections { w } {
+    if 0 {
+    #
+    # Active entry bindings
+    #
+    $w legend bind all <Enter> { 
+	%W entry highlight current 
+    }
+    $w legend bind all <Leave> { 
+	%W entry highlight "" 
+    }
+    }
+
+    #
+    # ButtonPress-1
+    #
+    #	Performs the following operations:
+    #
+    #	1. Clears the previous selection.
+    #	2. Selects the current entry.
+    #	3. Sets the focus to this entry.
+    #	4. Scrolls the entry into view.
+    #	5. Sets the selection anchor to this entry, just in case
+    #	   this is "multiple" mode.
+    #
+    
+    $w legend bind all <ButtonPress-1> { 	
+	blt::legend::SetSelectionAnchor %W current
+	set blt::legend::Priv(scroll) 1
+    }
+
+    #
+    # B1-Motion
+    #
+    #	For "multiple" mode only.  Saves the current location of the
+    #	pointer for auto-scrolling.  Resets the selection mark.  
+    #
+    $w legend bind all <B1-Motion> { 
+	set blt::legend::Priv(x) %x
+	set blt::legend::Priv(y) %y
+	set elem [%W legend get @%x,%y]
+	if { $elem != "" } {
+	    if { [%W legend cget -selectmode] == "multiple" } {
+		%W legend selection mark $elem
+	    } else {
+		blt::legend::SetSelectionAnchor %W $elem
+	    }
+	}
+    }
+
+    #
+    # ButtonRelease-1
+    #
+    #	For "multiple" mode only.  
+    #
+    $w legend bind all <ButtonRelease-1> { 
+	if { [%W legend cget -selectmode] == "multiple" } {
+	    %W legend selection anchor current
+	}
+	after cancel $blt::legend::Priv(afterId)
+	set blt::legend::Priv(scroll) 0
+    }
+
+    #
+    # Shift-ButtonPress-1
+    #
+    #	For "multiple" mode only.
+    #
+
+    $w legend bind all <Shift-ButtonPress-1> { 
+	if { [%W legend cget -selectmode] == "multiple" && 
+	     [%W legend selection present] } {
+	    if { [%W legend get anchor] == "" } {
+		%W legend selection anchor current
+	    }
+	    set elem [%W legend get anchor]
+	    %W legend selection clearall
+	    %W legend selection set $elem current
+	} else {
+	    blt::legend::SetSelectionAnchor %W current
+	}
+    }
+    $w legend bind all <Shift-Double-ButtonPress-1> {
+	# do nothing
+    }
+    $w legend bind all <Shift-B1-Motion> { 
+	# do nothing
+    }
+    $w legend bind all <Shift-ButtonRelease-1> { 
+	after cancel $blt::legend::Priv(afterId)
+	set blt::legend::Priv(scroll) 0
+    }
+
+    #
+    # Control-ButtonPress-1
+    #
+    #	For "multiple" mode only.  
+    #
+    $w legend bind all <Control-ButtonPress-1> { 
+	if { [%W legend cget -selectmode] == "multiple" } {
+	    set elem [%W legend get current]
+	    %W legend selection toggle $elem
+	    %W legend selection anchor $elem
+	} else {
+	    blt::legend::SetSelectionAnchor %W current
+	}
+    }
+    $w legend bind all <Control-Double-ButtonPress-1> {
+	# do nothing
+    }
+    $w legend bind all <Control-B1-Motion> { 
+	# do nothing
+    }
+    $w legend bind all <Control-ButtonRelease-1> { 
+	after cancel $blt::legend::Priv(afterId)
+	set blt::legend::Priv(scroll) 0
+    }
+
+    $w legend bind all <Control-Shift-ButtonPress-1> { 
+	if { [%W legend cget -selectmode] == "multiple" && 
+	     [%W legend selection present] } {
+	    if { [%W legend get anchor] == "" } {
+		%W selection anchor current
+	    }
+	    if { [%W legend selection includes anchor] } {
+		%W legend selection set anchor current
+	    } else {
+		%W legend selection clear anchor current
+		%W legend selection set current
+	    }
+	} else {
+	    blt::legend::SetSelectionAnchor %W current
+	}
+    }
+    $w legend bind all <Control-Shift-Double-ButtonPress-1> {
+	# do nothing
+    }
+    $w legend bind all <Control-Shift-B1-Motion> { 
+	# do nothing
+    }
+    $w legend bind all <KeyPress-Up> {
+	blt::legend::MoveFocus %W previous.row
+	if { $blt::legend::Priv(space) } {
+	    %W legend selection toggle focus
+	}
+    }
+    $w legend bind all <KeyPress-Down> {
+	blt::legend::MoveFocus %W next.row
+	if { $blt::legend::Priv(space) } {
+	    %W legend selection toggle focus
+	}
+    }
+    $w legend bind all <KeyPress-Left> {
+	blt::legend::MoveFocus %W previous.column
+	if { $blt::legend::Priv(space) } {
+	    %W legend selection toggle focus
+	}
+    }
+    $w legend bind all <KeyPress-Right> {
+	blt::legend::MoveFocus %W next.column
+	if { $blt::legend::Priv(space) } {
+	    %W legend selection toggle focus
+	}
+    }
+    $w legend bind all <KeyPress-space> {
+	if { [%W legend cget -selectmode] == "single" } {
+	    if { [%W legend selection includes focus] } {
+		%W legend selection clearall
+	    } else {
+		%W legend selection clearall
+		%W legend selection set focus
+	    }
+	} else {
+	    %W legend selection toggle focus
+	}
+	set blt::legend::Priv(space) on
+    }
+
+    $w legend bind all <KeyRelease-space> { 
+	set blt::legend::Priv(space) off
+    }
+    $w legend bind all <KeyPress-Return> {
+	blt::legend::MoveFocus %W focus
+	set blt::legend::Priv(space) on
+    }
+    $w legend bind all <KeyRelease-Return> { 
+	set blt::legend::Priv(space) off
+    }
+    $w legend bind all <KeyPress-Home> {
+	blt::legend::MoveFocus %W first
+    }
+    $w legend bind all <KeyPress-End> {
+	blt::tv::MoveFocus %W last
+    }
+}
+
+proc blt::legend::SetSelectionAnchor { w tagOrId } {
+    set elem [$w legend get $tagOrId]
+    # If the anchor hasn't changed, don't do anything
+    if { $elem != [$w legend get anchor] } {
+	$w legend selection clearall
+	$w legend focus $elem
+	$w legend selection set $elem
+	$w legend selection anchor $elem
+    }
+}
+
+# ----------------------------------------------------------------------
+#
+# MoveFocus --
+#
+#	Invoked by KeyPress bindings.  Moves the active selection to
+#	the entry <where>, which is an index such as "up", "down",
+#	"prevsibling", "nextsibling", etc.
+#
+# ----------------------------------------------------------------------
+proc blt::legend::MoveFocus { w elem } {
+    catch {$w legend focus $elem} result
+    puts stderr "result=$result elem=$elem"
+    if { [$w legend cget -selectmode] == "single" } {
+        $w legend selection clearall
+        $w legend selection set focus
+	$w legend selection anchor focus
+    }
+}
+
+
 proc Blt_ActiveLegend { graph } {
     $graph legend bind all <Enter> [list blt::ActivateLegend $graph ]
     $graph legend bind all <Leave> [list blt::DeactivateLegend $graph]
@@ -41,14 +289,16 @@ proc blt::DeactivateLegend { graph } {
 
 proc blt::HighlightLegend { graph } {
     set elem [$graph legend get current]
-    set relief [$graph element cget $elem -labelrelief]
-    if { $relief == "flat" } {
+    if { $elem != ""  } {
+      set relief [$graph element cget $elem -labelrelief]
+      if { $relief == "flat" } {
 	$graph element configure $elem -labelrelief raised
 	$graph element activate $elem
-    } else {
+      } else {
 	$graph element configure $elem -labelrelief flat
 	$graph element deactivate $elem
-    }
+      }
+   }
 }
 
 proc blt::Crosshairs { graph {event "Any-Motion"} {state "on"}} {
@@ -129,7 +379,8 @@ proc blt::RemoveBindTag { widget tag } {
 }
 
 proc blt::FindElement { graph x y } {
-    if ![$graph element closest $x $y info -interpolate yes] {
+    array set info [$graph element closest $x $y -interpolate yes]
+    if { ![info exists info(name)] } {
 	beep
 	return
     }
@@ -145,7 +396,7 @@ proc blt::FindElement { graph x y } {
     $graph marker create text -coords { $info(x) $info(y) } \
 	-name $markerName \
 	-text "$info(name): $info(dist)\nindex $info(index)" \
-	-font *lucida*-r-*-10-* \
+	-font "Arial 6" \
 	-anchor center -justify left \
 	-yoffset 0 -bg {} 
 
@@ -188,8 +439,16 @@ proc blt::GetCoords { graph x y index } {
 
 proc blt::MarkPoint { graph index } {
     global zoomInfo
-    set x [$graph xaxis invtransform $zoomInfo($graph,$index,x)]
-    set y [$graph yaxis invtransform $zoomInfo($graph,$index,y)]
+    if { [llength [$graph xaxis use]] > 0 } {
+	set x [$graph xaxis invtransform $zoomInfo($graph,$index,x)]
+    } else if { [llength [$graph x2axis use]] > 0 } {
+	set x [$graph x2axis invtransform $zoomInfo($graph,$index,x)]
+    }
+    if { [llength [$graph yaxis use]] > 0 } {
+	set y [$graph yaxis invtransform $zoomInfo($graph,$index,y)]
+    } else if { [llength [$graph y2axis use]] > 0 } {
+	set y [$graph y2axis invtransform $zoomInfo($graph,$index,y)]
+    }
     set marker "zoomText_$index"
     set text [format "x=%.4g\ny=%.4g" $x $y] 
 
@@ -197,7 +456,7 @@ proc blt::MarkPoint { graph index } {
      	$graph marker configure $marker -coords { $x $y } -text $text 
     } else {
     	$graph marker create text -coords { $x $y } -name $marker \
-   	    -font *lucida*-r-*-10-* \
+   	    -font "mathmatica1 10" \
 	    -text $text -anchor center -bg {} -justify left
     }
 }
@@ -250,38 +509,64 @@ proc blt::PushZoom { graph } {
 	foreach axis [$graph $margin use] {
 	    set min [$graph axis cget $axis -min] 
 	    set max [$graph axis cget $axis -max]
-	    set c [list $graph axis configure $axis -min $min -max $max]
+	    set logscale  [$graph axis cget $axis -logscale]
+	    # Save the current scale (log or linear) so that we can restore
+	    # it.  This is for the case where the user changes to logscale
+	    # while zooming.  A previously pushed axis limit could be
+	    # negative.  It seems better for popping the zoom stack to restore
+	    # a previous view (not convert the ranges).
+	    set c [list $graph axis configure $axis]
+	    lappend c -min $min -max $max -logscale $logscale
 	    append cmd "$c\n"
 	}
     }
+
+    # This effectively pushes the command to reset the graph to the current
+    # zoom level onto the stack.  This is useful if the new axis ranges are
+    # bad and we need to reset the zoom stack.
     set zoomInfo($graph,stack) [linsert $zoomInfo($graph,stack) 0 $cmd]
 
-
     foreach margin { xaxis x2axis } {
+	if { [$graph $margin cget -hide] } {
+	    continue;		# Don't set zoom on axes not displayed.
+	}
 	foreach axis [$graph $margin use] {
 	    set min [$graph axis invtransform $axis $x1]
 	    set max [$graph axis invtransform $axis $x2]
-	    if { $min > $max } { 
-		$graph axis configure $axis -min $max -max $min
-	    } else {
-		$graph axis configure $axis -min $min -max $max
+	    if { ![SetAxisRanges $graph $axis $min $max] } {
+		blt::PopZoom $graph
+		bell
+		return
 	    }
 	}
     }
     foreach margin { yaxis y2axis } {
+	if { [$graph $margin cget -hide] } {
+	    continue;		# Don't set zoom on axes not displayed. 
+	}
 	foreach axis [$graph $margin use] {
 	    set min [$graph axis invtransform $axis $y1]
 	    set max [$graph axis invtransform $axis $y2]
-	    if { $min > $max } { 
-		$graph axis configure $axis -min $max -max $min
-	    } else {
-		$graph axis configure $axis -min $min -max $max
+	    if { ![SetAxisRanges $graph $axis $min $max] } {
+		blt::PopZoom $graph
+		bell
+		return
 	    }
 	}
     }
     busy hold $graph 
     update;				# This "update" redraws the graph
     busy release $graph
+}
+
+proc blt::SetAxisRanges { graph axis min max } {
+    if { $min > $max } { 
+	set tmp $max; set max $min; set min $tmp
+    }
+    if { [catch { $graph axis configure $axis -min $min -max $max }] != 0 } {
+	return 0
+    }
+    return 1
 }
 
 #
@@ -313,7 +598,7 @@ proc blt::ResetZoom { graph } {
     }
 }
 
-option add *zoomTitle.font	  -*-helvetica-medium-R-*-*-18-*-*-*-*-*-*-* 
+option add *zoomTitle.font	  "Arial 14"
 option add *zoomTitle.shadow	  yellow4
 option add *zoomTitle.foreground  yellow1
 option add *zoomTitle.coords	  "-Inf Inf"
@@ -385,6 +670,8 @@ proc blt::MarchingAnts { graph offset } {
     global zoomInfo
 
     incr offset
+    # wrap the counter after 2^16
+    set offset [expr $offset & 0xFFFF]
     if { [$graph marker exists zoomOutline] } {
 	$graph marker configure zoomOutline -dashoffset $offset 
 	set interval $zoomInfo($graph,interval)
@@ -434,50 +721,50 @@ proc Blt_PostScriptDialog { graph } {
     set row 1
     set col 0
     label $top.title -text "PostScript Options"
-    table $top $top.title -cspan 7
+    blt::table $top $top.title -cspan 7
     foreach bool { center landscape maxpect preview decorations } {
 	set w $top.$bool-label
-	label $w -text "-$bool" -font *courier*-r-*12* 
-	table $top $row,$col $w -anchor e -pady { 2 0 } -padx { 0 4 }
+	label $w -text "-$bool" -font "courier 12"
+	blt::table $top $row,$col $w -anchor e -pady { 2 0 } -padx { 0 4 }
 	set w $top.$bool-yes
 	global $graph.$bool
 	radiobutton $w -text "yes" -variable $graph.$bool -value 1
-	table $top $row,$col+1 $w -anchor w
+	blt::table $top $row,$col+1 $w -anchor w
 	set w $top.$bool-no
 	radiobutton $w -text "no" -variable $graph.$bool -value 0
-	table $top $row,$col+2 $w -anchor w
+	blt::table $top $row,$col+2 $w -anchor w
 	incr row
     }
-    label $top.modes -text "-colormode" -font *courier*-r-*12* 
-    table $top $row,0 $top.modes -anchor e  -pady { 2 0 } -padx { 0 4 }
+    label $top.modes -text "-colormode" -font "courier 12"
+    blt::table $top $row,0 $top.modes -anchor e  -pady { 2 0 } -padx { 0 4 }
     set col 1
     foreach m { color greyscale } {
 	set w $top.$m
 	radiobutton $w -text $m -variable $graph.colormode -value $m
-	table $top $row,$col $w -anchor w
+	blt::table $top $row,$col $w -anchor w
 	incr col
     }
     set row 1
     frame $top.sep -width 2 -bd 1 -relief sunken
-    table $top $row,3 $top.sep -fill y -rspan 6
+    blt::table $top $row,3 $top.sep -fill y -rspan 6
     set col 4
     foreach value { padx pady paperwidth paperheight width height } {
 	set w $top.$value-label
-	label $w -text "-$value" -font *courier*-r-*12* 
-	table $top $row,$col $w -anchor e  -pady { 2 0 } -padx { 0 4 }
+	label $w -text "-$value" -font "courier 12"
+	blt::table $top $row,$col $w -anchor e  -pady { 2 0 } -padx { 0 4 }
 	set w $top.$value-entry
 	global $graph.$value
 	entry $w -textvariable $graph.$value -width 8
-	table $top $row,$col+1 $w -cspan 2 -anchor w -padx 8
+	blt::table $top $row,$col+1 $w -cspan 2 -anchor w -padx 8
 	incr row
     }
-    table configure $top c3 -width .125i
+    blt::table configure $top c3 -width .125i
     button $top.cancel -text "Cancel" -command "destroy $top"
-    table $top $row,0 $top.cancel  -width 1i -pady 2 -cspan 3
+    blt::table $top $row,0 $top.cancel  -width 1i -pady 2 -cspan 3
     button $top.reset -text "Reset" -command "destroy $top"
-    #table $top $row,1 $top.reset  -width 1i
+    #blt::table $top $row,1 $top.reset  -width 1i
     button $top.print -text "Print" -command "blt::ResetPostScript $graph"
-    table $top $row,4 $top.print  -width 1i -pady 2 -cspan 2
+    blt::table $top $row,4 $top.print  -width 1i -pady 2 -cspan 2
 }
 
 proc blt::ResetPostScript { graph } {

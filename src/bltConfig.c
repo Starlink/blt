@@ -1,172 +1,598 @@
-/*
+
+/* 
  * bltConfig.c --
  *
- *	This module implements custom configuration options for the BLT
- *	toolkit.
+ * This file contains a Tcl_Obj based replacement for the widget
+ * configuration functions in Tk.
  *
- * Copyright 1991-1998 Lucent Technologies, Inc.
+ *	Copyright (c) 1990-1994 The Regents of the University of California.
+ *	Copyright (c) 1994-1997 Sun Microsystems, Inc.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	See the file "license.terms" for information on usage and redistribution
+ *	of this file, and for a DISCLAIMER OF ALL WARRANTIES.
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	Copyright 2003-2004 George A Howlett.
+ *
+ *	Permission is hereby granted, free of charge, to any person
+ *	obtaining a copy of this software and associated documentation
+ *	files (the "Software"), to deal in the Software without
+ *	restriction, including without limitation the rights to use,
+ *	copy, modify, merge, publish, distribute, sublicense, and/or
+ *	sell copies of the Software, and to permit persons to whom the
+ *	Software is furnished to do so, subject to the following
+ *	conditions:
+ *
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the
+ *	Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+ *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+ *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*
+ * This is a Tcl_Obj based replacement for the widget configuration
+ * functions in Tk.  
+ *
+ * What not use the new Tk_Option interface?
+ *
+ *	There were design changes in the new Tk_Option interface that
+ *	make it unwieldy.  
+ *
+ *	o You have to dynamically allocate, store, and deallocate
+ *	  your option table.  
+ *      o The Tk_FreeConfigOptions routine requires a tkwin argument.
+ *	  Unfortunately, most widgets save the display pointer and 
+ *	  deference their tkwin when the window is destroyed.  
+ *	o There's no TK_CONFIG_CUSTOM functionality.  This means that
+ *	  save special options must be saved as strings by 
+ *	  Tk_ConfigureWidget and processed later, thus losing the 
+ *	  benefits of Tcl_Objs.  It also make error handling 
+ *	  problematic, since you don't pick up certain errors like 
+ *	  
+ *	    .widget configure -myoption bad -myoption good
+ *        
+ *	  You will never see the first "bad" value.
+ *	o Especially compared to the former Tk_ConfigureWidget calls,
+ *	  the new interface is overly complex.  If there was a big
+ *	  performance win, it might be worth the effort.  But let's 
+ *	  face it, this biggest wins are in processing custom options
+ *	  values with thousands of elements.  Most common resources 
+ *	  (font, color, etc) have string tokens anyways.
+ *
+ *	On the other hand, the replacement functions in this file fell
+ *	into place quite easily both from the aspect of API writer and
+ *	user.  The biggest benefit is that you don't need to change lots
+ *	of working code just to get the benefits of Tcl_Objs.
+ * 
  */
 
 #include "bltInt.h"
-#if defined(__STDC__)
+
 #include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
+#include "bltFont.h"
+#include "bltPicture.h"
+#include "bltBgStyle.h"
 
-#include "bltTile.h"
-
-static int StringToFill _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, Tk_Window tkwin, char *string, char *widgRec,
-	int flags));
-static char *FillToString _ANSI_ARGS_((ClientData, Tk_Window, char *, int,
-	Tcl_FreeProc **));
-
-Tk_CustomOption bltFillOption =
+#if (_TK_VERSION < _VERSION(8,1,0))
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Tk_GetAnchorFromObj --
+ *
+ *	Return a Tk_Anchor value based on the value of the objPtr.
+ *
+ * Results:
+ *	The return value is a standard TCL result. If an error occurs during
+ *	conversion, an error message is left in the interpreter's result
+ *	unless "interp" is NULL.
+ *
+ * Side effects:
+ *	The object gets converted by Tcl_GetIndexFromObj.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Tk_GetAnchorFromObj(
+    Tcl_Interp *interp,		/* Used for error reporting. */
+    Tcl_Obj *objPtr,		/* The object we are trying to get the 
+				 * value from. */
+    Tk_Anchor *anchorPtr)	/* Where to place the Tk_Anchor that
+				 * corresponds to the string value of
+				 * objPtr. */
 {
-    StringToFill, FillToString, (ClientData)0
-};
-
-static int StringToPad _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, Tk_Window tkwin, char *string, char *widgRec,
-	int offset));
-static char *PadToString _ANSI_ARGS_((ClientData clientData, Tk_Window tkwin,
-	char *widgRec, int offset, Tcl_FreeProc **freeProcPtr));
-
-Tk_CustomOption bltPadOption =
-{
-    StringToPad, PadToString, (ClientData)0
-};
-
-static int StringToDistance _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, Tk_Window tkwin, char *string, char *widgRec,
-	int flags));
-static char *DistanceToString _ANSI_ARGS_((ClientData, Tk_Window, char *, int,
-	Tcl_FreeProc **));
-
-Tk_CustomOption bltDistanceOption =
-{
-    StringToDistance, DistanceToString, (ClientData)PIXELS_NONNEGATIVE
-};
-
-Tk_CustomOption bltPositiveDistanceOption =
-{
-    StringToDistance, DistanceToString, (ClientData)PIXELS_POSITIVE
-};
-
-Tk_CustomOption bltAnyDistanceOption =
-{
-    StringToDistance, DistanceToString, (ClientData)PIXELS_ANY
-};
-
-static int StringToCount _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, Tk_Window tkwin, char *string, char *widgRec,
-	int flags));
-static char *CountToString _ANSI_ARGS_((ClientData, Tk_Window, char *, int,
-	Tcl_FreeProc **));
-
-Tk_CustomOption bltCountOption =
-{
-    StringToCount, CountToString, (ClientData)COUNT_NONNEGATIVE
-};
-
-Tk_CustomOption bltPositiveCountOption =
-{
-    StringToCount, CountToString, (ClientData)COUNT_POSITIVE
-};
-
-static int StringToDashes _ANSI_ARGS_((ClientData, Tcl_Interp *, Tk_Window,
-	char *, char *, int));
-static char *DashesToString _ANSI_ARGS_((ClientData, Tk_Window, char *, int,
-	Tcl_FreeProc **));
-
-Tk_CustomOption bltDashesOption =
-{
-    StringToDashes, DashesToString, (ClientData)0
-};
-
-static int StringToShadow _ANSI_ARGS_((ClientData clientData, Tcl_Interp *interp,
-	Tk_Window tkwin, char *string, char *widgRec, int offset));
-static char *ShadowToString _ANSI_ARGS_((ClientData clientData, Tk_Window tkwin,
-	char *widgRec, int offset, Tcl_FreeProc **freeProcPtr));
-
-Tk_CustomOption bltShadowOption =
-{
-    StringToShadow, ShadowToString, (ClientData)0
-};
-
-static int StringToUid _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, Tk_Window tkwin, char *string, char *widgRec,
-	int flags));
-static char *UidToString _ANSI_ARGS_((ClientData, Tk_Window, char *, int,
-	Tcl_FreeProc **));
-
-Tk_CustomOption bltUidOption =
-{
-    StringToUid, UidToString, (ClientData)0
-};
-
-static int StringToState _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *interp, Tk_Window tkwin, char *string, char *widgRec,
-	int flags));
-static char *StateToString _ANSI_ARGS_((ClientData, Tk_Window, char *, int,
-	Tcl_FreeProc **));
-
-Tk_CustomOption bltStateOption =
-{
-    StringToState, StateToString, (ClientData)0
-};
-
-static int StringToList _ANSI_ARGS_((ClientData clientData, Tcl_Interp *interp,
-	Tk_Window tkwin, char *string, char *widgRec, int flags));
-static char *ListToString _ANSI_ARGS_((ClientData, Tk_Window, char *, int,
-	Tcl_FreeProc **));
-
-Tk_CustomOption bltListOption =
-{
-    StringToList, ListToString, (ClientData)0
-};
-
-static int StringToTile _ANSI_ARGS_((ClientData clientData, Tcl_Interp *interp,
-	Tk_Window tkwin, char *value, char *widgRec, int flags));
-static char *TileToString _ANSI_ARGS_((ClientData clientData, Tk_Window tkwin,
-	char *widgRec, int offset, Tcl_FreeProc **freeProcPtr));
-
-Tk_CustomOption bltTileOption =
-{
-    StringToTile, TileToString, (ClientData)0
-};
+    return Tk_GetAnchor(interp, Tcl_GetString(objPtr), anchorPtr);
+}
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
+ *
+ * Tk_GetJustifyFromObj --
+ *
+ *	Return a Tk_Justify value based on the value of the objPtr.
+ *
+ * Results:
+ *	The return value is a standard TCL result. If an error occurs during
+ *	conversion, an error message is left in the interpreter's result
+ *	unless "interp" is NULL.
+ *
+ * Side effects:
+ *	The object gets converted by Tcl_GetIndexFromObj.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Tk_GetJustifyFromObj(
+    Tcl_Interp *interp,		/* Used for error reporting. */
+    Tcl_Obj *objPtr,		/* The object we are trying to get the 
+				 * value from. */
+    Tk_Justify *justifyPtr)	/* Where to place the Tk_Justify that
+				 * corresponds to the string value of
+				 * objPtr. */
+{
+    return Tk_GetJustify(interp, Tcl_GetString(objPtr), justifyPtr);
+}
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Tk_GetReliefFromObj --
+ *
+ *	Return an integer value based on the value of the objPtr.
+ *
+ * Results:
+ *	The return value is a standard TCL result. If an error occurs during
+ *	conversion, an error message is left in the interpreter's result
+ *	unless "interp" is NULL.
+ *
+ * Side effects:
+ *	The object gets converted by Tcl_GetIndexFromObj.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Tk_GetReliefFromObj(
+    Tcl_Interp *interp,		/* Used for error reporting. */
+    Tcl_Obj *objPtr,		/* The object we are trying to get the 
+				 * value from. */
+    int *reliefPtr)		/* Where to place the answer. */
+{
+    return Tk_GetRelief(interp, Tcl_GetString(objPtr), reliefPtr);
+}
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Tk_GetMMFromObj --
+ *
+ *	Attempt to return an mm value from the TCL object "objPtr". If the
+ *	object is not already an mm value, an attempt will be made to convert
+ *	it to one.
+ *
+ * Results:
+ *	The return value is a standard TCL object result. If an error occurs
+ *	during conversion, an error message is left in the interpreter's
+ *	result unless "interp" is NULL.
+ *
+ * Side effects:
+ *	If the object is not already a pixel, the conversion will free
+ *	any old internal representation. 
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Tk_GetMMFromObj(
+    Tcl_Interp *interp, 	/* Used for error reporting if not NULL. */
+    Tk_Window tkwin,
+    Tcl_Obj *objPtr,		/* The object from which to get mms. */
+    double *doublePtr)		/* Place to store resulting millimeters. */
+{
+    return Tk_GetScreenMM(interp, tkwin, Tcl_GetString(objPtr), doublePtr);
+}
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Tk_GetPixelsFromObj --
+ *
+ *	Attempt to return a pixel value from the TCL object "objPtr". If the
+ *	object is not already a pixel value, an attempt will be made to convert
+ *	it to one.
+ *
+ * Results:
+ *	The return value is a standard TCL object result. If an error occurs
+ *	during conversion, an error message is left in the interpreter's
+ *	result unless "interp" is NULL.
+ *
+ * Side effects:
+ *	If the object is not already a pixel, the conversion will free
+ *	any old internal representation. 
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Tk_GetPixelsFromObj(
+    Tcl_Interp *interp, 	/* Used for error reporting if not NULL. */
+    Tk_Window tkwin,
+    Tcl_Obj *objPtr,		/* The object from which to get pixels. */
+    int *intPtr)		/* Place to store resulting pixels. */
+{
+    return Tk_GetPixels(interp, tkwin, Tcl_GetString(objPtr), intPtr);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Tk_Alloc3DBorderFromObj --
+ *
+ *	Given a Tcl_Obj *, map the value to a corresponding
+ *	Tk_3DBorder structure based on the tkwin given.
+ *
+ * Results:
+ *	The return value is a token for a data structure describing a
+ *	3-D border.  This token may be passed to procedures such as
+ *	Blt_Draw3DRectangle and Tk_Free3DBorder.  If an error prevented
+ *	the border from being created then NULL is returned and an error
+ *	message will be left in the interp's result.
+ *
+ * Side effects:
+ *	The border is added to an internal database with a reference
+ *	count. For each call to this procedure, there should eventually
+ *	be a call to FreeBorderObjProc so that the database is
+ *	cleaned up when borders aren't in use anymore.
+ *
+ *---------------------------------------------------------------------------
+ */
+Tk_3DBorder
+Tk_Alloc3DBorderFromObj(
+    Tcl_Interp *interp,		/* Interp for error results. */
+    Tk_Window tkwin,		/* Need the screen the border is used on.*/
+    Tcl_Obj *objPtr)		/* Object giving name of color for window
+				 * background. */
+{
+    return Tk_Get3DBorder(interp, tkwin, Tcl_GetString(objPtr));
+}
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Tk_AllocBitmapFromObj --
+ *
+ *	Given a Tcl_Obj *, map the value to a corresponding
+ *	Pixmap structure based on the tkwin given.
+ *
+ * Results:
+ *	The return value is the X identifer for the desired bitmap
+ *	(i.e. a Pixmap with a single plane), unless string couldn't be
+ *	parsed correctly.  In this case, None is returned and an error
+ *	message is left in the interp's result.  The caller should never
+ *	modify the bitmap that is returned, and should eventually call
+ *	Tk_FreeBitmapFromObj when the bitmap is no longer needed.
+ *
+ * Side effects:
+ *	The bitmap is added to an internal database with a reference count.
+ *	For each call to this procedure, there should eventually be a call
+ *	to Tk_FreeBitmapFromObj, so that the database can be cleaned up 
+ *	when bitmaps aren't needed anymore.
+ *
+ *---------------------------------------------------------------------------
+ */
+Pixmap
+Tk_AllocBitmapFromObj(
+    Tcl_Interp *interp,		/* Interp for error results. This may 
+				 * be NULL. */
+    Tk_Window tkwin,		/* Need the screen the bitmap is used on.*/
+    Tcl_Obj *objPtr)		/* Object describing bitmap; see manual
+				 * entry for legal syntax of string value. */
+{
+    return Tk_GetBitmap(interp, tkwin, Tcl_GetString(objPtr));
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Tk_AllocFontFromObj -- 
+ *
+ *	Given a string description of a font, map the description to a
+ *	corresponding Blt_Font that represents the font.
+ *
+ * Results:
+ *	The return value is token for the font, or NULL if an error
+ *	prevented the font from being created.  If NULL is returned, an
+ *	error message will be left in interp's result object.
+ *
+ * Side effects:
+ * 	The font is added to an internal database with a reference
+ *	count.  For each call to this procedure, there should eventually
+ *	be a call to Blt_FreeFont() or Blt_FreeFontFromObj() so that the
+ *	database is cleaned up when fonts aren't in use anymore.
+ *
+ *---------------------------------------------------------------------------
+ */
+Tk_Font
+Tk_AllocFontFromObj(
+    Tcl_Interp *interp,		/* Interp for database and error return. */
+    Tk_Window tkwin,		/* For screen on which font will be used. */
+    Tcl_Obj *objPtr)		/* Object describing font, as: named font,
+				 * native format, or parseable string. */
+{
+    return Tk_GetFont(interp, tkwin, Tcl_GetString(objPtr));
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Tk_AllocCursorFromObj --
+ *
+ *	Given a Tcl_Obj *, map the value to a corresponding
+ *	Tk_Cursor structure based on the tkwin given.
+ *
+ * Results:
+ *	The return value is the X identifer for the desired cursor,
+ *	unless objPtr couldn't be parsed correctly.  In this case,
+ *	None is returned and an error message is left in the interp's result.
+ *	The caller should never modify the cursor that is returned, and
+ *	should eventually call Tk_FreeCursorFromObj when the cursor is no 
+ *	longer needed.
+ *
+ * Side effects:
+ *	The cursor is added to an internal database with a reference count.
+ *	For each call to this procedure, there should eventually be a call
+ *	to Tk_FreeCursorFromObj, so that the database can be cleaned up 
+ *	when cursors aren't needed anymore.
+ *
+ *---------------------------------------------------------------------------
+ */
+Tk_Cursor
+Tk_AllocCursorFromObj(
+    Tcl_Interp *interp,		/* Interp for error results. */
+    Tk_Window tkwin,		/* Window in which the cursor will be used.*/
+    Tcl_Obj *objPtr)		/* Object describing cursor; see manual
+				 * entry for description of legal
+				 * syntax of this obj's string rep. */
+{
+    return Tk_GetCursor(interp, tkwin, Tcl_GetString(objPtr));
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Tk_AllocColorFromObj --
+ *
+ *	Given a Tcl_Obj *, map the value to a corresponding
+ *	XColor structure based on the tkwin given.
+ *
+ * Results:
+ *	The return value is a pointer to an XColor structure that
+ *	indicates the red, blue, and green intensities for the color
+ *	given by the string in objPtr, and also specifies a pixel value 
+ *	to use to draw in that color.  If an error occurs, NULL is 
+ *	returned and an error message will be left in interp's result
+ *	(unless interp is NULL).
+ *
+ * Side effects:
+ *	The color is added to an internal database with a reference count.
+ *	For each call to this procedure, there should eventually be a call
+ *	to Tk_FreeColorFromObj so that the database is cleaned up when colors
+ *	aren't in use anymore.
+ *
+ *---------------------------------------------------------------------------
+ */
+XColor *
+Tk_AllocColorFromObj(
+    Tcl_Interp *interp,		/* Used only for error reporting.  If NULL,
+				 * then no messages are provided. */
+    Tk_Window tkwin,		/* Window in which the color will be used.*/
+    Tcl_Obj *objPtr)		/* Object that describes the color; string
+				 * value is a color name such as "red" or
+				 * "#ff0000".*/
+{
+    const char *string;
+
+    string = Tcl_GetString(objPtr);
+    return Tk_GetColor(interp, tkwin, Tk_GetUid(string));
+}
+#endif
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_GetPositionFromObj --
+ *
+ *	Convert a string representing a numeric position.
+ *	A position can be in one of the following forms.
+ *
+ * 	  number	- number of the item in the hierarchy, indexed
+ *			  from zero.
+ *	  "end"		- last position in the hierarchy.
+ *
+ * Results:
+ *	A standard TCL result.  If "string" is a valid index, then
+ *	*indexPtr is filled with the corresponding numeric index.
+ *	If "end" was selected then *indexPtr is set to -1.
+ *	Otherwise an error message is left in interp->result.
+ *
+ * Side effects:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Blt_GetPositionFromObj(
+    Tcl_Interp *interp,		/* Interpreter to report results back
+				 * to. */
+    Tcl_Obj *objPtr,		/* Tcl_Obj representation of the index.
+				 * Can be an integer or "end" to refer
+				 * to the last index. */
+    long *indexPtr)		/* Holds the converted index. */
+{
+    const char *string;
+
+    string = Tcl_GetString(objPtr);
+    if ((string[0] == 'e') && (strcmp(string, "end") == 0)) {
+	*indexPtr = -1;		/* Indicates last position in hierarchy. */
+    } else {
+	long position;
+
+	if (Tcl_GetLongFromObj(interp, objPtr, &position) != TCL_OK) {
+	    return TCL_ERROR;
+	}
+	if (position < 0) {
+	    Tcl_AppendResult(interp, "bad position \"", string, "\"",
+		(char *)NULL);
+	    return TCL_ERROR;
+	}
+	*indexPtr = position;
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_GetPixelsFromObj --
+ *
+ *	Like Tk_GetPixelsFromObj, but checks for negative, zero.
+ *
+ * Results:
+ *	A standard TCL result.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Blt_GetPixelsFromObj(
+    Tcl_Interp *interp,
+    Tk_Window tkwin,
+    Tcl_Obj *objPtr,
+    int check,			/* Can be PIXELS_POS, PIXELS_NNEG,
+				 * or PIXELS_ANY, */
+    int *valuePtr)
+{
+    int length;
+
+    if (Tk_GetPixelsFromObj(interp, tkwin, objPtr, &length) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if (length >= SHRT_MAX) {
+	Tcl_AppendResult(interp, "bad distance \"", Tcl_GetString(objPtr), 
+		 "\": too big to represent", (char *)NULL);
+	return TCL_ERROR;
+    }
+    switch (check) {
+    case PIXELS_NNEG:
+	if (length < 0) {
+	    Tcl_AppendResult(interp, "bad distance \"", Tcl_GetString(objPtr), 
+		     "\": can't be negative", (char *)NULL);
+	    return TCL_ERROR;
+	}
+	break;
+
+    case PIXELS_POS:
+	if (length <= 0) {
+	    Tcl_AppendResult(interp, "bad distance \"", Tcl_GetString(objPtr), 
+		     "\": must be positive", (char *)NULL);
+	    return TCL_ERROR;
+	}
+	break;
+
+    case PIXELS_ANY:
+	break;
+    }
+    *valuePtr = length;
+    return TCL_OK;
+}
+
+int
+Blt_GetPadFromObj(
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tk_Window tkwin,		/* Window */
+    Tcl_Obj *objPtr,		/* Pixel value string */
+    Blt_Pad *padPtr)
+{
+    int side1, side2;
+    int objc;
+    Tcl_Obj **objv;
+
+    if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if ((objc < 1) || (objc > 2)) {
+	Tcl_AppendResult(interp, "wrong # elements in padding list",
+	    (char *)NULL);
+	return TCL_ERROR;
+    }
+    if (Blt_GetPixelsFromObj(interp, tkwin, objv[0], PIXELS_NNEG, 
+	     &side1) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    side2 = side1;
+    if ((objc > 1) && 
+	(Blt_GetPixelsFromObj(interp, tkwin, objv[1], PIXELS_NNEG, 
+	      &side2) != TCL_OK)) {
+	return TCL_ERROR;
+    }
+    /* Don't update the pad structure until we know both values are okay. */
+    padPtr->side1 = side1;
+    padPtr->side2 = side2;
+    return TCL_OK;
+}
+
+int
+Blt_GetStateFromObj(
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tcl_Obj *objPtr,		/* Pixel value string */
+    int *statePtr)
+{
+    char c;
+    const char *string;
+    int length;
+
+    string = Tcl_GetStringFromObj(objPtr, &length);
+    c = string[0];
+    if ((c == 'n') && (strncmp(string, "normal", length) == 0)) {
+	*statePtr = STATE_NORMAL;
+    } else if ((c == 'd') && (strncmp(string, "disabled", length) == 0)) {
+	*statePtr = STATE_DISABLED;
+    } else if ((c == 'a') && (strncmp(string, "active", length) == 0)) {
+	*statePtr = STATE_ACTIVE;
+    } else {
+	Tcl_AppendResult(interp, "bad state \"", string,
+	    "\": should be normal, active, or disabled", (char *)NULL);
+	return TCL_ERROR;
+    }
+    return TCL_OK;
+}
+
+const char *
+Blt_NameOfState(int state)
+{
+    switch (state) {
+    case STATE_ACTIVE:
+	return "active";
+    case STATE_DISABLED:
+	return "disabled";
+    case STATE_NORMAL:
+	return "normal";
+    default:
+	return "???";
+    }
+}
+
+
+/*
+ *---------------------------------------------------------------------------
  *
  * Blt_NameOfFill --
  *
- *	Converts the integer representing the fill direction into a string.
+ *	Converts the integer representing the fill style into a string.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-char *
-Blt_NameOfFill(fill)
-    int fill;
+const char *
+Blt_NameOfFill(int fill)
 {
     switch (fill) {
     case FILL_X:
@@ -183,9 +609,9 @@ Blt_NameOfFill(fill)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * StringToFill --
+ * Blt_GetFillFromObj --
  *
  *	Converts the fill style string into its numeric representation.
  *
@@ -196,24 +622,21 @@ Blt_NameOfFill(fill)
  *	  "y"	   Y-coordinate plane.
  *	  "both"   Use both coordinate planes.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
-static int
-StringToFill(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* Fill style string */
-    char *widgRec;		/* Cubicle structure record */
-    int offset;			/* Offset of style in record */
+int
+Blt_GetFillFromObj(
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tcl_Obj *objPtr,		/* Fill style string */
+    int *fillPtr)
 {
-    int *fillPtr = (int *)(widgRec + offset);
-    unsigned int length;
     char c;
+    const char *string;
+    int length;
 
+    string = Tcl_GetStringFromObj(objPtr, &length);
     c = string[0];
-    length = strlen(string);
     if ((c == 'n') && (strncmp(string, "none", length) == 0)) {
 	*fillPtr = FILL_NONE;
     } else if ((c == 'x') && (strncmp(string, "x", length) == 0)) {
@@ -231,512 +654,11 @@ StringToFill(clientData, interp, tkwin, string, widgRec, offset)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * FillToString --
+ * Blt_GetDashesFromObj --
  *
- *	Returns the fill style string based upon the fill flags.
- *
- * Results:
- *	The fill style string is returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static char *
-FillToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset of fill in widget record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    int fill = *(int *)(widgRec + offset);
-
-    return Blt_NameOfFill(fill);
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * Blt_StringToFlag --
- *
- *	Converts the fill style string into its numeric representation.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-int
-Blt_StringToFlag(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Bit mask to be tested in status word */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* Fill style string */
-    char *widgRec;		/* Cubicle structure record */
-    int offset;			/* Offset of style in record */
-{
-    unsigned int mask = (unsigned int)clientData;	/* Bit to be tested */
-    int *flagPtr = (int *)(widgRec + offset);
-    int bool;
-
-    if (Tcl_GetBoolean(interp, string, &bool) != TCL_OK) {
-	return TCL_ERROR;
-    }
-    if (bool) {
-	*flagPtr |= mask;
-    } else {
-	*flagPtr &= ~mask;
-    }
-    return TCL_OK;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * Blt_FlagToString --
- *
- *	Returns the fill style string based upon the fill flags.
- *
- * Results:
- *	The fill style string is returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-char *
-Blt_FlagToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Bit mask to be test in status word */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset of fill in widget record */
-    Tcl_FreeProc **freeProcPtr;	/* Not Used. */
-{
-    unsigned int mask = (unsigned int)clientData;	/* Bit to be tested */
-    unsigned int bool = *(unsigned int *)(widgRec + offset);
-
-    return (bool & mask) ? "1" : "0";
-}
-
-
-/*
- *----------------------------------------------------------------------
- *
- * Blt_GetPixels --
- *
- *	Like Tk_GetPixels, but checks for negative, zero.
- *
- * Results:
- *	A standard Tcl result.
- *
- *----------------------------------------------------------------------
- */
-int
-Blt_GetPixels(interp, tkwin, string, check, valuePtr)
-    Tcl_Interp *interp;
-    Tk_Window tkwin;
-    char *string;
-    int check;			/* Can be PIXELS_POSITIVE, PIXELS_NONNEGATIVE,
-				 * or PIXELS_ANY, */
-    int *valuePtr;
-{
-    int length;
-
-    if (Tk_GetPixels(interp, tkwin, string, &length) != TCL_OK) {
-	return TCL_ERROR;
-    }
-    if (length >= SHRT_MAX) {
-	Tcl_AppendResult(interp, "bad distance \"", string, "\": ",
-	    "too big to represent", (char *)NULL);
-	return TCL_ERROR;
-    }
-    switch (check) {
-    case PIXELS_NONNEGATIVE:
-	if (length < 0) {
-	    Tcl_AppendResult(interp, "bad distance \"", string, "\": ",
-		"can't be negative", (char *)NULL);
-	    return TCL_ERROR;
-	}
-	break;
-    case PIXELS_POSITIVE:
-	if (length <= 0) {
-	    Tcl_AppendResult(interp, "bad distance \"", string, "\": ",
-		"must be positive", (char *)NULL);
-	    return TCL_ERROR;
-	}
-	break;
-    case PIXELS_ANY:
-	break;
-    }
-    *valuePtr = length;
-    return TCL_OK;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * StringToDistance --
- *
- *	Like TK_CONFIG_PIXELS, but adds an extra check for negative
- *	values.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-StringToDistance(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Indicated how to check distance */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Window */
-    char *string;		/* Pixel value string */
-    char *widgRec;		/* Widget record */
-    int offset;			/* Offset of pixel size in record */
-{
-    int *valuePtr = (int *)(widgRec + offset);
-    return Blt_GetPixels(interp, tkwin, string, (int)clientData, valuePtr);
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * DistanceToString --
- *
- *	Returns the string representing the positive pixel size.
- *
- * Results:
- *	The pixel size string is returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static char *
-DistanceToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset in widget record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    int value = *(int *)(widgRec + offset);
-    char *result;
-
-    result = Blt_Strdup(Blt_Itoa(value));
-    assert(result);
-    *freeProcPtr = (Tcl_FreeProc *)Blt_Free;
-    return result;
-}
-
-int
-Blt_GetInt(interp, string, check, valuePtr)
-    Tcl_Interp *interp;
-    char *string;
-    int check;			/* Can be COUNT_POSITIVE, COUNT_NONNEGATIVE,
-				 * or COUNT_ANY, */
-    int *valuePtr;
-{
-    int count;
-
-    if (Tcl_GetInt(interp, string, &count) != TCL_OK) {
-	return TCL_ERROR;
-    }
-    switch (check) {
-    case COUNT_NONNEGATIVE:
-	if (count < 0) {
-	    Tcl_AppendResult(interp, "bad value \"", string, "\": ",
-		"can't be negative", (char *)NULL);
-	    return TCL_ERROR;
-	}
-	break;
-    case COUNT_POSITIVE:
-	if (count <= 0) {
-	    Tcl_AppendResult(interp, "bad value \"", string, "\": ",
-		"must be positive", (char *)NULL);
-	    return TCL_ERROR;
-	}
-	break;
-    case COUNT_ANY:
-	break;
-    }
-    *valuePtr = count;
-    return TCL_OK;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * StringToCount --
- *
- *	Like TK_CONFIG_PIXELS, but adds an extra check for negative
- *	values.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-StringToCount(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Indicated how to check distance */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* Pixel value string */
-    char *widgRec;		/* Widget record */
-    int offset;			/* Offset of pixel size in record */
-{
-    int *valuePtr = (int *)(widgRec + offset);
-    return Blt_GetInt(interp, string, (int)clientData, valuePtr);
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * CountToString --
- *
- *	Returns the string representing the positive pixel size.
- *
- * Results:
- *	The pixel size string is returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static char *
-CountToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset in widget record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    int value = *(int *)(widgRec + offset);
-    char *result;
-
-    result = Blt_Strdup(Blt_Itoa(value));
-    assert(result);
-    *freeProcPtr = (Tcl_FreeProc *)Blt_Free;
-    return result;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * StringToPad --
- *
- *	Convert a string into two pad values.  The string may be in one of
- *	the following forms:
- *
- *	    n    - n is a non-negative integer. This sets both
- *		   pad values to n.
- *	  {n m}  - both n and m are non-negative integers. side1
- *		   is set to n, side2 is set to m.
- *
- * Results:
- *	If the string is successfully converted, TCL_OK is returned.
- *	Otherwise, TCL_ERROR is returned and an error message is left in
- *	interp->result.
- *
- * Side Effects:
- *	The padding structure passed is updated with the new values.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-StringToPad(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Window */
-    char *string;		/* Pixel value string */
-    char *widgRec;		/* Widget record */
-    int offset;			/* Offset of pad in widget */
-{
-    Blt_Pad *padPtr = (Blt_Pad *)(widgRec + offset);
-    int nElem;
-    int pad, result;
-    char **padArr;
-
-    if (Tcl_SplitList(interp, string, &nElem, &padArr) != TCL_OK) {
-	return TCL_ERROR;
-    }
-    result = TCL_ERROR;
-    if ((nElem < 1) || (nElem > 2)) {
-	Tcl_AppendResult(interp, "wrong # elements in padding list",
-	    (char *)NULL);
-	goto error;
-    }
-    if (Blt_GetPixels(interp, tkwin, padArr[0], PIXELS_NONNEGATIVE, &pad)
-	!= TCL_OK) {
-	goto error;
-    }
-    padPtr->side1 = pad;
-    if ((nElem > 1) &&
-	(Blt_GetPixels(interp, tkwin, padArr[1], PIXELS_NONNEGATIVE, &pad)
-	    != TCL_OK)) {
-	goto error;
-    }
-    padPtr->side2 = pad;
-    result = TCL_OK;
-
-  error:
-    Blt_Free(padArr);
-    return result;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * PadToString --
- *
- *	Converts the two pad values into a Tcl list.  Each pad has two
- *	pixel values.  For vertical pads, they represent the top and bottom
- *	margins.  For horizontal pads, they're the left and right margins.
- *	All pad values are non-negative integers.
- *
- * Results:
- *	The padding list is returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static char *
-PadToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Structure record */
-    int offset;			/* Offset of pad in record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    Blt_Pad *padPtr = (Blt_Pad *)(widgRec + offset);
-    char *result;
-    char string[200];
-
-    sprintf(string, "%d %d", padPtr->side1, padPtr->side2);
-    result = Blt_Strdup(string);
-    if (result == NULL) {
-	return "out of memory";
-    }
-    *freeProcPtr = (Tcl_FreeProc *)Blt_Free;
-    return result;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * StringToShadow --
- *
- *	Convert a string into two pad values.  The string may be in one of
- *	the following forms:
- *
- *	    n    - n is a non-negative integer. This sets both
- *		   pad values to n.
- *	  {n m}  - both n and m are non-negative integers. side1
- *		   is set to n, side2 is set to m.
- *
- * Results:
- *	If the string is successfully converted, TCL_OK is returned.
- *	Otherwise, TCL_ERROR is returned and an error message is left in
- *	interp->result.
- *
- * Side Effects:
- *	The padding structure passed is updated with the new values.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-StringToShadow(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Window */
-    char *string;		/* Pixel value string */
-    char *widgRec;		/* Widget record */
-    int offset;			/* Offset of pad in widget */
-{
-    Shadow *shadowPtr = (Shadow *) (widgRec + offset);
-    XColor *colorPtr;
-    int dropOffset;
-
-    colorPtr = NULL;
-    dropOffset = 0;
-    if ((string != NULL) && (string[0] != '\0')) {
-	int nElem;
-	char **elemArr;
-
-	if (Tcl_SplitList(interp, string, &nElem, &elemArr) != TCL_OK) {
-	    return TCL_ERROR;
-	}
-	if ((nElem < 1) || (nElem > 2)) {
-	    Tcl_AppendResult(interp, "wrong # elements in drop shadow value",
-		(char *)NULL);
-	    Blt_Free(elemArr);
-	    return TCL_ERROR;
-	}
-	colorPtr = Tk_GetColor(interp, tkwin, Tk_GetUid(elemArr[0]));
-	if (colorPtr == NULL) {
-	    Blt_Free(elemArr);
-	    return TCL_ERROR;
-	}
-	dropOffset = 1;
-	if (nElem == 2) {
-	    if (Blt_GetPixels(interp, tkwin, elemArr[1], PIXELS_NONNEGATIVE,
-		    &dropOffset) != TCL_OK) {
-		Tk_FreeColor(colorPtr);
-		Blt_Free(elemArr);
-		return TCL_ERROR;
-	    }
-	}
-	Blt_Free(elemArr);
-    }
-    if (shadowPtr->color != NULL) {
-	Tk_FreeColor(shadowPtr->color);
-    }
-    shadowPtr->color = colorPtr;
-    shadowPtr->offset = dropOffset;
-    return TCL_OK;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * ShadowToString --
- *
- *	Converts the two pad values into a Tcl list.  Each pad has two
- *	pixel values.  For vertical pads, they represent the top and bottom
- *	margins.  For horizontal pads, they're the left and right margins.
- *	All pad values are non-negative integers.
- *
- * Results:
- *	The padding list is returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static char *
-ShadowToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Structure record */
-    int offset;			/* Offset of pad in record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    Shadow *shadowPtr = (Shadow *) (widgRec + offset);
-    char *result;
-
-    result = "";
-    if (shadowPtr->color != NULL) {
-	char string[200];
-
-	sprintf(string, "%s %d", Tk_NameOfColor(shadowPtr->color),
-	    shadowPtr->offset);
-	result = Blt_Strdup(string);
-	*freeProcPtr = (Tcl_FreeProc *)Blt_Free;
-    }
-    return result;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * GetDashes --
- *
- *	Converts a Tcl list of dash values into a dash list ready for
+ *	Converts a TCL list of dash values into a dash list ready for
  *	use with XSetDashes.
  *
  * 	A valid list dash values can have zero through 11 elements
@@ -744,433 +666,1541 @@ ShadowToString(clientData, tkwin, widgRec, offset, freeProcPtr)
  *	a list of 0 (like the empty string) means no dashes.
  *
  * Results:
- *	A standard Tcl result. If the list represented a valid dash
+ *	A standard TCL result. If the list represented a valid dash
  *	list TCL_OK is returned and *dashesPtr* will contain the
  *	valid dash list. Otherwise, TCL_ERROR is returned and
  *	interp->result will contain an error message.
  *
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-static int
-GetDashes(interp, string, dashesPtr)
-    Tcl_Interp *interp;
-    char *string;
-    Blt_Dashes *dashesPtr;
+int
+Blt_GetDashesFromObj(
+    Tcl_Interp *interp,
+    Tcl_Obj *objPtr,
+    Blt_Dashes *dashesPtr)
 {
-    if ((string == NULL) || (*string == '\0')) {
+    const char *string;
+    char c;
+
+    string = Tcl_GetString(objPtr);
+    if (string == NULL) {
 	dashesPtr->values[0] = 0;
-    } else if (strcmp(string, "dash") == 0) {	/* 5 2 */
+	return TCL_OK;
+    }
+    c = string[0];
+    if (c == '\0') {
+	dashesPtr->values[0] = 0;
+    } else if ((c == 'd') && (strcmp(string, "dot") == 0)) {	
+	/* 1 */
+	dashesPtr->values[0] = 1;
+	dashesPtr->values[1] = 0;
+    } else if ((c == 'd') && (strcmp(string, "dash") == 0)) {	
+	/* 5 2 */
 	dashesPtr->values[0] = 5;
 	dashesPtr->values[1] = 2;
 	dashesPtr->values[2] = 0;
-    } else if (strcmp(string, "dot") == 0) {	/* 1 */
-	dashesPtr->values[0] = 1;
-	dashesPtr->values[1] = 0;
-    } else if (strcmp(string, "dashdot") == 0) {	/* 2 4 2 */
-	dashesPtr->values[0] = 2;
+    } else if ((c == 'd') && (strcmp(string, "dashdot") == 0)) { 
+	/* 2 4 2 */
+ 	dashesPtr->values[0] = 2;
 	dashesPtr->values[1] = 4;
 	dashesPtr->values[2] = 2;
 	dashesPtr->values[3] = 0;
-    } else if (strcmp(string, "dashdotdot") == 0) {	/* 2 4 2 2 */
+    } else if ((c == 'd') && (strcmp(string, "dashdotdot") == 0)) { 
+	/* 2 4 2 2 */
 	dashesPtr->values[0] = 2;
 	dashesPtr->values[1] = 4;
 	dashesPtr->values[2] = 2;
 	dashesPtr->values[3] = 2;
 	dashesPtr->values[4] = 0;
     } else {
-	int nValues;
-	char **strArr;
-	long int value;
-	register int i;
+	int objc;
+	Tcl_Obj **objv;
+	int i;
 
-	if (Tcl_SplitList(interp, string, &nValues, &strArr) != TCL_OK) {
+	if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	if (nValues > 11) {	/* This is the postscript limit */
+	if (objc > 11) {	/* This is the postscript limit */
 	    Tcl_AppendResult(interp, "too many values in dash list \"", 
 			     string, "\"", (char *)NULL);
-	    Blt_Free(strArr);
 	    return TCL_ERROR;
 	}
-	for (i = 0; i < nValues; i++) {
-	    if (Tcl_ExprLong(interp, strArr[i], &value) != TCL_OK) {
-		Blt_Free(strArr);
+	for (i = 0; i < objc; i++) {
+	    int value;
+
+	    if (Tcl_GetIntFromObj(interp, objv[i], &value) != TCL_OK) {
 		return TCL_ERROR;
 	    }
 	    /*
 	     * Backward compatibility:
 	     * Allow list of 0 to turn off dashes
 	     */
-	    if ((value == 0) && (nValues == 1)) {
+	    if ((value == 0) && (objc == 1)) {
 		break;
 	    }
 	    if ((value < 1) || (value > 255)) {
-		Tcl_AppendResult(interp, "dash value \"", strArr[i],
-		    "\" is out of range", (char *)NULL);
-		Blt_Free(strArr);
+		Tcl_AppendResult(interp, "dash value \"", 
+			 Tcl_GetString(objv[i]), "\" is out of range", 
+			 (char *)NULL);
 		return TCL_ERROR;
 	    }
 	    dashesPtr->values[i] = (unsigned char)value;
 	}
 	/* Make sure the array ends with a NUL byte  */
 	dashesPtr->values[i] = 0;
-	Blt_Free(strArr);
     }
     return TCL_OK;
+}
 
+const char *
+Blt_NameOfSide(int side)
+{
+    switch (side) {
+    case SIDE_LEFT:
+	return "left";
+    case SIDE_RIGHT:
+	return "right";
+    case SIDE_BOTTOM:
+	return "bottom";
+    case SIDE_TOP:
+	return "top";
+    }
+    return "unknown side value";
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * StringToDashes --
+ * Blt_GetSideFromObj --
  *
- *	Convert the list of dash values into a dashes array.
+ *	Converts the fill style string into its numeric representation.
  *
- * Results:
- *	The return value is a standard Tcl result.
+ *	Valid style strings are "left", "right", "top", or  "bottom".
  *
- * Side Effects:
- *	The Dashes structure is updated with the new dash list.
- *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-/*ARGSUSED*/
-static int
-StringToDashes(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* New dash value list */
-    char *widgRec;		/* Widget record */
-    int offset;			/* offset to Dashes structure */
+/*ARGSUSED */
+int
+Blt_GetSideFromObj(
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tcl_Obj *objPtr,		/* Value string */
+    int *sidePtr)		/* (out) Token representing side:
+				 * either SIDE_LEFT, SIDE_RIGHT,
+				 * SIDE_TOP, or SIDE_BOTTOM. */
 {
-    Blt_Dashes *dashesPtr = (Blt_Dashes *)(widgRec + offset);
+    char c;
+    const char *string;
+    int length;
 
-    return GetDashes(interp, string, dashesPtr);
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * DashesToString --
- *
- *	Convert the dashes array into a list of values.
- *
- * Results:
- *	The string representing the dashes returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static char *
-DashesToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget record */
-    int offset;			/* offset of Dashes in record */
-    Tcl_FreeProc **freeProcPtr;	/* Memory deallocation scheme to use */
-{
-    Blt_Dashes *dashesPtr = (Blt_Dashes *)(widgRec + offset);
-    Tcl_DString dString;
-    unsigned char *p;
-    char *result;
-
-    if (dashesPtr->values[0] == 0) {
-	return "";
-    }
-    Tcl_DStringInit(&dString);
-    for (p = dashesPtr->values; *p != 0; p++) {
-	Tcl_DStringAppendElement(&dString, Blt_Itoa(*p));
-    }
-    result = Tcl_DStringValue(&dString);
-    if (result == dString.staticSpace) {
-	result = Blt_Strdup(result);
-    }
-    *freeProcPtr = (Tcl_FreeProc *)Blt_Free;
-    return result;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * StringToUid --
- *
- *	Converts the string to a BLT Uid. Blt Uid's are hashed, reference
- *	counted strings.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-StringToUid(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* Fill style string */
-    char *widgRec;		/* Cubicle structure record */
-    int offset;			/* Offset of style in record */
-{
-    Blt_Uid *uidPtr = (Blt_Uid *)(widgRec + offset);
-    Blt_Uid newId;
-
-    newId = NULL;
-    if ((string != NULL) && (*string != '\0')) {
-	newId = Blt_GetUid(string);
-    }
-    if (*uidPtr != NULL) {
-	Blt_FreeUid(*uidPtr);
-    }
-    *uidPtr = newId;
-    return TCL_OK;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * UidToString --
- *
- *	Returns the fill style string based upon the fill flags.
- *
- * Results:
- *	The fill style string is returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static char *
-UidToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset of fill in widget record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    Blt_Uid uid = *(Blt_Uid *)(widgRec + offset);
-
-    return (uid == NULL) ? "" : uid;
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * StringToState --
- *
- *	Converts the string to a state value. Valid states are
- *	disabled, normal.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-StringToState(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* String representation of option value */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset of field in record */
-{
-    int *statePtr = (int *)(widgRec + offset);
-
-    if (strcmp(string, "normal") == 0) {
-	*statePtr = STATE_NORMAL;
-    } else if (strcmp(string, "disabled") == 0) {
-	*statePtr = STATE_DISABLED;
-    } else if (strcmp(string, "active") == 0) {
-	*statePtr = STATE_ACTIVE;
+    string = Tcl_GetStringFromObj(objPtr, &length);
+    c = string[0];
+    if ((c == 'l') && (strncmp(string, "left", length) == 0)) {
+	*sidePtr = SIDE_LEFT;
+    } else if ((c == 'r') && (strncmp(string, "right", length) == 0)) {
+	*sidePtr = SIDE_RIGHT;
+    } else if ((c == 't') && (strncmp(string, "top", length) == 0)) {
+	*sidePtr = SIDE_TOP;
+    } else if ((c == 'b') && (strncmp(string, "bottom", length) == 0)) {
+	*sidePtr = SIDE_BOTTOM;
     } else {
-	Tcl_AppendResult(interp, "bad state \"", string,
-	    "\": should be normal, active, or disabled", (char *)NULL);
+	Tcl_AppendResult(interp, "bad side \"", string,
+	    "\": should be left, right, top, or bottom", (char *)NULL);
 	return TCL_ERROR;
     }
     return TCL_OK;
 }
 
+/* Configuration option helper routines */
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * StateToString --
+ * DoConfig --
  *
- *	Returns the string representation of the state configuration field
+ *	This procedure applies a single configuration option
+ *	to a widget record.
  *
  * Results:
- *	The string is returned.
+ *	A standard TCL return value.
  *
- *----------------------------------------------------------------------
+ * Side effects:
+ *	WidgRec is modified as indicated by specPtr and value.
+ *	The old value is recycled, if that is appropriate for
+ *	the value type.
+ *
+ *---------------------------------------------------------------------------
  */
-/*ARGSUSED*/
-static char *
-StateToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset of fill in widget record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    int state = *(int *)(widgRec + offset);
-
-    switch (state) {
-    case STATE_ACTIVE:
-	return "active";
-    case STATE_DISABLED:
-	return "disabled";
-    case STATE_NORMAL:
-	return "normal";
-    default:
-	return "???";
-    }
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * StringToList --
- *
- *	Converts the string to a list.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
 static int
-StringToList(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* String representation of option value */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset of field in record */
+DoConfig(
+    Tcl_Interp *interp,		/* Interpreter for error reporting. */
+    Tk_Window tkwin,		/* Window containing widget (needed to
+				 * set up X resources). */
+    Blt_ConfigSpec *sp,		/* Specifier to apply. */
+    Tcl_Obj *objPtr,		/* Value to use to fill in widgRec. */
+    char *widgRec)		/* Record whose fields are to be
+				 * modified.  Values must be properly
+				 * initialized. */
 {
-    char ***listPtr = (char ***)(widgRec + offset);
-    char **elemArr;
-    int nElem;
+    char *ptr;
+    int objIsEmpty;
 
-    if (*listPtr != NULL) {
-	Blt_Free(*listPtr);
-	*listPtr = NULL;
-    }
-    if ((string == NULL) || (*string == '\0')) {
-	return TCL_OK;
-    }
-    if (Tcl_SplitList(interp, string, &nElem, &elemArr) != TCL_OK) {
-	return TCL_ERROR;
-    }
-    if (nElem > 0) {
-	*listPtr = elemArr;
-    }
-    return TCL_OK;
-}
+    objIsEmpty = FALSE;
+    if (objPtr == NULL) {
+	objIsEmpty = TRUE;
+    } else if (sp->specFlags & BLT_CONFIG_NULL_OK) {
+	int length;
 
-/*
- *----------------------------------------------------------------------
- *
- * ListToString --
- *
- *	Returns the string representation of the state configuration field
- *
- * Results:
- *	The string is returned.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static char *
-ListToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget structure record. */
-    int offset;			/* Offset of fill in widget record. */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    char **list = *(char ***)(widgRec + offset);
-    register char **p;
-    char *result;
-    Tcl_DString dString;
-
-    if (list == NULL) {
-	return "";
+	if (objPtr->bytes != NULL) {
+	    length = objPtr->length;
+	} else {
+	    Tcl_GetStringFromObj(objPtr, &length);
+	}
+	objIsEmpty = (length == 0);
     }
-    Tcl_DStringInit(&dString);
-    for (p = list; *p != NULL; p++) {
-	Tcl_DStringAppendElement(&dString, *p);
-    }
-    result = Tcl_DStringValue(&dString);
-    if (result == dString.staticSpace) {
-	result = Blt_Strdup(result);
-    }
-    Tcl_DStringFree(&dString);
-    *freeProcPtr = (Tcl_FreeProc *)Blt_Free;
-    return result;
-}
+    do {
+	ptr = widgRec + sp->offset;
+	switch (sp->type) {
+	case BLT_CONFIG_ANCHOR: 
+	    {
+		Tk_Anchor anchor;
+		
+		if (Tk_GetAnchorFromObj(interp, objPtr, &anchor) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(Tk_Anchor *)ptr = anchor;
+	    }
+	    break;
+
+	case BLT_CONFIG_BITMAP: 
+	    {
+		Pixmap bitmap;
+		
+		if (objIsEmpty) {
+		    bitmap = None;
+		} else {
+		    bitmap = Tk_AllocBitmapFromObj(interp, tkwin, objPtr);
+		    if (bitmap == None) {
+			return TCL_ERROR;
+		    }
+		}
+		if (*(Pixmap *)ptr != None) {
+		    Tk_FreeBitmap(Tk_Display(tkwin), *(Pixmap *)ptr);
+		}
+		*(Pixmap *)ptr = bitmap;
+	    }
+	    break;
+
+	case BLT_CONFIG_BOOLEAN: 
+	    {
+		int bool;
+		
+		if (Tcl_GetBooleanFromObj(interp, objPtr, &bool) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = bool;
+	    }
+	    break;
+
+	case BLT_CONFIG_BORDER: 
+	    {
+		Tk_3DBorder border;
+
+		if (objIsEmpty) {
+		    border = NULL;
+		} else {
+		    border = Tk_Alloc3DBorderFromObj(interp, tkwin, objPtr);
+		    if (border == NULL) {
+			return TCL_ERROR;
+		    }
+		}
+		if (*(Tk_3DBorder *)ptr != NULL) {
+		    Tk_Free3DBorder(*(Tk_3DBorder *)ptr);
+		}
+		*(Tk_3DBorder *)ptr = border;
+	    }
+	    break;
+
+	case BLT_CONFIG_CAP_STYLE: 
+	    {
+		int cap;
+		Tk_Uid uid;
+		
+		uid = Tk_GetUid(Tcl_GetString(objPtr));
+		if (Tk_GetCapStyle(interp, uid, &cap) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = cap;
+	    }
+	    break;
+
+	case BLT_CONFIG_COLOR: 
+	    {
+		XColor *color;
+		
+		if (objIsEmpty) {
+		    color = NULL;
+		} else {
+		    color = Tk_GetColor(interp, tkwin, 
+			Tk_GetUid(Tcl_GetString(objPtr)));
+		    if (color == NULL) {
+			return TCL_ERROR;
+		    }
+		}
+		if (*(XColor **)ptr != NULL) {
+		    Tk_FreeColor(*(XColor **)ptr);
+		}
+		*(XColor **)ptr = color;
+	    }
+	    break;
+
+	case BLT_CONFIG_CURSOR:
+	case BLT_CONFIG_ACTIVE_CURSOR: 
+	    {
+		Tk_Cursor cursor;
+		
+		if (objIsEmpty) {
+		    cursor = None;
+		} else {
+		    cursor = Tk_AllocCursorFromObj(interp, tkwin, objPtr);
+		    if (cursor == None) {
+			return TCL_ERROR;
+		    }
+		}
+		if (*(Tk_Cursor *)ptr != None) {
+		    Tk_FreeCursor(Tk_Display(tkwin), *(Tk_Cursor *)ptr);
+		}
+		*(Tk_Cursor *)ptr = cursor;
+		if (sp->type == BLT_CONFIG_ACTIVE_CURSOR) {
+		    Tk_DefineCursor(tkwin, cursor);
+		}
+	    }
+	    break;
+
+	case BLT_CONFIG_CUSTOM: 
+	    if ((*(char **)ptr != NULL) && 
+		(sp->specFlags & BLT_CONFIG_FREE_BEFORE) &&
+		(sp->customPtr->freeProc != NULL)) {
+		(*sp->customPtr->freeProc)(sp->customPtr->clientData, 
+			Tk_Display(tkwin), widgRec, sp->offset);
+	    }
+	    if ((*sp->customPtr->parseProc)(sp->customPtr->clientData, interp, 
+		tkwin, objPtr, widgRec, sp->offset, sp->specFlags) != TCL_OK) {
+		return TCL_ERROR;
+	    }
+	    break;
+
+	case BLT_CONFIG_DOUBLE: 
+	    {
+		double value;
+		
+		if (Tcl_GetDoubleFromObj(interp, objPtr, &value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(double *)ptr = value;
+	    }
+	    break;
+
+	case BLT_CONFIG_FONT: 
+	    {
+		Blt_Font font;
+		
+		if (objIsEmpty) {
+		    font = NULL;
+		} else {
+		    font = Blt_AllocFontFromObj(interp, tkwin, objPtr);
+		    if (font == NULL) {
+			return TCL_ERROR;
+		    }
+		}
+		if (*(Blt_Font *)ptr != NULL) {
+		    Blt_FreeFont(*(Blt_Font *)ptr);
+		}
+		*(Blt_Font *)ptr = font;
+	    }
+	    break;
+
+	case BLT_CONFIG_TK_FONT: 
+	    {
+		Tk_Font font;
+		
+		if (objIsEmpty) {
+		    font = NULL;
+		} else {
+		    font = Tk_AllocFontFromObj(interp, tkwin, objPtr);
+		    if (font == NULL) {
+			return TCL_ERROR;
+		    }
+		}
+		if (*(Tk_Font *)ptr != NULL) {
+		    Tk_FreeFont(*(Tk_Font *)ptr);
+		}
+		*(Tk_Font *)ptr = font;
+	    }
+	    break;
+
+	case BLT_CONFIG_INT: 
+	    {
+		int value;
+		
+		if (Tcl_GetIntFromObj(interp, objPtr, &value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = value;
+	    }
+	    break;
+
+	case BLT_CONFIG_JOIN_STYLE: 
+	    {
+		int join;
+		Tk_Uid uid;
+
+		uid = Tk_GetUid(Tcl_GetString(objPtr));
+		if (Tk_GetJoinStyle(interp, uid, &join) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = join;
+	    }
+	    break;
+
+	case BLT_CONFIG_JUSTIFY: 
+	    {
+		Tk_Justify justify;
+		
+		if (Tk_GetJustifyFromObj(interp, objPtr, &justify) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(Tk_Justify *)ptr = justify;
+	    }
+	    break;
+
+	case BLT_CONFIG_MM: 
+	    {
+		double value;
+
+		if (Tk_GetMMFromObj(interp, tkwin, objPtr, &value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(double *)ptr = value;
+	    }
+	    break;
 
 
-/*
- *----------------------------------------------------------------------
- *
- * StringToTile --
- *
- *	Converts the name of an image into a tile.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-StringToTile(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Window on same display as tile */
-    char *string;		/* Name of image */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset of tile in record */
-{
-    Blt_Tile *tilePtr = (Blt_Tile *)(widgRec + offset);
-    Blt_Tile tile, oldTile;
+	case BLT_CONFIG_RELIEF: 
+	    {
+		int relief;
+		
+		if (Tk_GetReliefFromObj(interp, objPtr, &relief) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = relief;
+	    }
+	    break;
 
-    oldTile = *tilePtr;
-    tile = NULL;
-    if ((string != NULL) && (*string != '\0')) {
-	if (Blt_GetTile(interp, tkwin, string, &tile) != TCL_OK) {
+	case BLT_CONFIG_STRING: 
+	    {
+		char *value;
+		
+		value = (objIsEmpty) ? NULL : 
+		    Blt_AssertStrdup(Tcl_GetString(objPtr));
+		if (*(char **)ptr != NULL) {
+		    Blt_Free(*(char **)ptr);
+		}
+		*(char **)ptr = value;
+	    }
+	    break;
+
+	case BLT_CONFIG_UID: 
+	    if (*(Blt_Uid *)ptr != NULL) {
+		Blt_FreeUid(*(Blt_Uid *)ptr);
+	    }
+	    if (objIsEmpty) {
+		*(Blt_Uid *)ptr = NULL;
+	    } else {
+		*(Blt_Uid *)ptr = Blt_GetUid(Tcl_GetString(objPtr));
+	    }
+	    break;
+
+	case BLT_CONFIG_WINDOW: 
+	    {
+		Tk_Window tkwin2;
+
+		if (objIsEmpty) {
+		    tkwin2 = None;
+		} else {
+		    const char *path;
+
+		    path = Tcl_GetString(objPtr);
+		    tkwin2 = Tk_NameToWindow(interp, path, tkwin);
+		    if (tkwin2 == NULL) {
+			return TCL_ERROR;
+		    }
+		}
+		*(Tk_Window *)ptr = tkwin2;
+	    }
+	    break;
+
+	case BLT_CONFIG_BITMASK: 
+	    {
+		int bool;
+		unsigned long mask, flags;
+
+		if (Tcl_GetBooleanFromObj(interp, objPtr, &bool) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		mask = (unsigned long)sp->customPtr;
+		flags = *(int *)ptr;
+		flags &= ~mask;
+		if (bool) {
+		    flags |= mask;
+		}
+		*(int *)ptr = flags;
+	    }
+	    break;
+
+	case BLT_CONFIG_DASHES:
+	    if (Blt_GetDashesFromObj(interp, objPtr, (Blt_Dashes *)ptr) 
+		!= TCL_OK) {
+		return TCL_ERROR;
+	    }
+	    break;
+
+
+	case BLT_CONFIG_FILL:
+	    if (Blt_GetFillFromObj(interp, objPtr, (int *)ptr) != TCL_OK) {
+		return TCL_ERROR;
+	    }
+	    break;
+
+	case BLT_CONFIG_FLOAT: 
+	    {
+		double value;
+		
+		if (Tcl_GetDoubleFromObj(interp, objPtr, &value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(float *)ptr = (float)value;
+	    }
+	    break;
+
+	case BLT_CONFIG_INT_NNEG: 
+	    {
+		long value;
+		
+		if (Blt_GetCountFromObj(interp, objPtr, COUNT_NNEG, 
+			&value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = (int)value;
+	    }
+	    break;
+
+
+	case BLT_CONFIG_INT_POS: 
+	    {
+		long value;
+		
+		if (Blt_GetCountFromObj(interp, objPtr, COUNT_POS, &value) 
+		    != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = (int)value;
+	    }
+	    break;
+
+
+	case BLT_CONFIG_LIST: 
+	    {
+		const char **argv;
+		int argc;
+		
+		if (Tcl_SplitList(interp, Tcl_GetString(objPtr), &argc, &argv) 
+		    != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		if (*(char ***)ptr != NULL) {
+		    Blt_Free(*(char ***)ptr);
+		}
+		*(const char ***)ptr = argv;
+	    }
+	    break;
+
+	case BLT_CONFIG_LONG: 
+	    {
+		long value;
+		
+		if (Tcl_GetLongFromObj(interp, objPtr, &value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(long *)ptr = value;
+	    }
+	    break;
+
+	case BLT_CONFIG_LONG_NNEG: 
+	    {
+		long value;
+		
+		if (Blt_GetCountFromObj(interp, objPtr, COUNT_NNEG, 
+			&value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(long *)ptr = value;
+	    }
+	    break;
+
+
+	case BLT_CONFIG_LONG_POS: 
+	    {
+		long value;
+		
+		if (Blt_GetCountFromObj(interp, objPtr, COUNT_POS, &value) 
+		    != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(long *)ptr = value;
+	    }
+	    break;
+
+	case BLT_CONFIG_OBJ: 
+	    {
+		Tcl_IncrRefCount(objPtr);
+		if (*(Tcl_Obj **)ptr != NULL) {
+		    Tcl_DecrRefCount(*(Tcl_Obj **)ptr);
+		}
+		*(Tcl_Obj **)ptr = objPtr;
+	    }
+	    break;
+
+	case BLT_CONFIG_PAD:
+	    if (Blt_GetPadFromObj(interp, tkwin, objPtr, (Blt_Pad *)ptr) 
+		!= TCL_OK) {
+		return TCL_ERROR;
+	    }
+	    break;
+
+	case BLT_CONFIG_PIXELS_NNEG: 
+	    {
+		int value;
+		
+		if (Blt_GetPixelsFromObj(interp, tkwin, objPtr, 
+			PIXELS_NNEG, &value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = value;
+	    }
+	    break;
+
+	case BLT_CONFIG_PIXELS: 
+	    {
+		int value;
+		
+		if (Blt_GetPixelsFromObj(interp, tkwin, objPtr, PIXELS_ANY, 
+			&value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = value;
+	    }
+	    break;
+
+	case BLT_CONFIG_PIXELS_POS: 
+	    {
+		int value;
+		
+		if (Blt_GetPixelsFromObj(interp, tkwin, objPtr, PIXELS_POS,
+			&value) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		*(int *)ptr = value;
+	    }
+	    break;
+
+	case BLT_CONFIG_STATE: 
+	    if (Blt_GetStateFromObj(interp, objPtr, (int *)ptr) != TCL_OK) {
+		return TCL_ERROR;
+	    }
+	    break;
+
+	case BLT_CONFIG_SIDE:
+	    if (Blt_GetSideFromObj(interp, objPtr, (int *)ptr) != TCL_OK) {
+		return TCL_ERROR;
+	    }
+	    break;
+
+	case BLT_CONFIG_BACKGROUND: 
+	    {
+		Blt_Background style;
+		
+		if (objIsEmpty) {
+		    style = NULL;
+		} else {
+		    style = Blt_GetBackgroundFromObj(interp, tkwin, objPtr);
+		    if (style == NULL) {
+			return TCL_ERROR;
+		    }
+		}
+		if (*(Blt_Background *)ptr != NULL) {
+		    Blt_FreeBackground(*(Blt_Background *)ptr);
+		}
+		*(Blt_Background *)ptr = style;
+	    }
+	    break;
+
+	case BLT_CONFIG_PIX32: 
+	    if (Blt_GetPixelFromObj(interp, objPtr, (Blt_Pixel *)ptr)!=TCL_OK) {
+		return TCL_ERROR;
+	    }
+	    break;
+
+	default: 
+	    Tcl_AppendResult(interp, "bad config table: unknown type ", 
+			     Blt_Itoa(sp->type), (char *)NULL);
 	    return TCL_ERROR;
 	}
-    }
-    /* Don't delete the information for the old tile, until we know
-     * that we successfully allocated a new one. */
-    if (oldTile != NULL) {
-	Blt_FreeTile(oldTile);
-    }
-    *tilePtr = tile;
+	sp++;
+    } while ((sp->switchName == NULL) && (sp->type != BLT_CONFIG_END));
     return TCL_OK;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * TileToString --
+ * FormatConfigValue --
  *
- *	Returns the name of the tile.
+ *	This procedure formats the current value of a configuration
+ *	option.
  *
  * Results:
- *	The name of the tile is returned.
+ *	The return value is the formatted value of the option given
+ *	by specPtr and widgRec.  If the value is static, so that it
+ *	need not be freed, *freeProcPtr will be set to NULL;  otherwise
+ *	*freeProcPtr will be set to the address of a procedure to
+ *	free the result, and the caller must invoke this procedure
+ *	when it is finished with the result.
  *
- *----------------------------------------------------------------------
+ * Side effects:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
  */
-/*ARGSUSED*/
-static char *
-TileToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget structure record */
-    int offset;			/* Offset of tile in record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
+static Tcl_Obj *
+FormatConfigValue(
+    Tcl_Interp *interp,		/* Interpreter for use in real conversions. */
+    Tk_Window tkwin,		/* Window corresponding to widget. */
+    Blt_ConfigSpec *sp,		/* Pointer to information describing option.
+				 * Must not point to a synonym option. */
+    char *widgRec)		/* Pointer to record holding current
+				 * values of info for widget. */
 {
-    Blt_Tile tile = *(Blt_Tile *)(widgRec + offset);
+    char *ptr;
+    const char *string;
 
-    return Blt_NameOfTile(tile);
+    ptr = widgRec + sp->offset;
+    string = "";
+    switch (sp->type) {
+    case BLT_CONFIG_ANCHOR:
+	string = Tk_NameOfAnchor(*(Tk_Anchor *)ptr);
+	break;
+
+    case BLT_CONFIG_BITMAP: 
+	if (*(Pixmap *)ptr != None) {
+	    string = Tk_NameOfBitmap(Tk_Display(tkwin), *(Pixmap *)ptr);
+	}
+	break;
+
+    case BLT_CONFIG_BOOLEAN: 
+	return Tcl_NewBooleanObj(*(int *)ptr);
+
+    case BLT_CONFIG_BORDER: 
+	if (*(Tk_3DBorder *)ptr != NULL) {
+	    string = Tk_NameOf3DBorder(*(Tk_3DBorder *)ptr);
+	}
+	break;
+
+    case BLT_CONFIG_CAP_STYLE:
+	string = Tk_NameOfCapStyle(*(int *)ptr);
+	break;
+
+    case BLT_CONFIG_COLOR: 
+	if (*(XColor **)ptr != NULL) {
+	    string = Tk_NameOfColor(*(XColor **)ptr);
+	}
+	break;
+
+    case BLT_CONFIG_CURSOR:
+    case BLT_CONFIG_ACTIVE_CURSOR:
+	if (*(Tk_Cursor *)ptr != None) {
+	    string = Tk_NameOfCursor(Tk_Display(tkwin), *(Tk_Cursor *)ptr);
+	}
+	break;
+
+    case BLT_CONFIG_CUSTOM:
+	return (*sp->customPtr->printProc)
+		(sp->customPtr->clientData, interp, tkwin, widgRec, 
+		sp->offset, sp->specFlags);
+
+    case BLT_CONFIG_DOUBLE: 
+	return Tcl_NewDoubleObj(*(double *)ptr);
+
+    case BLT_CONFIG_FONT: 
+	if (*(Blt_Font *)ptr != NULL) {
+	    string = Blt_NameOfFont(*(Blt_Font *)ptr);
+	}
+	break;
+
+    case BLT_CONFIG_TK_FONT: 
+	if (*(Tk_Font *)ptr != NULL) {
+	    string = Tk_NameOfFont(*(Tk_Font *)ptr);
+	}
+	break;
+
+    case BLT_CONFIG_INT: 
+	return Tcl_NewIntObj(*(int *)ptr);
+
+    case BLT_CONFIG_JOIN_STYLE:
+	string = Tk_NameOfJoinStyle(*(int *)ptr);
+	break;
+
+    case BLT_CONFIG_JUSTIFY:
+	string = Tk_NameOfJustify(*(Tk_Justify *)ptr);
+	break;
+
+    case BLT_CONFIG_MM:
+	return Tcl_NewDoubleObj(*(double *)ptr);
+
+    case BLT_CONFIG_PIXELS: 
+    case BLT_CONFIG_PIXELS_POS: 
+    case BLT_CONFIG_PIXELS_NNEG: 
+	return Tcl_NewIntObj(*(int *)ptr);
+
+    case BLT_CONFIG_RELIEF: 
+	string = Tk_NameOfRelief(*(int *)ptr);
+	break;
+
+    case BLT_CONFIG_STRING: 
+    case BLT_CONFIG_UID:
+	if (*(char **)ptr != NULL) {
+	    string = *(char **)ptr;
+	}
+	break;
+
+    case BLT_CONFIG_BITMASK:
+	{
+	    unsigned long flag;
+
+	    flag = (*(unsigned long *)ptr) & (unsigned long)sp->customPtr;
+	    return Tcl_NewBooleanObj((flag != 0));
+	}
+
+    case BLT_CONFIG_DASHES: 
+	{
+	    unsigned char *p;
+	    Tcl_Obj *listObjPtr;
+	    Blt_Dashes *dashesPtr = (Blt_Dashes *)ptr;
+	    
+	    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+	    for(p = dashesPtr->values; *p != 0; p++) {
+		Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(*p));
+	    }
+	    return listObjPtr;
+	}
+
+    case BLT_CONFIG_INT_NNEG:
+    case BLT_CONFIG_INT_POS:
+	return Tcl_NewIntObj(*(int *)ptr);
+
+    case BLT_CONFIG_FILL: 
+	string = Blt_NameOfFill(*(int *)ptr);
+	break;
+
+    case BLT_CONFIG_FLOAT: 
+	{
+	    double x = *(float *)ptr;
+	    return Tcl_NewDoubleObj(x);
+	}
+
+    case BLT_CONFIG_LIST: 
+	{
+	    Tcl_Obj *objPtr, *listObjPtr;
+	    char *const *p;
+	    
+	    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+	    for (p = *(char ***)ptr; *p != NULL; p++) {
+		objPtr = Tcl_NewStringObj(*p, -1);
+		Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+	    }
+	    return listObjPtr;
+	}
+
+    case BLT_CONFIG_LONG: 
+	return Tcl_NewLongObj(*(long *)ptr);
+
+    case BLT_CONFIG_LONG_NNEG:
+    case BLT_CONFIG_LONG_POS:
+	return Tcl_NewLongObj(*(long *)ptr);
+
+    case BLT_CONFIG_OBJ:
+	if (*(Tcl_Obj **)ptr != NULL) {
+	    return *(Tcl_Obj **)ptr;
+	}
+	break;
+
+    case BLT_CONFIG_PAD: 
+	{
+	    Blt_Pad *padPtr = (Blt_Pad *)ptr;
+	    Tcl_Obj *objPtr, *listObjPtr;
+	    
+	    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+	    objPtr = Tcl_NewIntObj(padPtr->side1);
+	    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+	    objPtr = Tcl_NewIntObj(padPtr->side2);
+	    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
+	    return listObjPtr;
+	}
+
+    case BLT_CONFIG_STATE: 
+	string = Blt_NameOfState(*(int *)ptr);
+	break;
+
+    case BLT_CONFIG_SIDE: 
+	string = Blt_NameOfSide(*(int *)ptr);
+	break;
+
+    case BLT_CONFIG_BACKGROUND: 
+	if (*(Blt_Background *)ptr != NULL) {
+	    string = Blt_NameOfBackground(*(Blt_Background *)ptr);
+	}
+	break;
+
+    case BLT_CONFIG_PIX32: 
+	string = Blt_NameOfPixel((Blt_Pixel *)ptr);
+	break;
+
+    default: 
+	string = "?? unknown type ??";
+    }
+    return Tcl_NewStringObj(string, -1);
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
+ *
+ * FormatConfigInfo --
+ *
+ *	Create a valid TCL list holding the configuration information
+ *	for a single configuration option.
+ *
+ * Results:
+ *	A TCL list, dynamically allocated.  The caller is expected to
+ *	arrange for this list to be freed eventually.
+ *
+ * Side effects:
+ *	Memory is allocated.
+ *
+ *---------------------------------------------------------------------------
+ */
+static Tcl_Obj *
+FormatConfigInfo(
+    Tcl_Interp *interp,		/* Interpreter to use for things
+				 * like floating-point precision. */
+    Tk_Window tkwin,		/* Window corresponding to widget. */
+    Blt_ConfigSpec *sp,		/* Pointer to information describing
+				 * option. */
+    char *widgRec)		/* Pointer to record holding current
+				 * values of info for widget. */
+{
+    Tcl_Obj *listObjPtr;
+
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    if (sp->switchName != NULL) {
+	Tcl_ListObjAppendElement(interp, listObjPtr, 
+		Tcl_NewStringObj(sp->switchName, -1));
+    }  else {
+	Tcl_ListObjAppendElement(interp, listObjPtr, Blt_EmptyStringObj());
+    }
+    if (sp->dbName != NULL) {
+	Tcl_ListObjAppendElement(interp, listObjPtr,  
+		Tcl_NewStringObj(sp->dbName, -1));
+    } else {
+	Tcl_ListObjAppendElement(interp, listObjPtr, Blt_EmptyStringObj());
+    }
+    if (sp->type == BLT_CONFIG_SYNONYM) {
+	return listObjPtr;
+    } 
+    if (sp->dbClass != NULL) {
+	Tcl_ListObjAppendElement(interp, listObjPtr, 
+		Tcl_NewStringObj(sp->dbClass, -1));
+    } else {
+	Tcl_ListObjAppendElement(interp, listObjPtr, Blt_EmptyStringObj());
+    }
+    if (sp->defValue != NULL) {
+	Tcl_ListObjAppendElement(interp, listObjPtr, 
+		Tcl_NewStringObj(sp->defValue, -1));
+    } else {
+	Tcl_ListObjAppendElement(interp, listObjPtr, Blt_EmptyStringObj());
+    }
+    Tcl_ListObjAppendElement(interp, listObjPtr, 
+	FormatConfigValue(interp, tkwin, sp, widgRec));
+    return listObjPtr;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * FindConfigSpec --
+ *
+ *	Search through a table of configuration specs, looking for
+ *	one that matches a given switchName.
+ *
+ * Results:
+ *	The return value is a pointer to the matching entry, or NULL
+ *	if nothing matched.  In that case an error message is left
+ *	in the interp's result.
+ *
+ * Side effects:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+static Blt_ConfigSpec *
+FindConfigSpec(
+    Tcl_Interp *interp,		/* Used for reporting errors. */
+    Blt_ConfigSpec *specs,	/* Pointer to table of configuration
+				 * specifications for a widget. */
+    Tcl_Obj *objPtr,		/* Name (suitable for use in a "config"
+				 * command) identifying particular option. */
+    int needFlags,		/* Flags that must be present in matching
+				 * entry. */
+    int hateFlags)		/* Flags that must NOT be present in
+				 * matching entry. */
+{
+    Blt_ConfigSpec *matchPtr;	/* Matching spec, or NULL. */
+    Blt_ConfigSpec *sp;
+    const char *string;
+    char c;			/* First character of current argument. */
+    int length;
+
+    string = Tcl_GetStringFromObj(objPtr, &length);
+    c = string[1];
+    matchPtr = NULL;
+    for (sp = specs; sp->type != BLT_CONFIG_END; sp++) {
+	if (sp->switchName == NULL) {
+	    continue;
+	}
+	if ((sp->switchName[1] != c) || 
+	    (strncmp(sp->switchName, string, length) != 0)) {
+	    continue;
+	}
+	if (((sp->specFlags & needFlags) != needFlags) || 
+	    (sp->specFlags & hateFlags)) {
+	    continue;
+	}
+	if (sp->switchName[length] == 0) {
+	    matchPtr = sp;
+	    goto gotMatch;
+	}
+	if (matchPtr != NULL) {
+	    if (interp != NULL) {
+	        Tcl_AppendResult(interp, "ambiguous option \"", string, "\"", 
+			(char *)NULL);
+            }
+	    return (Blt_ConfigSpec *)NULL;
+	}
+	matchPtr = sp;
+    }
+
+    if (matchPtr == NULL) {
+	if (interp != NULL) {
+	    Tcl_AppendResult(interp, "unknown option \"", string, "\"", 
+		(char *)NULL);
+	}
+	return (Blt_ConfigSpec *)NULL;
+    }
+
+    /*
+     * Found a matching entry.  If it's a synonym, then find the
+     * entry that it's a synonym for.
+     */
+
+ gotMatch:
+    sp = matchPtr;
+    if (sp->type == BLT_CONFIG_SYNONYM) {
+	for (sp = specs; /*empty*/; sp++) {
+	    if (sp->type == BLT_CONFIG_END) {
+		if (interp != NULL) {
+   		    Tcl_AppendResult(interp, 
+			"couldn't find synonym for option \"", string, "\"", 
+			(char *) NULL);
+		}
+		return (Blt_ConfigSpec *) NULL;
+	    }
+	    if ((sp->dbName == matchPtr->dbName) && 
+		(sp->type != BLT_CONFIG_SYNONYM) && 
+		((sp->specFlags & needFlags) == needFlags) && 
+		!(sp->specFlags & hateFlags)) {
+		break;
+	    }
+	}
+    }
+    return sp;
+}
+
+/* Public routines */
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_ConfigureWidgetFromObj --
+ *
+ *	Process command-line options and database options to
+ *	fill in fields of a widget record with resources and
+ *	other parameters.
+ *
+ * Results:
+ *	A standard TCL return value.  In case of an error,
+ *	the interp's result will hold an error message.
+ *
+ * Side effects:
+ *	The fields of widgRec get filled in with information
+ *	from argc/argv and the option database.  Old information
+ *	in widgRec's fields gets recycled.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Blt_ConfigureWidgetFromObj(
+    Tcl_Interp *interp,		/* Interpreter for error reporting. */
+    Tk_Window tkwin,		/* Window containing widget (needed to
+				 * set up X resources). */
+    Blt_ConfigSpec *specs,	/* Describes legal options. */
+    int objc,			/* Number of elements in argv. */
+    Tcl_Obj *const *objv,	/* Command-line options. */
+    char *widgRec,		/* Record whose fields are to be
+				 * modified.  Values must be properly
+				 * initialized. */
+    int flags)			/* Used to specify additional flags
+				 * that must be present in config specs
+				 * for them to be considered.  Also,
+				 * may have BLT_CONFIG_OBJV_ONLY set. */
+{
+    Blt_ConfigSpec *sp;
+    int needFlags;		/* Specs must contain this set of flags
+				 * or else they are not considered. */
+    int hateFlags;		/* If a spec contains any bits here, it's
+				 * not considered. */
+    int result;
+
+    if (tkwin == NULL) {
+	/*
+	 * Either we're not really in Tk, or the main window was destroyed and
+	 * we're on our way out of the application
+	 */
+	Tcl_AppendResult(interp, "NULL main window", (char *)NULL);
+	return TCL_ERROR;
+    }
+
+    needFlags = flags & ~(BLT_CONFIG_USER_BIT - 1);
+    if (Tk_Depth(tkwin) <= 1) {
+	hateFlags = BLT_CONFIG_COLOR_ONLY;
+    } else {
+	hateFlags = BLT_CONFIG_MONO_ONLY;
+    }
+
+    /*
+     * Pass one:  scan through all the option specs, replacing strings
+     * with Tk_Uid structs (if this hasn't been done already) and
+     * clearing the BLT_CONFIG_OPTION_SPECIFIED flags.
+     */
+
+    for (sp = specs; sp->type != BLT_CONFIG_END; sp++) {
+	if (!(sp->specFlags & INIT) && (sp->switchName != NULL)) {
+	    if (sp->dbName != NULL) {
+		sp->dbName = Tk_GetUid(sp->dbName);
+	    }
+	    if (sp->dbClass != NULL) {
+		sp->dbClass = Tk_GetUid(sp->dbClass);
+	    }
+	    if (sp->defValue != NULL) {
+		sp->defValue = Tk_GetUid(sp->defValue);
+	    }
+	}
+	sp->specFlags = (sp->specFlags & ~BLT_CONFIG_OPTION_SPECIFIED) | INIT;
+    }
+
+    /*
+     * Pass two:  scan through all of the arguments, processing those
+     * that match entries in the specs.
+     */
+    while (objc > 0) {
+	sp = FindConfigSpec(interp, specs, objv[0], needFlags, hateFlags);
+	if (sp == NULL) {
+	    return TCL_ERROR;
+	}
+
+	/* Process the entry.  */
+	if (objc < 2) {
+	    Tcl_AppendResult(interp, "value for \"", Tcl_GetString(objv[0]),
+		    "\" missing", (char *) NULL);
+	    return TCL_ERROR;
+	}
+	if (DoConfig(interp, tkwin, sp, objv[1], widgRec) != TCL_OK) {
+	    char msg[100];
+
+	    sprintf_s(msg, 100, "\n    (processing \"%.40s\" option)",
+		    sp->switchName);
+	    Tcl_AddErrorInfo(interp, msg);
+	    return TCL_ERROR;
+	}
+	sp->specFlags |= BLT_CONFIG_OPTION_SPECIFIED;
+	objc -= 2, objv += 2;
+    }
+
+    /*
+     * Pass three:  scan through all of the specs again;  if no
+     * command-line argument matched a spec, then check for info
+     * in the option database.  If there was nothing in the
+     * database, then use the default.
+     */
+
+    if ((flags & BLT_CONFIG_OBJV_ONLY) == 0) {
+	Tcl_Obj *objPtr;
+
+	for (sp = specs; sp->type != BLT_CONFIG_END; sp++) {
+	    if ((sp->specFlags & BLT_CONFIG_OPTION_SPECIFIED) || 
+		(sp->switchName == NULL) || (sp->type == BLT_CONFIG_SYNONYM)) {
+		continue;
+	    }
+	    if (((sp->specFlags & needFlags) != needFlags) || 
+		(sp->specFlags & hateFlags)) {
+		continue;
+	    }
+	    objPtr = NULL;
+	    if (sp->dbName != NULL) {
+		Tk_Uid value;
+
+		/* If a resource name was specified, check if there's
+		 * also a value was associated with it.  This
+		 * overrides the default value. */
+		value = Tk_GetOption(tkwin, sp->dbName, sp->dbClass);
+		if (value != NULL) {
+		    objPtr = Tcl_NewStringObj(value, -1);
+		}
+	    }
+
+	    if (objPtr != NULL) {
+		Tcl_IncrRefCount(objPtr);
+		result = DoConfig(interp, tkwin, sp, objPtr, widgRec);
+		Tcl_DecrRefCount(objPtr);
+		if (result != TCL_OK) {
+		    char msg[200];
+    
+		    sprintf_s(msg, 200, 
+			"\n    (%s \"%.50s\" in widget \"%.50s\")",
+			"database entry for", sp->dbName, Tk_PathName(tkwin));
+		    Tcl_AddErrorInfo(interp, msg);
+		    return TCL_ERROR;
+		}
+	    } else if ((sp->defValue != NULL) && 
+		((sp->specFlags & BLT_CONFIG_DONT_SET_DEFAULT) == 0)) {
+
+		/* No resource value is found, use the default value. */
+		objPtr = Tcl_NewStringObj(sp->defValue, -1);
+		Tcl_IncrRefCount(objPtr);
+		result = DoConfig(interp, tkwin, sp, objPtr, widgRec);
+		Tcl_DecrRefCount(objPtr);
+		if (result != TCL_OK) {
+		    char msg[200];
+		    
+		    sprintf_s(msg, 200, 
+			"\n    (%s \"%.50s\" in widget \"%.50s\")",
+			"default value for", sp->dbName, Tk_PathName(tkwin));
+		    Tcl_AddErrorInfo(interp, msg);
+		    return TCL_ERROR;
+		}
+	    }
+	}
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_ConfigureInfoFromObj --
+ *
+ *	Return information about the configuration options
+ *	for a window, and their current values.
+ *
+ * Results:
+ *	Always returns TCL_OK.  The interp's result will be modified
+ *	hold a description of either a single configuration option
+ *	available for "widgRec" via "specs", or all the configuration
+ *	options available.  In the "all" case, the result will
+ *	available for "widgRec" via "specs".  The result will
+ *	be a list, each of whose entries describes one option.
+ *	Each entry will itself be a list containing the option's
+ *	name for use on command lines, database name, database
+ *	class, default value, and current value (empty string
+ *	if none).  For options that are synonyms, the list will
+ *	contain only two values:  name and synonym name.  If the
+ *	"name" argument is non-NULL, then the only information
+ *	returned is that for the named argument (i.e. the corresponding
+ *	entry in the overall list is returned).
+ *
+ * Side effects:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+
+int
+Blt_ConfigureInfoFromObj(
+    Tcl_Interp *interp,		/* Interpreter for error reporting. */
+    Tk_Window tkwin,		/* Window corresponding to widgRec. */
+    Blt_ConfigSpec *specs,	/* Describes legal options. */
+    char *widgRec,		/* Record whose fields contain current
+				 * values for options. */
+    Tcl_Obj *objPtr,		/* If non-NULL, indicates a single option
+				 * whose info is to be returned.  Otherwise
+				 * info is returned for all options. */
+    int flags)			/* Used to specify additional flags
+				 * that must be present in config specs
+				 * for them to be considered. */
+{
+    Blt_ConfigSpec *sp;
+    Tcl_Obj *listObjPtr, *valueObjPtr;
+    const char *string;
+    int needFlags, hateFlags;
+
+    needFlags = flags & ~(BLT_CONFIG_USER_BIT - 1);
+    if (Tk_Depth(tkwin) <= 1) {
+	hateFlags = BLT_CONFIG_COLOR_ONLY;
+    } else {
+	hateFlags = BLT_CONFIG_MONO_ONLY;
+    }
+
+    /*
+     * If information is only wanted for a single configuration
+     * spec, then handle that one spec specially.
+     */
+
+    Tcl_SetResult(interp, (char *)NULL, TCL_STATIC);
+    if (objPtr != NULL) {
+	sp = FindConfigSpec(interp, specs, objPtr, needFlags, hateFlags);
+	if (sp == NULL) {
+	    return TCL_ERROR;
+	}
+	valueObjPtr =  FormatConfigInfo(interp, tkwin, sp, widgRec);
+	Tcl_SetObjResult(interp, valueObjPtr);
+	return TCL_OK;
+    }
+
+    /*
+     * Loop through all the specs, creating a big list with all
+     * their information.
+     */
+    string = NULL;		/* Suppress compiler warning. */
+    if (objPtr != NULL) {
+	string = Tcl_GetString(objPtr);
+    }
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    for (sp = specs; sp->type != BLT_CONFIG_END; sp++) {
+	if ((objPtr != NULL) && (sp->switchName != string)) {
+	    continue;
+	}
+	if (((sp->specFlags & needFlags) != needFlags) || 
+	    (sp->specFlags & hateFlags)) {
+	    continue;
+	}
+	if (sp->switchName == NULL) {
+	    continue;
+	}
+	valueObjPtr = FormatConfigInfo(interp, tkwin, sp, widgRec);
+	Tcl_ListObjAppendElement(interp, listObjPtr, valueObjPtr);
+    }
+    Tcl_SetObjResult(interp, listObjPtr);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_ConfigureValueFromObj --
+ *
+ *	This procedure returns the current value of a configuration
+ *	option for a widget.
+ *
+ * Results:
+ *	The return value is a standard TCL completion code (TCL_OK or
+ *	TCL_ERROR).  The interp's result will be set to hold either the value
+ *	of the option given by objPtr (if TCL_OK is returned) or
+ *	an error message (if TCL_ERROR is returned).
+ *
+ * Side effects:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Blt_ConfigureValueFromObj(
+    Tcl_Interp *interp,		/* Interpreter for error reporting. */
+    Tk_Window tkwin,		/* Window corresponding to widgRec. */
+    Blt_ConfigSpec *specs,	/* Describes legal options. */
+    char *widgRec,		/* Record whose fields contain current
+				 * values for options. */
+    Tcl_Obj *objPtr,		/* Gives the command-line name for the
+				 * option whose value is to be returned. */
+    int flags)			/* Used to specify additional flags
+				 * that must be present in config specs
+				 * for them to be considered. */
+{
+    Blt_ConfigSpec *sp;
+    int needFlags, hateFlags;
+
+    needFlags = flags & ~(BLT_CONFIG_USER_BIT - 1);
+    if (Tk_Depth(tkwin) <= 1) {
+	hateFlags = BLT_CONFIG_COLOR_ONLY;
+    } else {
+	hateFlags = BLT_CONFIG_MONO_ONLY;
+    }
+    sp = FindConfigSpec(interp, specs, objPtr, needFlags, hateFlags);
+    if (sp == NULL) {
+	return TCL_ERROR;
+    }
+    objPtr = FormatConfigValue(interp, tkwin, sp, widgRec);
+    Tcl_SetObjResult(interp, objPtr);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_FreeOptions --
+ *
+ *	Free up all resources associated with configuration options.
+ *
+ * Results:
+ *	None.
+ *
+ * Side effects:
+ *	Any resource in widgRec that is controlled by a configuration
+ *	option (e.g. a Tk_3DBorder or XColor) is freed in the appropriate
+ *	fashion.
+ *
+ *---------------------------------------------------------------------------
+ */
+void
+Blt_FreeOptions(
+    Blt_ConfigSpec *specs,	/* Describes legal options. */
+    char *widgRec,		/* Record whose fields contain current
+				 * values for options. */
+    Display *display,		/* X display; needed for freeing some
+				 * resources. */
+    int needFlags)		/* Used to specify additional flags
+				 * that must be present in config specs
+				 * for them to be considered. */
+{
+    Blt_ConfigSpec *sp;
+
+    for (sp = specs; sp->type != BLT_CONFIG_END; sp++) {
+	char *ptr;
+
+	if ((sp->specFlags & needFlags) != needFlags) {
+	    continue;
+	}
+	ptr = widgRec + sp->offset;
+	switch (sp->type) {
+	case BLT_CONFIG_STRING:
+	    if (*((char **) ptr) != NULL) {
+		Blt_Free(*((char **) ptr));
+		*((char **) ptr) = NULL;
+	    }
+	    break;
+
+	case BLT_CONFIG_COLOR:
+	    if (*((XColor **) ptr) != NULL) {
+		Tk_FreeColor(*((XColor **) ptr));
+		*((XColor **) ptr) = NULL;
+	    }
+	    break;
+
+	case BLT_CONFIG_FONT:
+	    if (*((Blt_Font *) ptr) != None) {
+	        Blt_FreeFont(*((Blt_Font *) ptr));
+  	        *((Blt_Font *) ptr) = NULL;
+            }
+	    break;
+
+	case BLT_CONFIG_TK_FONT:
+	    if (*((Tk_Font *) ptr) != None) {
+	        Tk_FreeFont(*((Tk_Font *) ptr));
+  	        *((Tk_Font *) ptr) = NULL;
+            }
+	    break;
+
+	case BLT_CONFIG_BITMAP:
+	    if (*((Pixmap *) ptr) != None) {
+		Tk_FreeBitmap(display, *((Pixmap *) ptr));
+		*((Pixmap *) ptr) = None;
+	    }
+	    break;
+
+	case BLT_CONFIG_BORDER:
+	    if (*((Tk_3DBorder *) ptr) != NULL) {
+		Tk_Free3DBorder(*((Tk_3DBorder *) ptr));
+		*((Tk_3DBorder *) ptr) = NULL;
+	    }
+	    break;
+
+	case BLT_CONFIG_CURSOR:
+	case BLT_CONFIG_ACTIVE_CURSOR:
+	    if (*((Tk_Cursor *) ptr) != None) {
+		Tk_FreeCursor(display, *((Tk_Cursor *) ptr));
+		*((Tk_Cursor *) ptr) = None;
+	    }
+	    break;
+
+	case BLT_CONFIG_OBJ:
+	    if (*(Tcl_Obj **)ptr != NULL) {
+		Tcl_DecrRefCount(*(Tcl_Obj **)ptr);
+		*(Tcl_Obj **)ptr = NULL;
+	    }
+	    break;
+
+	case BLT_CONFIG_LIST:
+	    if (*((char ***) ptr) != NULL) {
+		Blt_Free(*((char ***) ptr));
+		*((char ***) ptr) = NULL;
+	    }
+	    break;
+
+	case BLT_CONFIG_UID:
+	    if (*(Blt_Uid *)ptr != NULL) {
+		Blt_FreeUid(*(Blt_Uid *)ptr);
+		*(Blt_Uid *)ptr = NULL;
+	    }
+	    break;
+
+	case BLT_CONFIG_BACKGROUND:
+	    if (*((Blt_Background *)ptr) != NULL) {
+		Blt_FreeBackground(*((Blt_Background *)ptr));
+		*((Blt_Background *)ptr) = NULL;
+	    }
+	    break;
+
+	case BLT_CONFIG_CUSTOM:
+	    if ((*(char **)ptr != NULL) && 
+		(sp->customPtr->freeProc != NULL)) {
+		(*sp->customPtr->freeProc)(sp->customPtr->clientData,
+			display, widgRec, sp->offset);
+	    }
+	    break;
+
+	}
+    }
+}
+
+/*
+ *---------------------------------------------------------------------------
  *
  * Blt_ConfigModified --
  *
@@ -1181,21 +2211,21 @@ TileToString(clientData, tkwin, widgRec, offset, freeProcPtr)
  * Results:
  *      Returns 1 if one of the options has changed, 0 otherwise.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-int Blt_ConfigModified
-TCL_VARARGS_DEF(Tk_ConfigSpec *, arg1)
+int 
+Blt_ConfigModified TCL_VARARGS_DEF(Blt_ConfigSpec *, arg1)
 {
     va_list argList;
-    Tk_ConfigSpec *specs;
-    register Tk_ConfigSpec *specPtr;
-    register char *option;
+    Blt_ConfigSpec *specs;
+    Blt_ConfigSpec *sp;
+    const char *option;
 
-    specs = TCL_VARARGS_START(Tk_ConfigSpec *, arg1, argList);
-    while ((option = va_arg(argList, char *)) != NULL) {
-	for (specPtr = specs; specPtr->type != TK_CONFIG_END; specPtr++) {
-	    if ((Tcl_StringMatch(specPtr->argvName, option)) &&
-		(specPtr->specFlags & TK_CONFIG_OPTION_SPECIFIED)) {
+    specs = TCL_VARARGS_START(Blt_ConfigSpec *, arg1, argList);
+    while ((option = va_arg(argList, const char *)) != NULL) {
+	for (sp = specs; sp->type != BLT_CONFIG_END; sp++) {
+	    if ((Tcl_StringMatch(sp->switchName, option)) &&
+		(sp->specFlags & BLT_CONFIG_OPTION_SPECIFIED)) {
 		va_end(argList);
 		return 1;
 	    }
@@ -1206,9 +2236,9 @@ TCL_VARARGS_DEF(Tk_ConfigSpec *, arg1)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Blt_ConfigureWidgetComponent --
+ * Blt_ConfigureComponentFromObj --
  *
  *	Configures a component of a widget.  This is useful for
  *	widgets that have multiple components which aren't uniquely
@@ -1227,55 +2257,54 @@ TCL_VARARGS_DEF(Tk_ConfigSpec *, arg1)
  *	call Tk_ConfigureWidget, using the name of the component.
  *
  * Results:
- *      A standard Tcl result.
+ *      A standard TCL result.
  *
  * Side Effects:
  *	A temporary window is created merely to pass to Tk_ConfigureWidget.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 int
-Blt_ConfigureWidgetComponent(interp, parent, resName, className, specsPtr, 
-	argc, argv, widgRec, flags)
-    Tcl_Interp *interp;
-    Tk_Window parent;		/* Window to associate with component */
-    char resName[];		/* Name of component */
-    char className[];
-    Tk_ConfigSpec *specsPtr;
-    int argc;
-    char *argv[];
-    char *widgRec;
-    int flags;
+Blt_ConfigureComponentFromObj(
+    Tcl_Interp *interp,
+    Tk_Window parent,		/* Window to associate with component */
+    const char *name,		/* Name of component */
+    const char *className,
+    Blt_ConfigSpec *sp,
+    int objc,
+    Tcl_Obj *const *objv,
+    char *widgRec,
+    int flags)
 {
     Tk_Window tkwin;
     int result;
-    char *tempName;
+    char *tmpName;
     int isTemporary = FALSE;
 
-    tempName = Blt_Strdup(resName);
+    tmpName = Blt_AssertStrdup(name);
 
     /* Window name can't start with an upper case letter */
-    tempName[0] = tolower(resName[0]);
+    tmpName[0] = tolower(name[0]);
 
     /*
      * Create component if a child window by the component's name
      * doesn't already exist.
      */
-    tkwin = Blt_FindChild(parent, tempName);
+    tkwin = Blt_FindChild(parent, tmpName);
     if (tkwin == NULL) {
-	tkwin = Tk_CreateWindow(interp, parent, tempName, (char *)NULL);
+	tkwin = Tk_CreateWindow(interp, parent, tmpName, (char *)NULL);
 	isTemporary = TRUE;
     }
     if (tkwin == NULL) {
 	Tcl_AppendResult(interp, "can't find window in \"", 
-		 Tk_PathName(parent), "\"", (char *)NULL);
+			 Tk_PathName(parent), "\"", (char *)NULL);
 	return TCL_ERROR;
     }
     assert(Tk_Depth(tkwin) == Tk_Depth(parent));
-    Blt_Free(tempName);
+    Blt_Free(tmpName);
 
     Tk_SetClass(tkwin, className);
-    result = Tk_ConfigureWidget(interp, tkwin, specsPtr, argc, argv, widgRec,
+    result = Blt_ConfigureWidgetFromObj(interp, tkwin, sp, objc, objv, widgRec,
 	flags);
     if (isTemporary) {
 	Tk_DestroyWindow(tkwin);
@@ -1283,88 +2312,33 @@ Blt_ConfigureWidgetComponent(interp, parent, resName, className, specsPtr,
     return result;
 }
 
-
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * Blt_StringToEnum --
+ * Blt_ObjIsOption --
  *
- *	Converts the string into its enumerated type.
+ *	Indicates whether objPtr is a valid configuration option 
+ *	such as -background.
  *
- *----------------------------------------------------------------------
+ * Results:
+ *	Returns 1 is a matching option is found and 0 otherwise.
+ *
+ *---------------------------------------------------------------------------
  */
-/*ARGSUSED*/
 int
-Blt_StringToEnum(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Vectors of valid strings. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* String to match. */
-    char *widgRec;		/* Widget record. */
-    int offset;			/* Offset of field in record */
+Blt_ObjIsOption(
+    Blt_ConfigSpec *specs,	/* Describes legal options. */
+    Tcl_Obj *objPtr,		/* Command-line option name. */
+    int flags)			/* Used to specify additional flags
+				 * that must be present in config specs
+				 * for them to be considered.  Also,
+				 * may have BLT_CONFIG_OBJV_ONLY set. */
 {
-    int *enumPtr = (int *)(widgRec + offset);
-    char c;
-    register char **p;
-    register int i;
-    int count;
+    Blt_ConfigSpec *sp;
+    int needFlags;		/* Specs must contain this set of flags
+				 * or else they are not considered. */
 
-    c = string[0];
-    count = 0;
-    for (p = (char **)clientData; *p != NULL; p++) {
-	if ((c == p[0][0]) && (strcmp(string, *p) == 0)) {
-	    *enumPtr = count;
-	    return TCL_OK;
-	}
-	count++;
-    }
-    *enumPtr = -1;
-
-    Tcl_AppendResult(interp, "bad value \"", string, "\": should be ",
-		(char *)NULL);
-    p = (char **)clientData; 
-    if (count > 0) {
-	Tcl_AppendResult(interp, p[0], (char *)NULL);
-    }
-    for (i = 1; i < (count - 1); i++) {
-	Tcl_AppendResult(interp, " ", p[i], ", ", (char *)NULL);
-    }
-    if (count > 1) {
-	Tcl_AppendResult(interp, " or ", p[count - 1], ".", (char *)NULL);
-    }
-    return TCL_ERROR;
+    needFlags = flags & ~(BLT_CONFIG_USER_BIT - 1);
+    sp = FindConfigSpec((Tcl_Interp *)NULL, specs, objPtr, needFlags, 0);
+    return (sp != NULL);
 }
-
-/*
- *----------------------------------------------------------------------
- *
- * Blt_EnumToString --
- *
- *	Returns the string associated with the enumerated type.
- *
- *----------------------------------------------------------------------
- */
-/*ARGSUSED*/
-char *
-Blt_EnumToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* List of strings. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Widget record */
-    int offset;			/* Offset of field in widget record */
-    Tcl_FreeProc **freeProcPtr;	/* Not used. */
-{
-    int value = *(int *)(widgRec + offset);
-    char **p;
-    int count;
-
-    count = 0;
-    for (p = (char **)clientData; *p != NULL; p++) {
-	count++;
-    }
-    if ((value >= count) || (value < 0)) {
-	return "unknown value";
-    }
-    p = (char **)clientData;
-    return p[value];
-}
-

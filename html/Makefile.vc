@@ -1,10 +1,10 @@
+
 # ------------------------------------------------------------------------
 # 	Makefile for HTML files
 # ------------------------------------------------------------------------
 
-include ../win/makedefs
-
-srcdir =	.
+include ../vc.config
+srcdir =      ../$(TOP)/html
 
 instdirs =	$(prefix) $(libdir) $(scriptdir) $(scriptdir)/html 
 
@@ -22,8 +22,7 @@ install-dirs:
 
 install-html: install-dirs
 	for i in $(srcdir)/*.html ; do \
-	    $(RM) $(scriptdir)/html/$$i ; \
-	    $(INSTALL_DATA) $(srcdir)/$$i $(scriptdir)/html ; \
+	    $(INSTALL_DATA) $$i $(scriptdir)/html ; \
 	done 
 
 clean:

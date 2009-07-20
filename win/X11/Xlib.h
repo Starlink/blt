@@ -1351,7 +1351,7 @@ extern void XSelectInput(Display *d, Window w, long l);
 
 extern Status XSendEvent(Display *d, Window w, Bool b, long l, XEvent* x);
 
-extern void XSetCommand(Display *d, Window w, char** c, int i);
+extern void XSetCommand(Display *d, Window w, CONST char** c, int i);
 
 extern void XSetIconName(Display *d, Window w, _Xconst char* c);
 

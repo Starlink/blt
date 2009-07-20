@@ -3,12 +3,17 @@
 package require BLT
 namespace import blt::*
 
-set cmd "xterm -geom +4000+4000"
-#set cmd "xclock -name fred -geom +4000+4000"
+#set cmd "xterm"
+set cmd "xclock"
+set cmd "xterm"
+blt::container .c -width 800 -height 400 
 eval bgexec myVar $cmd &
-container .c 
 pack .c -fill both -expand yes
-#.c configure -relief raised -bd 2 -name fred
-.c configure -relief raised -bd 2 -command $cmd
+.c configure -relief raised -bd 2 
+button .b -text "Quit" -command exit
+pack .b
+update
+#.c configure -relief raised -bd 2 -name "Mozilla Firefox"
+#.c configure -relief raised -bd 2 -command $cmd
 
 

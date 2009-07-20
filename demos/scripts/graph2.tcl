@@ -2,23 +2,23 @@ option add *HighlightThickness		0
 option add *Tile			bgTexture
 option add *Button.Tile			""
 
-image create photo bgTexture -file ./images/chalk.gif
+image create picture bgTexture -file ./images/chalk.gif
 
 set configOptions [subst {
     InvertXY			no
-    Axis.TickFont		{ Helvetica 14 bold }
-    Axis.TitleFont		{ Helvetica 12 bold }
+    Axis.TickFont		{ {Sans Serif} 14 bold }
+    Axis.TitleFont		{ {Sans Serif} 12 bold }
     BorderWidth			2
     Element.Pixels		8
     Element.ScaleSymbols	true
     Element.Smooth		cubic
-    Font			{ Helvetica 18 bold }
+    Font			{ {Serif} 10 }
     Foreground			white
     Legend.ActiveBorderWidth	2
     Legend.ActiveRelief		raised
     Legend.Anchor		ne
     Legend.BorderWidth		0
-    Legend.Font			{ Helvetica 34 }
+    Legend.Font			{ Serif 14 }
     Legend.Foreground		orange
     #Legend.Position		plotarea
     Legend.Hide			yes
@@ -66,13 +66,13 @@ for { set level 30 } { $level <= 100 } { incr level 10 } {
     set color [format "#dd0d%0.2x" [expr round($level*2.55)]]
     set pen "pen$count"
     set symbol "symbol$count"
-    bitmap compose $symbol [lindex $letters $count] \
-    	-font -*-helvetica-medium-r-*-*-34-*-*-*-*-*-*-*
-    $graph pen create $pen \
-	-color $color \
-	-symbol $symbol \
-	-fill "" \
-	-pixels 13
+    set im [image create picture -width 25 -height 35]
+    $im blank 0x00000000
+    if 0 {
+    $im draw text [lindex $letters $count] 0 0 -color $color \
+    	-font "Arial 12" -anchor nw 
+    }
+    $graph pen create $pen -symbol $im 
     set min $max
     set max [expr $max + $step]
     lappend styles "$pen $min $max"
@@ -89,16 +89,16 @@ $graph xaxis use degrees
 set tcl_precision 15
 set pi1_2 [expr 3.14159265358979323846/180.0]
 
-vector create w x sinX cosX radians
+blt::vector create w x sinX cosX radians
 x seq -360.0 360.0 10.0
 #x seq -360.0 -180.0 30.0
 radians expr { x * $pi1_2 }
 sinX expr sin(radians)
 cosX expr cos(radians)
 cosX dup w
-vector destroy radians
+blt::vector destroy radians
 
-vector create xh xl yh yl
+blt::vector create xh xl yh yl
 set pct [expr ($cosX(max) - $cosX(min)) * 0.025]
 yh expr {cosX + $pct}
 yl expr {cosX - $pct}
@@ -106,16 +106,30 @@ set pct [expr ($x(max) - $x(min)) * 0.025]
 xh expr {x + $pct}
 xl expr {x - $pct}
 
+set s1 [image create picture -width 25 -height 25]
+$s1 blank 0x00000000
+
+$s1 draw circle 11 11 7 -shadow 0 -linewidth 2 \
+	-fill 0x90FF0000 -antialias yes 
+
 $graph element create line3 \
     -color green4 \
     -fill green \
     -label "cos(x)" \
     -mapx degrees \
     -styles $styles \
+    -symbol $s1 \
     -weights w \
     -x x \
     -y cosX \
     -yhigh yh -ylow yl
+
+set s2 [image create picture -width 25 -height 25]
+$s2 blank 0x00000000
+
+$s2 draw circle 12 12 7 -shadow 0 -linewidth 2 \
+	-fill 0x9000FF00 -antialias yes \
+	-outline orange
 
 $graph element create line1 \
     -color orange \
@@ -123,10 +137,9 @@ $graph element create line1 \
     -fill orange \
     -fill yellow \
     -label "sin(x)" \
-    -linewidth 3 \
     -mapx degrees \
     -pixels 6m \
-    -symbol "@bitmaps/hobbes.xbm @bitmaps/hobbes_mask.xbm" \
+    -symbol $s2 \
     -x x \
     -y sinX 
 

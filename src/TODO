@@ -95,3 +95,38 @@ gradient
   1. (FEATURE) Create gradient command that interfaces with tiling.
 
 all (Mac)
+
+---------------------
+
+barchart - Anti-aliased lines for bars?  
+barchart - Clip bars properly.
+barchart - Store bars with floating point coordinates
+barchart - Fix PostScript, fix translucent bars.
+graph    - Fix PostScript, fix translucent symbols
+graph    - Fix PostScript font stringwidth using AFM files
+graph    - Simple markup (subscript/superscript, font size color, greek symbols)
+graph    - PDF output.
+picture  - Add gradient paint operations
+picture  - Wide lines
+picture  - shadows.
+picture  - Fix text operations. Single glyph 
+picture  - PDF output
+picture  - convolve
+bgpattern - tile and gradient polygons
+table widget - 
+contour widget - 
+
+macosx   - build
+	 - busy, ?
+
+dataarray:
+
+1. Reference counted vectors.  Don't require master to delete.
+   Can attach like trees and tables.
+2. No variable interface.
+3. Tcl notifier interface.
+4. Connect to table columns.
+5. Use Blt_Objs
+6. No #auto.
+7. Test harness.
+8. Use Tcl_Objs instead of double array.  Allow strings, images, arrays, etc.

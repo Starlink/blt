@@ -3,11 +3,11 @@ This file describes how to compile and install the BLT library for UNIX.
 
 1. Uncompress and untar the distribution file.  
 
-	zcat BLT2.4.tar.gz | tar -xvf - 
+	zcat BLT3.0.tar.gz | tar -xvf - 
 
-   This will create a directory "blt2.4" with the following subdirectories:
+   This will create a directory "blt3.0" with the following subdirectories:
 
-     		   blt2.4
+     		   blt3.0
       	______________|_____________________________
      	|       |       |      |      |    | 	   |
       demos  examples  html library  man  src	  win
@@ -16,9 +16,9 @@ This file describes how to compile and install the BLT library for UNIX.
 
 2. Run ./configure
 
-   Go into the "blt2.4" directory 
+   Go into the "blt3.0" directory 
 
-        cd blt2.4
+        cd blt3.0
 
    and run the auto-configuration script "./configure".  Tell where to find 
    the Tcl and Tk header files and libraries with the "--with-tcl" switch.
@@ -87,7 +87,7 @@ This file describes how to compile and install the BLT library for UNIX.
            |     |        |     |
           bin  include   lib   man
                           |
-                        blt2.4   
+                        blt3.0   
                       ____|____
                       |       |
                     demos   dd_protocols

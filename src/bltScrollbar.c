@@ -1,11 +1,10 @@
 
 /*
- * tkScrollbar.c --
+ * bltScrollbar.c --
  *
- *	This module implements a scrollbar widgets for the Tk
- *	toolkit.  A scrollbar displays a slider and two arrows;
- *	mouse clicks on features within the scrollbar cause
- *	scrolling commands to be invoked.
+ *	This module implements a scrollbar widgets for the Tk toolkit.  A
+ *	scrollbar displays a slider and two arrows; mouse clicks on features
+ *	within the scrollbar cause scrolling commands to be invoked.
  *
  * Copyright (c) 1990-1994 The Regents of the University of California.
  * Copyright (c) 1994-1995 Sun Microsystems, Inc.
@@ -17,12 +16,9 @@
  */
 
 #include "bltInt.h"
+#ifndef NO_TKSCROLLBAR
 
-#ifndef NO_TILESCROLLBAR
-
-#include "bltTile.h"
-
-extern Tk_CustomOption bltTileOption;
+#include "bltBgStyle.h"
 
 #define NORMAL_BG	"#d9d9d9"
 #define ACTIVE_BG	"#ececec"
@@ -34,32 +30,35 @@ extern Tk_CustomOption bltTileOption;
 /*
  * Defaults for scrollbars:
  */
-#define DEF_SCROLLBAR_ACTIVE_BACKGROUND	ACTIVE_BG
-#define DEF_SCROLLBAR_ACTIVE_BG_MONO	RGB_BLACK
-#define DEF_SCROLLBAR_ACTIVE_RELIEF	"raised"
-#define DEF_SCROLLBAR_BACKGROUND		NORMAL_BG
-#define DEF_SCROLLBAR_BG_MONO		RGB_WHITE
-#define DEF_SCROLLBAR_BORDERWIDTH	"2"
-#define DEF_SCROLLBAR_COMMAND		""
-#define DEF_SCROLLBAR_CURSOR		""
-#define DEF_SCROLLBAR_EL_BORDERWIDTH	"-1"
-#define DEF_SCROLLBAR_HIGHLIGHT_BG	NORMAL_BG
-#define DEF_SCROLLBAR_HIGHLIGHT		RGB_BLACK
-#define DEF_SCROLLBAR_HIGHLIGHT_WIDTH	"2"
-#define DEF_SCROLLBAR_JUMP		"0"
-#define DEF_SCROLLBAR_ORIENT		"vertical"
-#define DEF_SCROLLBAR_RELIEF		"sunken"
-#define DEF_SCROLLBAR_REPEAT_DELAY	"300"
-#define DEF_SCROLLBAR_REPEAT_INTERVAL	"100"
-#define DEF_SCROLLBAR_TAKE_FOCUS	(char *)NULL
-#define DEF_SCROLLBAR_TROUGH_COLOR	TROUGH
-#define DEF_SCROLLBAR_TROUGH_MONO	RGB_WHITE
-#define DEF_SCROLLBAR_WIDTH		"15"
-
+#define DEF_ACTIVE_BACKGROUND	ACTIVE_BG
+#define DEF_ACTIVE_BG_MONO	RGB_BLACK
+#define DEF_ACTIVE_RELIEF	"raised"
+#define DEF_BACKGROUND		NORMAL_BG
+#define DEF_BG_MONO		RGB_WHITE
+#define DEF_BORDERWIDTH		"2"
+#define DEF_COMMAND		""
+#define DEF_CURSOR		""
+#define DEF_ELEMENT_BORDERWIDTH	"1"
+#define DEF_HIGHLIGHT		RGB_BLACK
+#define DEF_HIGHLIGHT_BG	NORMAL_BG
+#define DEF_HIGHLIGHT_WIDTH	"2"
+#define DEF_JUMP		"0"
+#define DEF_MIN_SLIDER_LENGTH	"12"
+#define DEF_ORIENT		"vertical"
+#define DEF_RELIEF		"sunken"
+#define DEF_REPEAT_DELAY	"300"
+#define DEF_REPEAT_INTERVAL	"100"
+#define DEF_SELECT_BACKGROUND	SELECT_BG
+#define DEF_TAKE_FOCUS		(char *)NULL
+#define DEF_TROUGH_COLOR	"grey" /*TROUGH*/
+#define DEF_TROUGH_MONO		RGB_WHITE
+#define DEF_WIDTH		"15"
+#define DEF_SELECT_RELIEF	"sunken"
+#define SB_WIDTH		15
 
 /*
- * A data structure of the following type is kept for each scrollbar
- * widget managed by this file:
+ * A data structure of the following type is kept for each scrollbar widget
+ * managed by this file:
  */
 
 typedef struct {
@@ -72,7 +71,7 @@ typedef struct {
 				 * freed even after tkwin has gone away. */
     Tcl_Interp *interp;		/* Interpreter associated with scrollbar. */
     Tcl_Command widgetCmd;	/* Token for scrollbar's widget command. */
-    Tk_Uid orientUid;		/* Orientation for window ("vertical" or
+    char *orientation;		/* Orientation for window ("vertical" or
 				 * "horizontal"). */
     int vertical;		/* Non-zero means vertical orientation
 				 * requested, zero means horizontal. */
@@ -92,69 +91,75 @@ typedef struct {
      */
 
     int borderWidth;		/* Width of 3-D borders. */
-    Tk_3DBorder bgBorder;	/* Used for drawing background (all flat
+    Blt_Background bg;		/* Used for drawing background (all flat
 				 * surfaces except for trough). */
-    Tk_3DBorder activeBorder;	/* For drawing backgrounds when active (i.e.
+    Blt_Background activeBg;	/* For drawing backgrounds when active (i.e.
 				 * when mouse is positioned over element). */
-    XColor *troughColorPtr;	/* Color for drawing trough. */
-    GC troughGC;		/* For drawing trough. */
-    GC copyGC;			/* Used for copying from pixmap onto screen. */
+    Blt_Background selBg;
+    Blt_Background troughBg;	/* For drawing trough. */
+    GC copyGC;			/* Used for copying from pixmap onto
+				   screen. */
+    GC arrowGC;			/* Used for drawing the arrow. */
     int relief;			/* Indicates whether window as a whole is
 				 * raised, sunken, or flat. */
-    int highlightWidth;		/* Width in pixels of highlight to draw
-				 * around widget when it has the focus.
-				 * <= 0 means don't draw a highlight. */
+    int highlightWidth;		/* Width in pixels of highlight to draw around
+				 * widget when it has the focus.  <= 0 means
+				 * don't draw a highlight. */
     XColor *highlightBgColorPtr;
     /* Color for drawing traversal highlight
 				 * area when highlight is off. */
     XColor *highlightColorPtr;	/* Color for drawing traversal highlight. */
     int inset;			/* Total width of all borders, including
 				 * traversal highlight and 3-D border.
-				 * Indicates how much interior stuff must
-				 * be offset from outside edges to leave
-				 * room for borders. */
+				 * Indicates how much interior stuff must be
+				 * offset from outside edges to leave room for
+				 * borders. */
+    int minSliderLength;	/* Minimum size of thumb. */
     int elementBorderWidth;	/* Width of border to draw around elements
-				 * inside scrollbar (arrows and slider).
-				 * -1 means use borderWidth. */
+				 * inside scrollbar (arrows and slider).  -1
+				 * means use borderWidth. */
     int arrowLength;		/* Length of arrows along long dimension of
 				 * scrollbar, including space for a small gap
 				 * between the arrow and the slider.
 				 * Recomputed on window size changes. */
-    int sliderFirst;		/* Pixel coordinate of top or left edge
-				 * of slider area, including border. */
-    int sliderLast;		/* Coordinate of pixel just after bottom
-				 * or right edge of slider area, including
+    int sliderFirst;		/* Pixel coordinate of top or left edge of
+				 * slider area, including border. */
+    int sliderLast;		/* Coordinate of pixel just after bottom or
+				 * right edge of slider area, including
 				 * border. */
     int activeField;		/* Names field to be displayed in active
-				 * colors, such as TOP_ARROW, or 0 for
-				 * no field. */
-    int activeRelief;		/* Value of -activeRelief option: relief
-				 * to use for active element. */
+				 * colors, such as TOP_ARROW, or 0 for no
+				 * field. */
+    int activeRelief;		/* Value of -activeRelief option: relief to
+				 * use for active element. */
 
-    /*
-     * Information describing the application related to the scrollbar.
-     * This information is provided by the application by invoking the
-     * "set" widget command.  This information can now be provided in
-     * two ways:  the "old" form (totalUnits, windowUnits, firstUnit,
-     * and lastUnit), or the "new" form (firstFraction and lastFraction).
-     * FirstFraction and lastFraction will always be valid, but
-     * the old-style information is only valid if the NEW_STYLE_COMMANDS
-     * flag is 0.
+    int selRelief;
+    int selField;		/* Names field to be displayed in active
+				 * colors, such as TOP_ARROW, or 0 for no
+				 * field. */
+   /*
+     * Information describing the application related to the scrollbar.  This
+     * information is provided by the application by invoking the "set" widget
+     * command.  This information can now be provided in two ways: the "old"
+     * form (totalUnits, windowUnits, firstUnit, and lastUnit), or the "new"
+     * form (firstFraction and lastFraction).  FirstFraction and lastFraction
+     * will always be valid, but the old-style information is only valid if
+     * the NEW_STYLE_COMMANDS flag is 0.
      */
 
-    int totalUnits;		/* Total dimension of application, in
-				 * units.  Valid only if the NEW_STYLE_COMMANDS
-				 * flag isn't set. */
+    int totalUnits;		/* Total dimension of application, in units.
+				 * Valid only if the NEW_STYLE_COMMANDS flag
+				 * isn't set. */
     int windowUnits;		/* Maximum number of units that can be
 				 * displayed in the window at once.  Valid
-				 * only if the NEW_STYLE_COMMANDS flag isn't
+p				 * only if the NEW_STYLE_COMMANDS flag isn't
 				 * set. */
     int firstUnit;		/* Number of last unit visible in
 				 * application's window.  Valid only if the
 				 * NEW_STYLE_COMMANDS flag isn't set. */
     int lastUnit;		/* Index of last unit visible in window.
-				 * Valid only if the NEW_STYLE_COMMANDS
-				 * flag isn't set. */
+				 * Valid only if the NEW_STYLE_COMMANDS flag
+				 * isn't set. */
     double firstFraction;	/* Position of first visible thing in window,
 				 * specified as a fraction between 0 and
 				 * 1.0. */
@@ -167,17 +172,16 @@ typedef struct {
      */
 
     Tk_Cursor cursor;		/* Current cursor for window, or None. */
-    char *takeFocus;		/* Value of -takefocus option;  not used in
-				 * the C code, but used by keyboard traversal
+    char *takeFocus;		/* Value of -takefocus option; not used in the
+				 * C code, but used by keyboard traversal
 				 * scripts.  Malloc'ed, but may be NULL. */
     int flags;			/* Various flags;  see below for
 				 * definitions. */
-    Blt_Tile tile, activeTile;
 } Scrollbar;
 
 /*
- * Legal values for "activeField" field of Scrollbar structures.  These
- * are also the return values from the ScrollbarPosition procedure.
+ * Legal values for "activeField" field of Scrollbar structures.  These are
+ * also the return values from the ScrollbarPosition procedure.
  */
 
 #define OUTSIDE		0
@@ -210,79 +214,76 @@ typedef struct {
  * is always easy to grab with the mouse).
  */
 
-#define MIN_SLIDER_LENGTH	8
+#define MIN_SLIDER_LENGTH	12
 
 /*
- * Information used for argv parsing.
+ * Information used for objv parsing.
  */
 
-static Tk_ConfigSpec configSpecs[] =
+static Blt_ConfigSpec configSpecs[] =
 {
-    {TK_CONFIG_BORDER, "-activebackground", "activeBackground", "Foreground",
-	DEF_SCROLLBAR_ACTIVE_BACKGROUND, Tk_Offset(Scrollbar, activeBorder),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-activebackground", "activeBackground", "Foreground",
-	DEF_SCROLLBAR_ACTIVE_BG_MONO, Tk_Offset(Scrollbar, activeBorder),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_RELIEF, "-activerelief", "activeRelief", "Relief",
-	DEF_SCROLLBAR_ACTIVE_RELIEF, Tk_Offset(Scrollbar, activeRelief), 0},
-    {TK_CONFIG_CUSTOM, "-activetile", "activeTile", "Tile",
-	(char *)NULL, Tk_Offset(Scrollbar, activeTile), TK_CONFIG_NULL_OK,
-	&bltTileOption},
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_SCROLLBAR_BACKGROUND, Tk_Offset(Scrollbar, bgBorder),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_BORDER, "-background", "background", "Background",
-	DEF_SCROLLBAR_BG_MONO, Tk_Offset(Scrollbar, bgBorder),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_SYNONYM, "-bd", "borderWidth", (char *)NULL,
+    {BLT_CONFIG_BACKGROUND, "-activebackground", "activeBackground", 
+	"Foreground", DEF_ACTIVE_BACKGROUND, Blt_Offset(Scrollbar, activeBg),
+	BLT_CONFIG_COLOR_ONLY},
+    {BLT_CONFIG_BACKGROUND, "-activebackground", "activeBackground", 
+	"Foreground", DEF_ACTIVE_BG_MONO, Blt_Offset(Scrollbar, activeBg),
+	BLT_CONFIG_MONO_ONLY},
+    {BLT_CONFIG_RELIEF, "-activerelief", "activeRelief", "Relief",
+	DEF_ACTIVE_RELIEF, Blt_Offset(Scrollbar, activeRelief), 0},
+    {BLT_CONFIG_BACKGROUND, "-background", "background", "Background",
+	DEF_BACKGROUND, Blt_Offset(Scrollbar, bg), BLT_CONFIG_COLOR_ONLY},
+    {BLT_CONFIG_BACKGROUND, "-background", "background", "Background",
+	DEF_BG_MONO, Blt_Offset(Scrollbar, bg), BLT_CONFIG_MONO_ONLY},
+    {BLT_CONFIG_SYNONYM, "-bd", "borderWidth", (char *)NULL,
 	(char *)NULL, 0, 0},
-    {TK_CONFIG_SYNONYM, "-bg", "background", (char *)NULL,
+    {BLT_CONFIG_SYNONYM, "-bg", "background", (char *)NULL,
 	(char *)NULL, 0, 0},
-    {TK_CONFIG_PIXELS, "-borderwidth", "borderWidth", "BorderWidth",
-	DEF_SCROLLBAR_BORDERWIDTH, Tk_Offset(Scrollbar, borderWidth), 0},
-    {TK_CONFIG_STRING, "-command", "command", "Command",
-	DEF_SCROLLBAR_COMMAND, Tk_Offset(Scrollbar, command),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_ACTIVE_CURSOR, "-cursor", "cursor", "Cursor",
-	DEF_SCROLLBAR_CURSOR, Tk_Offset(Scrollbar, cursor), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_PIXELS, "-elementborderwidth", "elementBorderWidth",
-	"BorderWidth", DEF_SCROLLBAR_EL_BORDERWIDTH,
-	Tk_Offset(Scrollbar, elementBorderWidth), 0},
-    {TK_CONFIG_COLOR, "-highlightbackground", "highlightBackground",
-	"HighlightBackground", DEF_SCROLLBAR_HIGHLIGHT_BG,
-	Tk_Offset(Scrollbar, highlightBgColorPtr), 0},
-    {TK_CONFIG_COLOR, "-highlightcolor", "highlightColor", "HighlightColor",
-	DEF_SCROLLBAR_HIGHLIGHT,
-	Tk_Offset(Scrollbar, highlightColorPtr), 0},
-    {TK_CONFIG_PIXELS, "-highlightthickness", "highlightThickness",
+    {BLT_CONFIG_PIXELS, "-borderwidth", "borderWidth", "BorderWidth",
+	DEF_BORDERWIDTH, Blt_Offset(Scrollbar, borderWidth), 
+	BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STRING, "-command", "command", "Command",
+	DEF_COMMAND, Blt_Offset(Scrollbar, command),
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_ACTIVE_CURSOR, "-cursor", "cursor", "Cursor",
+	DEF_CURSOR, Blt_Offset(Scrollbar, cursor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_PIXELS, "-elementborderwidth", "elementBorderWidth",
+	"BorderWidth", DEF_ELEMENT_BORDERWIDTH,
+	Blt_Offset(Scrollbar, elementBorderWidth), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_COLOR, "-highlightbackground", "highlightBackground",
+	"HighlightBackground", DEF_HIGHLIGHT_BG,
+	Blt_Offset(Scrollbar, highlightBgColorPtr), 0},
+    {BLT_CONFIG_COLOR, "-highlightcolor", "highlightColor", "HighlightColor",
+	DEF_HIGHLIGHT,
+	Blt_Offset(Scrollbar, highlightColorPtr), 0},
+    {BLT_CONFIG_PIXELS, "-highlightthickness", "highlightThickness",
 	"HighlightThickness",
-	DEF_SCROLLBAR_HIGHLIGHT_WIDTH, Tk_Offset(Scrollbar, highlightWidth), 0},
-    {TK_CONFIG_BOOLEAN, "-jump", "jump", "Jump",
-	DEF_SCROLLBAR_JUMP, Tk_Offset(Scrollbar, jump), 0},
-    {TK_CONFIG_UID, "-orient", "orient", "Orient",
-	DEF_SCROLLBAR_ORIENT, Tk_Offset(Scrollbar, orientUid), 0},
-    {TK_CONFIG_RELIEF, "-relief", "relief", "Relief",
-	DEF_SCROLLBAR_RELIEF, Tk_Offset(Scrollbar, relief), 0},
-    {TK_CONFIG_INT, "-repeatdelay", "repeatDelay", "RepeatDelay",
-	DEF_SCROLLBAR_REPEAT_DELAY, Tk_Offset(Scrollbar, repeatDelay), 0},
-    {TK_CONFIG_INT, "-repeatinterval", "repeatInterval", "RepeatInterval",
-	DEF_SCROLLBAR_REPEAT_INTERVAL, Tk_Offset(Scrollbar, repeatInterval), 0},
-    {TK_CONFIG_STRING, "-takefocus", "takeFocus", "TakeFocus",
-	DEF_SCROLLBAR_TAKE_FOCUS, Tk_Offset(Scrollbar, takeFocus),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-tile", "tile", "Tile",
-	(char *)NULL, Tk_Offset(Scrollbar, tile), TK_CONFIG_NULL_OK,
-	&bltTileOption},
-    {TK_CONFIG_COLOR, "-troughcolor", "troughColor", "Background",
-	DEF_SCROLLBAR_TROUGH_COLOR, Tk_Offset(Scrollbar, troughColorPtr),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-troughcolor", "troughColor", "Background",
-	DEF_SCROLLBAR_TROUGH_MONO, Tk_Offset(Scrollbar, troughColorPtr),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_PIXELS, "-width", "width", "Width",
-	DEF_SCROLLBAR_WIDTH, Tk_Offset(Scrollbar, width), 0},
-    {TK_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
+	DEF_HIGHLIGHT_WIDTH, Blt_Offset(Scrollbar, highlightWidth), 0},
+    {BLT_CONFIG_BOOLEAN, "-jump", "jump", "Jump",
+	DEF_JUMP, Blt_Offset(Scrollbar, jump), 0},
+    {BLT_CONFIG_PIXELS_POS, "-minsliderlength", "minSliderLength",
+	"MinSliderLength", DEF_MIN_SLIDER_LENGTH, 
+	Blt_Offset(Scrollbar, minSliderLength), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STRING, "-orient", "orient", "Orient",
+	DEF_ORIENT, Blt_Offset(Scrollbar, orientation), 0},
+    {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief",
+	DEF_RELIEF, Blt_Offset(Scrollbar, relief), 0},
+    {BLT_CONFIG_INT, "-repeatdelay", "repeatDelay", "RepeatDelay",
+	DEF_REPEAT_DELAY, Blt_Offset(Scrollbar, repeatDelay), 0},
+    {BLT_CONFIG_INT, "-repeatinterval", "repeatInterval", "RepeatInterval",
+	DEF_REPEAT_INTERVAL, Blt_Offset(Scrollbar, repeatInterval), 0},
+    {BLT_CONFIG_BACKGROUND, "-selectbackground", "selectBackground", 
+	"Foreground", DEF_SELECT_BACKGROUND, Blt_Offset(Scrollbar, selBg), 0},
+    {BLT_CONFIG_RELIEF, "-selectrelief", "selectRelief", "Relief", 
+	DEF_ACTIVE_RELIEF, Blt_Offset(Scrollbar, selRelief), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STRING, "-takefocus", "takeFocus", "TakeFocus",
+	DEF_TAKE_FOCUS, Blt_Offset(Scrollbar, takeFocus),
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BACKGROUND, "-troughcolor", "troughColor", "Background",
+	DEF_TROUGH_COLOR, Blt_Offset(Scrollbar, troughBg), 0},
+    {BLT_CONFIG_PIXELS, "-width", "width", "Width", DEF_WIDTH, 
+	Blt_Offset(Scrollbar, width), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
 	(char *)NULL, 0, 0}
 };
 
@@ -290,234 +291,232 @@ static Tk_ConfigSpec configSpecs[] =
  * Forward declarations for procedures defined later in this file:
  */
 
-static void ComputeScrollbarGeometry _ANSI_ARGS_((
-	Scrollbar *scrollPtr));
-static int ConfigureScrollbar _ANSI_ARGS_((Tcl_Interp *interp,
-	Scrollbar *scrollPtr, int argc, char **argv,
-	int flags));
-static void DestroyScrollbar _ANSI_ARGS_((DestroyData *memPtr));
-static void DisplayScrollbar _ANSI_ARGS_((ClientData clientData));
-static void EventuallyRedraw _ANSI_ARGS_((Scrollbar *scrollPtr));
-static void ScrollbarCmdDeletedProc _ANSI_ARGS_((
-	ClientData clientData));
-static void ScrollbarEventProc _ANSI_ARGS_((ClientData clientData,
-	XEvent *eventPtr));
-static int ScrollbarPosition _ANSI_ARGS_((Scrollbar *scrollPtr,
-	int x, int y));
-static int ScrollbarWidgetCmd _ANSI_ARGS_((ClientData clientData,
-	Tcl_Interp *, int argc, char **argv));
-
+static void ComputeScrollbarGeometry(Scrollbar *scrollPtr);
+static int ConfigureScrollbar(Tcl_Interp *interp, Scrollbar *scrollPtr, 
+	int objc, Tcl_Obj *const *objv, int flags);
+static void DestroyScrollbar(DestroyData *memPtr);
+static void DisplayScrollbar(ClientData clientData);
+static void EventuallyRedraw(Scrollbar *scrollPtr);
+static void ScrollbarCmdDeletedProc(ClientData clientData);
+static void ScrollbarEventProc(ClientData clientData, XEvent *eventPtr);
+static int ScrollbarPosition(Scrollbar *scrollPtr, int x, int y);
+static int ScrollbarWidgetCmd(ClientData clientData, Tcl_Interp *, int objc, 
+	Tcl_Obj *const *objv);
+
+static Blt_BackgroundChangedProc BackgroundChangedProc;
+static Tcl_ObjCmdProc ScrollbarCmd;
+
+
+static const char *
+NameOfField(int field)
+{
+    switch (field) {
+    case BOTTOM_ARROW:	return "arrow2";
+    case BOTTOM_GAP:	return "trough2";
+    case SLIDER:	return "slider";
+    case TOP_ARROW:	return "arrow1";
+    case TOP_GAP:	return "trough1";
+    default:
+	return "???";
+    }
+}
+
+static int
+GetFieldFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, int *fieldPtr)
+{
+    char *string;
+    int length;
+    char c;
+
+    string  = Tcl_GetStringFromObj(objPtr, &length);
+    c = string[0];
+    if ((c == 'a') && (strcmp(string, "arrow1") == 0)) {
+	*fieldPtr = TOP_ARROW;
+    } else if ((c == 'a') && (strcmp(string, "arrow2") == 0)) {
+	*fieldPtr = BOTTOM_ARROW;
+    } else if ((c == 's') && (strncmp(string, "slider", length) == 0)) {
+	*fieldPtr = SLIDER;
+    } else {
+	*fieldPtr = OUTSIDE;
+    }
+    return TCL_OK;
+}
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ScrollbarCmd --
  *
- *	This procedure is invoked to process the "scrollbar" Tcl
- *	command.  See the user documentation for details on what
- *	it does.
+ *	This procedure is invoked to process the "scrollbar" TCL command.  See
+ *	the user documentation for details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 /*ARGSUSED*/
 static int
-ScrollbarCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Main window associated with
+ScrollbarCmd(
+    ClientData clientData,	/* Main window associated with
 				 * interpreter. */
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
+    Tcl_Interp *interp,		/* Current interpreter. */
+    int objc,			/* Number of arguments. */
+    Tcl_Obj *const *objv)	/* Argument strings. */
 {
-    register Scrollbar *scrollPtr;
+    Scrollbar *sp;
     Tk_Window tkwin;
 
-    if (argc < 2) {
+    if (objc < 2) {
 	Tcl_AppendResult(interp, "wrong # args: should be \"",
-	    argv[0], " pathName ?options?\"", (char *)NULL);
+	    Tcl_GetString(objv[0]), " pathName ?options?\"", (char *)NULL);
 	return TCL_ERROR;
     }
-    tkwin = Tk_CreateWindowFromPath(interp, Tk_MainWindow(interp), argv[1],
-	(char *)NULL);
+    tkwin = Tk_CreateWindowFromPath(interp, Tk_MainWindow(interp), 
+	Tcl_GetString(objv[1]), (char *)NULL);
     if (tkwin == NULL) {
 	return TCL_ERROR;
     }
     /*
-     * Initialize fields that won't be initialized by ConfigureScrollbar,
-     * or which ConfigureScrollbar expects to have reasonable values
+     * Initialize fields that won't be initialized by ConfigureScrollbar, or
+     * which ConfigureScrollbar expects to have reasonable values
      * (e.g. resource pointers).
      */
+    sp = Blt_AssertCalloc(1, sizeof(Scrollbar));
+    sp->tkwin = tkwin;
+    sp->display = Tk_Display(tkwin);
+    sp->interp = interp;
+    sp->widgetCmd = Tcl_CreateObjCommand(interp,
+	Tk_PathName(sp->tkwin), ScrollbarWidgetCmd,
+	(ClientData)sp, ScrollbarCmdDeletedProc);
+    sp->relief = TK_RELIEF_FLAT;
+    sp->elementBorderWidth = 2;
+    sp->borderWidth = 1;
+    sp->selRelief = TK_RELIEF_SUNKEN;
+    sp->activeRelief = TK_RELIEF_RAISED;
+    sp->minSliderLength = MIN_SLIDER_LENGTH;
+    
+    sp->width = SB_WIDTH;
 
-    scrollPtr = Blt_Malloc(sizeof(Scrollbar));
-    scrollPtr->tkwin = tkwin;
-    scrollPtr->display = Tk_Display(tkwin);
-    scrollPtr->interp = interp;
-    scrollPtr->widgetCmd = Tcl_CreateCommand(interp,
-	Tk_PathName(scrollPtr->tkwin), ScrollbarWidgetCmd,
-	(ClientData)scrollPtr, ScrollbarCmdDeletedProc);
-#ifdef ITCL_NAMESPACES
-    Itk_SetWidgetCommand(scrollPtr->tkwin, scrollPtr->widgetCmd);
-#endif /* ITCL_NAMESPACES */
-    scrollPtr->orientUid = NULL;
-    scrollPtr->vertical = 0;
-    scrollPtr->width = 0;
-    scrollPtr->command = NULL;
-    scrollPtr->commandSize = 0;
-    scrollPtr->repeatDelay = 0;
-    scrollPtr->repeatInterval = 0;
-    scrollPtr->borderWidth = 0;
-    scrollPtr->bgBorder = NULL;
-    scrollPtr->activeBorder = NULL;
-    scrollPtr->troughColorPtr = NULL;
-    scrollPtr->troughGC = None;
-    scrollPtr->copyGC = None;
-    scrollPtr->relief = TK_RELIEF_FLAT;
-    scrollPtr->highlightWidth = 0;
-    scrollPtr->highlightBgColorPtr = NULL;
-    scrollPtr->highlightColorPtr = NULL;
-    scrollPtr->inset = 0;
-    scrollPtr->elementBorderWidth = -1;
-    scrollPtr->arrowLength = 0;
-    scrollPtr->sliderFirst = 0;
-    scrollPtr->sliderLast = 0;
-    scrollPtr->activeField = 0;
-    scrollPtr->activeRelief = TK_RELIEF_RAISED;
-    scrollPtr->totalUnits = 0;
-    scrollPtr->windowUnits = 0;
-    scrollPtr->firstUnit = 0;
-    scrollPtr->lastUnit = 0;
-    scrollPtr->firstFraction = 0.0;
-    scrollPtr->lastFraction = 0.0;
-    scrollPtr->cursor = None;
-    scrollPtr->takeFocus = NULL;
-    scrollPtr->flags = 0;
-    scrollPtr->tile = scrollPtr->activeTile = NULL;
-
-    Tk_SetClass(scrollPtr->tkwin, "Scrollbar");
-   Tk_CreateEventHandler(scrollPtr->tkwin,
+    Tk_SetClass(sp->tkwin, "ScrollBar");
+    Tk_CreateEventHandler(sp->tkwin, 
 	ExposureMask | StructureNotifyMask | FocusChangeMask,
-	ScrollbarEventProc, (ClientData)scrollPtr);
-    if (ConfigureScrollbar(interp, scrollPtr, argc - 2, argv + 2, 0) != TCL_OK) {
+	ScrollbarEventProc, (ClientData)sp);
+    if (ConfigureScrollbar(interp, sp, objc - 2, objv + 2, 0) != TCL_OK) {
 	goto error;
     }
-    Tcl_SetResult(interp, Tk_PathName(scrollPtr->tkwin), TCL_VOLATILE);
+    Tcl_SetObjResult(interp, objv[1]);
     return TCL_OK;
 
   error:
-    Tk_DestroyWindow(scrollPtr->tkwin);
+    Tk_DestroyWindow(sp->tkwin);
     return TCL_ERROR;
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ScrollbarWidgetCmd --
  *
- *	This procedure is invoked to process the Tcl command
- *	that corresponds to a widget managed by this module.
- *	See the user documentation for details on what it does.
+ *	This procedure is invoked to process the TCL command that corresponds
+ *	to a widget managed by this module.  See the user documentation for
+ *	details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static int
-ScrollbarWidgetCmd(clientData, interp, argc, argv)
-    ClientData clientData;	/* Information about scrollbar
-					 * widget. */
-    Tcl_Interp *interp;		/* Current interpreter. */
-    int argc;			/* Number of arguments. */
-    char **argv;		/* Argument strings. */
+ScrollbarWidgetCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
+		   Tcl_Obj *const *objv)
 {
-    register Scrollbar *scrollPtr = clientData;
-    char string[200];
+    Scrollbar *scrollPtr = clientData;
     int result = TCL_OK;
-    size_t length;
+    int length;
     int c;
+    char *string;
+    Tcl_CmdInfo cmdInfo;
 
-    if (argc < 2) {
+    if (objc < 2) {
 	Tcl_AppendResult(interp, "wrong # args: should be \"",
-	    argv[0], " option ?arg arg ...?\"", (char *)NULL);
+	    objv[0], " option ?arg arg ...?\"", (char *)NULL);
 	return TCL_ERROR;
     }
+    /*
+     * First time in this interpreter, invoke a procedure to initialize
+     * various bindings on the combomenu widget.  If the procedure doesn't
+     * already exist, source it from "$blt_library/scrollbar.tcl".  We
+     * deferred sourcing the file until now so that the variable $blt_library
+     * could be set within a script.
+     */
+    if (!Tcl_GetCommandInfo(interp, "::blt::ScrollPage", &cmdInfo)) {
+	static char cmd[] = "source [file join $blt_library scrollbar.tcl]";
+
+	if (Tcl_GlobalEval(interp, cmd) != TCL_OK) {
+	    char info[200];
+	    sprintf_s(info, 200, "\n    (while loading bindings for %.50s)", 
+		    Tcl_GetString(objv[0]));
+	    Tcl_AddErrorInfo(interp, info);
+	    return TCL_ERROR;
+	}
+    }
     Tcl_Preserve((ClientData)scrollPtr);
-    c = argv[1][0];
-    length = strlen(argv[1]);
-    if ((c == 'a') && (strncmp(argv[1], "activate", length) == 0)) {
-	if (argc == 2) {
-	    switch (scrollPtr->activeField) {
-	    case TOP_ARROW:
-		Tcl_SetResult(interp, "arrow1", TCL_STATIC);
-		break;
-	    case SLIDER:
-		Tcl_SetResult(interp, "slider", TCL_STATIC);
-		break;
-	    case BOTTOM_ARROW:
-		Tcl_SetResult(interp, "arrow2", TCL_STATIC);
-		break;
-	    }
-	    goto done;
-	}
-	if (argc != 3) {
+    string = Tcl_GetStringFromObj(objv[1], &length);
+    c = string[0];
+    if ((c == 'a') && (strncmp(string, "activate", length) == 0)) {
+	if (objc > 3) {
 	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " activate element\"", (char *)NULL);
+		Tcl_GetString(objv[0]), " activate element\"", (char *)NULL);
 	    goto error;
 	}
-	c = argv[2][0];
-	length = strlen(argv[2]);
-	if ((c == 'a') && (strcmp(argv[2], "arrow1") == 0)) {
-	    scrollPtr->activeField = TOP_ARROW;
-	} else if ((c == 'a') && (strcmp(argv[2], "arrow2") == 0)) {
-	    scrollPtr->activeField = BOTTOM_ARROW;
-	} else if ((c == 's') && (strncmp(argv[2], "slider", length) == 0)) {
-	    scrollPtr->activeField = SLIDER;
+	if (objc == 2) {
+	    Tcl_SetStringObj(Tcl_GetObjResult(interp), 
+			     NameOfField(scrollPtr->activeField), -1);
 	} else {
-	    scrollPtr->activeField = OUTSIDE;
+	    GetFieldFromObj(interp, objv[2], &scrollPtr->activeField);
+	    EventuallyRedraw(scrollPtr);
 	}
-	EventuallyRedraw(scrollPtr);
-    } else if ((c == 'c') && (strncmp(argv[1], "cget", length) == 0)
-	&& (length >= 2)) {
-	if (argc != 3) {
+    } else if ((c == 'c') && (length >= 2) && 
+	       (strncmp(string, "cget", length) == 0)) {
+	if (objc != 3) {
 	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " cget option\"",
-		(char *)NULL);
+		Tcl_GetString(objv[0]), " cget option\"", (char *)NULL);
 	    goto error;
 	}
-	result = Tk_ConfigureValue(interp, scrollPtr->tkwin, configSpecs,
-	    (char *)scrollPtr, argv[2], 0);
-    } else if ((c == 'c') && (strncmp(argv[1], "configure", length) == 0)
-	&& (length >= 2)) {
-	if (argc == 2) {
-	    result = Tk_ConfigureInfo(interp, scrollPtr->tkwin, configSpecs,
-		(char *)scrollPtr, (char *)NULL, 0);
-	} else if (argc == 3) {
-	    result = Tk_ConfigureInfo(interp, scrollPtr->tkwin, configSpecs,
-		(char *)scrollPtr, argv[2], 0);
+	result = Blt_ConfigureValueFromObj(interp, scrollPtr->tkwin, 
+		configSpecs, (char *)scrollPtr, objv[2], 0);
+    } else if ((c == 'c') && (length >= 2) && 
+	       (strncmp(string, "configure", length) == 0)) {
+	if (objc == 2) {
+	    result = Blt_ConfigureInfoFromObj(interp, scrollPtr->tkwin, 
+		configSpecs, (char *)scrollPtr, (Tcl_Obj *)NULL, 0);
+	} else if (objc == 3) {
+	    result = Blt_ConfigureInfoFromObj(interp, scrollPtr->tkwin, 
+		configSpecs, (char *)scrollPtr, objv[2], 0);
 	} else {
-	    result = ConfigureScrollbar(interp, scrollPtr, argc - 2, argv + 2,
-		TK_CONFIG_ARGV_ONLY);
+	    result = ConfigureScrollbar(interp, scrollPtr, objc - 2, objv + 2,
+		BLT_CONFIG_OBJV_ONLY);
 	}
-    } else if ((c == 'd') && (strncmp(argv[1], "delta", length) == 0)) {
+    } else if ((c == 'd') && (strncmp(string, "delta", length) == 0)) {
 	int xDelta, yDelta, pixels, barWidth;
 	double fraction;
 
-	if (argc != 4) {
+	if (objc != 4) {
 	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " delta xDelta yDelta\"", (char *)NULL);
+		Tcl_GetString(objv[0]), " delta xDelta yDelta\"", (char *)NULL);
 	    goto error;
 	}
-	if ((Tcl_GetInt(interp, argv[2], &xDelta) != TCL_OK)
-	    || (Tcl_GetInt(interp, argv[3], &yDelta) != TCL_OK)) {
+	if ((Tcl_GetIntFromObj(interp, objv[2], &xDelta) != TCL_OK) || 
+	    (Tcl_GetIntFromObj(interp, objv[3], &yDelta) != TCL_OK)) {
 	    goto error;
 	}
 	if (scrollPtr->vertical) {
@@ -534,18 +533,18 @@ ScrollbarWidgetCmd(clientData, interp, argc, argv)
 	} else {
 	    fraction = ((double)pixels / (double)barWidth);
 	}
-	sprintf(interp->result, "%g", fraction);
-    } else if ((c == 'f') && (strncmp(argv[1], "fraction", length) == 0)) {
+	Tcl_SetDoubleObj(Tcl_GetObjResult(interp), fraction);
+    } else if ((c == 'f') && (strncmp(string, "fraction", length) == 0)) {
 	int x, y, pos, barWidth;
 	double fraction;
 
-	if (argc != 4) {
+	if (objc != 4) {
 	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " fraction x y\"", (char *)NULL);
+		Tcl_GetString(objv[0]), " fraction x y\"", (char *)NULL);
 	    goto error;
 	}
-	if ((Tcl_GetInt(interp, argv[2], &x) != TCL_OK)
-	    || (Tcl_GetInt(interp, argv[3], &y) != TCL_OK)) {
+	if ((Tcl_GetIntFromObj(interp, objv[2], &x) != TCL_OK) || 
+	    (Tcl_GetIntFromObj(interp, objv[3], &y) != TCL_OK)) {
 	    goto error;
 	}
 	if (scrollPtr->vertical) {
@@ -562,71 +561,63 @@ ScrollbarWidgetCmd(clientData, interp, argc, argv)
 	} else {
 	    fraction = ((double)pos / (double)barWidth);
 	}
-	if (fraction < 0) {
-	    fraction = 0;
+	if (fraction < 0.0) {
+	    fraction = 0.0;
 	} else if (fraction > 1.0) {
 	    fraction = 1.0;
 	}
-	sprintf(string, "%g", fraction);
-	Tcl_SetResult(interp, string, TCL_VOLATILE);
-    } else if ((c == 'g') && (strncmp(argv[1], "get", length) == 0)) {
-	if (argc != 2) {
+	Tcl_SetDoubleObj(Tcl_GetObjResult(interp), fraction);
+    } else if ((c == 'g') && (strncmp(string, "get", length) == 0)) {
+	if (objc != 2) {
 	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " get\"", (char *)NULL);
+		Tcl_GetString(objv[0]), " get\"", (char *)NULL);
 	    goto error;
 	}
 	if (scrollPtr->flags & NEW_STYLE_COMMANDS) {
-	    char first[TCL_DOUBLE_SPACE], last[TCL_DOUBLE_SPACE];
+	    Tcl_Obj *listObjPtr;
 
-	    Tcl_PrintDouble(interp, scrollPtr->firstFraction, first);
-	    Tcl_PrintDouble(interp, scrollPtr->lastFraction, last);
-	    Tcl_AppendResult(interp, first, " ", last, (char *)NULL);
+	    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+	    Tcl_ListObjAppendElement(interp, listObjPtr,
+		Tcl_NewDoubleObj(scrollPtr->firstFraction));
+	    Tcl_ListObjAppendElement(interp, listObjPtr,
+		Tcl_NewDoubleObj(scrollPtr->lastFraction));
+	    Tcl_SetObjResult(interp, listObjPtr);
 	} else {
-	    sprintf(string, "%d %d %d %d", scrollPtr->totalUnits,
-		scrollPtr->windowUnits, scrollPtr->firstUnit,
-		scrollPtr->lastUnit);
-	    Tcl_SetResult(interp, string, TCL_VOLATILE);
+	    Tcl_Obj *listObjPtr;
+
+	    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+	    Tcl_ListObjAppendElement(interp, listObjPtr,
+		Tcl_NewIntObj(scrollPtr->totalUnits));
+	    Tcl_ListObjAppendElement(interp, listObjPtr,
+		Tcl_NewIntObj(scrollPtr->windowUnits));
+	    Tcl_ListObjAppendElement(interp, listObjPtr,
+		Tcl_NewIntObj(scrollPtr->firstUnit));
+	    Tcl_ListObjAppendElement(interp, listObjPtr,
+		Tcl_NewIntObj(scrollPtr->lastUnit));
+	    Tcl_SetObjResult(interp, listObjPtr);
 	}
-    } else if ((c == 'i') && (strncmp(argv[1], "identify", length) == 0)) {
+    } else if ((c == 'i') && (strncmp(string, "identify", length) == 0)) {
 	int x, y, thing;
 
-	if (argc != 4) {
+	if (objc != 4) {
 	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " identify x y\"", (char *)NULL);
+		Tcl_GetString(objv[0]), " identify x y\"", (char *)NULL);
 	    goto error;
 	}
-	if ((Tcl_GetInt(interp, argv[2], &x) != TCL_OK)
-	    || (Tcl_GetInt(interp, argv[3], &y) != TCL_OK)) {
+	if ((Tcl_GetIntFromObj(interp, objv[2], &x) != TCL_OK) || 
+	    (Tcl_GetIntFromObj(interp, objv[3], &y) != TCL_OK)) {
 	    goto error;
 	}
 	thing = ScrollbarPosition(scrollPtr, x, y);
-	switch (thing) {
-	case TOP_ARROW:
-	    Tcl_SetResult(interp, "arrow1", TCL_STATIC);
-	    break;
-	case TOP_GAP:
-	    Tcl_SetResult(interp, "trough1", TCL_STATIC);
-	    break;
-	case SLIDER:
-	    Tcl_SetResult(interp, "slider", TCL_STATIC);
-	    break;
-	case BOTTOM_GAP:
-	    Tcl_SetResult(interp, "trough2", TCL_STATIC);
-	    break;
-	case BOTTOM_ARROW:
-	    Tcl_SetResult(interp, "arrow2", TCL_STATIC);
-	    break;
-	}
-    } else if ((c == 's') && (strncmp(argv[1], "set", length) == 0)) {
+	Tcl_SetStringObj(Tcl_GetObjResult(interp), NameOfField(thing), -1);
+    } else if ((c == 's') && (strncmp(string, "set", length) == 0)) {
 	int totalUnits, windowUnits, firstUnit, lastUnit;
 
-	if (argc == 4) {
+	if (objc == 4) {
 	    double first, last;
 
-	    if (Tcl_GetDouble(interp, argv[2], &first) != TCL_OK) {
-		goto error;
-	    }
-	    if (Tcl_GetDouble(interp, argv[3], &last) != TCL_OK) {
+	    if ((Tcl_GetDoubleFromObj(interp, objv[2], &first) != TCL_OK) ||
+		(Tcl_GetDoubleFromObj(interp, objv[3], &last) != TCL_OK)) {
 		goto error;
 	    }
 	    if (first < 0) {
@@ -644,23 +635,23 @@ ScrollbarWidgetCmd(clientData, interp, argc, argv)
 		scrollPtr->lastFraction = last;
 	    }
 	    scrollPtr->flags |= NEW_STYLE_COMMANDS;
-	} else if (argc == 6) {
-	    if (Tcl_GetInt(interp, argv[2], &totalUnits) != TCL_OK) {
+	} else if (objc == 6) {
+	    if (Tcl_GetIntFromObj(interp, objv[2], &totalUnits) != TCL_OK) {
 		goto error;
 	    }
 	    if (totalUnits < 0) {
 		totalUnits = 0;
 	    }
-	    if (Tcl_GetInt(interp, argv[3], &windowUnits) != TCL_OK) {
+	    if (Tcl_GetIntFromObj(interp, objv[3], &windowUnits) != TCL_OK) {
 		goto error;
 	    }
 	    if (windowUnits < 0) {
 		windowUnits = 0;
 	    }
-	    if (Tcl_GetInt(interp, argv[4], &firstUnit) != TCL_OK) {
+	    if (Tcl_GetIntFromObj(interp, objv[4], &firstUnit) != TCL_OK) {
 		goto error;
 	    }
-	    if (Tcl_GetInt(interp, argv[5], &lastUnit) != TCL_OK) {
+	    if (Tcl_GetIntFromObj(interp, objv[5], &lastUnit) != TCL_OK) {
 		goto error;
 	    }
 	    if (totalUnits > 0) {
@@ -684,21 +675,34 @@ ScrollbarWidgetCmd(clientData, interp, argc, argv)
 	    scrollPtr->flags &= ~NEW_STYLE_COMMANDS;
 	} else {
 	    Tcl_AppendResult(interp, "wrong # args: should be \"",
-		argv[0], " set firstFraction lastFraction\" or \"",
-		argv[0],
+		Tcl_GetString(objv[0]), 
+		" set firstFraction lastFraction\" or \"",
+		Tcl_GetString(objv[0]),
 		" set totalUnits windowUnits firstUnit lastUnit\"",
 		(char *)NULL);
 	    goto error;
 	}
 	ComputeScrollbarGeometry(scrollPtr);
 	EventuallyRedraw(scrollPtr);
+    } else if ((c == 's') && (strncmp(string, "select", length) == 0)) {
+	if (objc > 3) {
+	    Tcl_AppendResult(interp, "wrong # args: should be \"",
+		Tcl_GetString(objv[0]), " select element\"", (char *)NULL);
+	    goto error;
+	}
+	if (objc == 2) {
+	    Tcl_SetStringObj(Tcl_GetObjResult(interp), 
+			     NameOfField(scrollPtr->selField), -1);
+	} else {
+	    GetFieldFromObj(interp, objv[2], &scrollPtr->selField);
+	    EventuallyRedraw(scrollPtr);
+	}
     } else {
-	Tcl_AppendResult(interp, "bad option \"", argv[1],
+	Tcl_AppendResult(interp, "bad option \"", Tcl_GetString(objv[1]),
 	    "\": must be activate, cget, configure, delta, fraction, ",
 	    "get, identify, or set", (char *)NULL);
 	goto error;
     }
-  done:
     Tcl_Release((ClientData)scrollPtr);
     return result;
 
@@ -706,15 +710,15 @@ ScrollbarWidgetCmd(clientData, interp, argc, argv)
     Tcl_Release((ClientData)scrollPtr);
     return TCL_ERROR;
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DestroyScrollbar --
  *
- *	This procedure is invoked by Tcl_EventuallyFree or Tcl_Release
- *	to clean up the internal structure of a scrollbar at a safe time
- *	(when no-one is using it anymore).
+ *	This procedure is invoked by Tcl_EventuallyFree or Tcl_Release to
+ *	clean up the internal structure of a scrollbar at a safe time (when
+ *	no-one is using it anymore).
  *
  * Results:
  *	None.
@@ -722,54 +726,43 @@ ScrollbarWidgetCmd(clientData, interp, argc, argv)
  * Side effects:
  *	Everything associated with the scrollbar is freed up.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-DestroyScrollbar(memPtr)
-    DestroyData *memPtr;	/* Info about scrollbar widget. */
+DestroyScrollbar(DestroyData *memPtr) /* Info about scrollbar widget. */
 {
-    register Scrollbar *scrollPtr = (Scrollbar *)memPtr;
+    Scrollbar *scrollPtr = (Scrollbar *)memPtr;
 
     /*
-     * Free up all the stuff that requires special handling, then
-     * let Tk_FreeOptions handle all the standard option-related
-     * stuff.
+     * Free up all the stuff that requires special handling, then let
+     * Blt_FreeOptions handle all the standard option-related stuff.
      */
-
-    if (scrollPtr->troughGC != None) {
-	Tk_FreeGC(scrollPtr->display, scrollPtr->troughGC);
-    }
     if (scrollPtr->copyGC != None) {
 	Tk_FreeGC(scrollPtr->display, scrollPtr->copyGC);
     }
-    if (scrollPtr->activeTile != NULL) {
-	Blt_FreeTile(scrollPtr->activeTile);
+    if (scrollPtr->arrowGC != None) {
+	Tk_FreeGC(scrollPtr->display, scrollPtr->arrowGC);
     }
-    if (scrollPtr->tile != NULL) {
-	Blt_FreeTile(scrollPtr->tile);
-    }
-    Tk_FreeOptions(configSpecs, (char *)scrollPtr, scrollPtr->display, 0);
+    Blt_FreeOptions(configSpecs, (char *)scrollPtr, scrollPtr->display, 0);
     Blt_Free(scrollPtr);
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * TileChangedProc
+ * BackgroundChangedProc
  *
- *	Routine for tile change notifications.
+ *	Routine for background change notifications.
  *
  * Results:
  *	None.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static void
-TileChangedProc(clientData, tile)
-    ClientData clientData;
-    Blt_Tile tile;		/* Not used. */
+BackgroundChangedProc(ClientData clientData)
 {
     Scrollbar *scrollPtr = clientData;
 
@@ -779,57 +772,55 @@ TileChangedProc(clientData, tile)
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ConfigureScrollbar --
  *
- *	This procedure is called to process an argv/argc list, plus
- *	the Tk option database, in order to configure (or
- *	reconfigure) a scrollbar widget.
+ *	This procedure is called to process an objv/objc list, plus the Tk
+ *	option database, in order to configure (or reconfigure) a scrollbar
+ *	widget.
  *
  * Results:
- *	The return value is a standard Tcl result.  If TCL_ERROR is
- *	returned, then interp->result contains an error message.
+ *	The return value is a standard TCL result.  If TCL_ERROR is returned,
+ *	then interp->result contains an error message.
  *
  * Side effects:
- *	Configuration information, such as colors, border width,
- *	etc. get set for scrollPtr;  old resources get freed,
- *	if there were any.
+ *	Configuration information, such as colors, border width, etc. get set
+ *	for scrollPtr; old resources get freed, if there were any.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static int
-ConfigureScrollbar(interp, scrollPtr, argc, argv, flags)
-    Tcl_Interp *interp;		/* Used for error reporting. */
-    register Scrollbar *scrollPtr;	/* Information about widget;  may or
-					 * may not already have values for
-					 * some fields. */
-    int argc;			/* Number of valid entries in argv. */
-    char **argv;		/* Arguments. */
-    int flags;			/* Flags to pass to
-					 * Tk_ConfigureWidget. */
+ConfigureScrollbar(
+    Tcl_Interp *interp,		/* Used for error reporting. */
+    Scrollbar *scrollPtr,	/* Information about widget; may or
+				 * may not already have values for
+				 * some fields. */
+    int objc,			/* Number of valid entries in objv. */
+    Tcl_Obj *const *objv,	/* Arguments. */
+    int flags)			/* Flags to pass to
+				 * Blt_ConfigureWidget. */
 {
     size_t length;
     XGCValues gcValues;
     GC new;
 
-    if (Tk_ConfigureWidget(interp, scrollPtr->tkwin, configSpecs,
-	    argc, argv, (char *)scrollPtr, flags) != TCL_OK) {
+    if (Blt_ConfigureWidgetFromObj(interp, scrollPtr->tkwin, configSpecs,
+	    objc, objv, (char *)scrollPtr, flags) != TCL_OK) {
 	return TCL_ERROR;
     }
     /*
-     * A few options need special processing, such as parsing the
-     * orientation or setting the background from a 3-D border.
+     * A few options need special processing, such as parsing the orientation
+     * or setting the background from a 3-D border.
      */
-
-    length = strlen(scrollPtr->orientUid);
-    if (strncmp(scrollPtr->orientUid, "vertical", length) == 0) {
+    length = strlen(scrollPtr->orientation);
+    if (strncmp(scrollPtr->orientation, "vertical", length) == 0) {
 	scrollPtr->vertical = 1;
-    } else if (strncmp(scrollPtr->orientUid, "horizontal", length) == 0) {
+    } else if (strncmp(scrollPtr->orientation, "horizontal", length) == 0) {
 	scrollPtr->vertical = 0;
     } else {
-	Tcl_AppendResult(interp, "bad orientation \"", scrollPtr->orientUid,
+	Tcl_AppendResult(interp, "bad orientation \"", scrollPtr->orientation,
 	    "\": must be vertical or horizontal", (char *)NULL);
 	return TCL_ERROR;
     }
@@ -839,47 +830,48 @@ ConfigureScrollbar(interp, scrollPtr, argc, argv, flags)
     } else {
 	scrollPtr->commandSize = 0;
     }
-    if (scrollPtr->activeTile != NULL) {
-	Blt_SetTileChangedProc(scrollPtr->activeTile, TileChangedProc,
-	    (ClientData)scrollPtr);
+    if (scrollPtr->activeBg != NULL) {
+	Blt_SetBackgroundChangedProc(scrollPtr->activeBg, BackgroundChangedProc,
+		scrollPtr);
     }
-    if (scrollPtr->tile != NULL) {
-	Blt_SetTileChangedProc(scrollPtr->tile, TileChangedProc,
-	    (ClientData)scrollPtr);
+    if (scrollPtr->bg != NULL) {
+	Blt_SetBackgroundChangedProc(scrollPtr->bg, BackgroundChangedProc,
+		scrollPtr);
     }
-    Tk_SetBackgroundFromBorder(scrollPtr->tkwin, scrollPtr->bgBorder);
+    Blt_SetBackgroundFromBackground(scrollPtr->tkwin, scrollPtr->bg);
 
-    gcValues.foreground = scrollPtr->troughColorPtr->pixel;
-    new = Tk_GetGC(scrollPtr->tkwin, GCForeground, &gcValues);
-    if (scrollPtr->troughGC != None) {
-	Tk_FreeGC(scrollPtr->display, scrollPtr->troughGC);
-    }
-    scrollPtr->troughGC = new;
     if (scrollPtr->copyGC == None) {
 	gcValues.graphics_exposures = False;
 	scrollPtr->copyGC = Tk_GetGC(scrollPtr->tkwin, GCGraphicsExposures,
 	    &gcValues);
     }
+    gcValues.foreground = BlackPixel(
+	Tk_Display(scrollPtr->tkwin), Tk_ScreenNumber(scrollPtr->tkwin));
+    new = Tk_GetGC(scrollPtr->tkwin, GCForeground, &gcValues);
+    if (scrollPtr->arrowGC != None) {
+	Tk_FreeGC(scrollPtr->display, scrollPtr->arrowGC);
+    }
+    scrollPtr->arrowGC = new;
+
     /*
-     * Register the desired geometry for the window (leave enough space
-     * for the two arrows plus a minimum-size slider, plus border around
-     * the whole window, if any).  Then arrange for the window to be
-     * redisplayed.
+     * Register the desired geometry for the window (leave enough space for
+     * the two arrows plus a minimum-size slider, plus border around the whole
+     * window, if any).  Then arrange for the window to be redisplayed.
      */
 
     ComputeScrollbarGeometry(scrollPtr);
     EventuallyRedraw(scrollPtr);
     return TCL_OK;
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DisplayScrollbar --
  *
- *	This procedure redraws the contents of a scrollbar window.
- *	It is invoked as a do-when-idle handler, so it only runs
- *	when there's nothing else for the application to do.
+ *	This procedure redraws the contents of a scrollbar window.  It is
+ *	invoked as a do-when-idle handler, so it only runs when there's
+ *	nothing else for the application to do.
  *
  * Results:
  *	None.
@@ -887,20 +879,18 @@ ConfigureScrollbar(interp, scrollPtr, argc, argv, flags)
  * Side effects:
  *	Information appears on the screen.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-DisplayScrollbar(clientData)
-    ClientData clientData;	/* Information about window. */
+DisplayScrollbar(ClientData clientData)	/* Information about window. */
 {
-    register Scrollbar *scrollPtr = clientData;
-    register Tk_Window tkwin = scrollPtr->tkwin;
+    Scrollbar *scrollPtr = clientData;
+    Tk_Window tkwin = scrollPtr->tkwin;
     XPoint points[7];
-    Tk_3DBorder border;
+    Blt_Background bg;
     int relief, width, elementBorderWidth;
     Pixmap pixmap;
-    Blt_Tile tile;
 
     if ((scrollPtr->tkwin == NULL) || !Tk_IsMapped(tkwin)) {
 	goto done;
@@ -916,10 +906,10 @@ DisplayScrollbar(clientData)
     }
 
     /*
-     * In order to avoid screen flashes, this procedure redraws
-     * the scrollbar in a pixmap, then copies the pixmap to the
-     * screen in a single operation.  This means that there's no
-     * point in time where the on-sreen image has been cleared.
+     * In order to avoid screen flashes, this procedure redraws the scrollbar
+     * in a pixmap, then copies the pixmap to the screen in a single
+     * operation.  This means that there's no point in time where the on-sreen
+     * image has been cleared.
      */
 
     pixmap = Tk_GetPixmap(scrollPtr->display, Tk_WindowId(tkwin),
@@ -935,47 +925,28 @@ DisplayScrollbar(clientData)
 	}
 	Tk_DrawFocusHighlight(tkwin, gc, scrollPtr->highlightWidth, pixmap);
     }
-    Blt_Draw3DRectangle(tkwin, pixmap, scrollPtr->bgBorder,
+    Blt_FillBackgroundRectangle(tkwin, pixmap, scrollPtr->troughBg,
 	scrollPtr->highlightWidth, scrollPtr->highlightWidth,
 	Tk_Width(tkwin) - 2 * scrollPtr->highlightWidth,
 	Tk_Height(tkwin) - 2 * scrollPtr->highlightWidth,
 	scrollPtr->borderWidth, scrollPtr->relief);
 
-    if (scrollPtr->tile != NULL) {
-	Blt_SetTileOrigin(tkwin, scrollPtr->tile, 0, 0);
-	Blt_TileRectangle(tkwin, pixmap, scrollPtr->tile, scrollPtr->inset, 
-		scrollPtr->inset,
-		(unsigned)(Tk_Width(tkwin) - 2 * scrollPtr->inset),
-		(unsigned)(Tk_Height(tkwin) - 2 * scrollPtr->inset));
-    } else {
-	XFillRectangle(scrollPtr->display, pixmap, scrollPtr->troughGC,
-		scrollPtr->inset, scrollPtr->inset,
-		(unsigned)(Tk_Width(tkwin) - 2 * scrollPtr->inset),
-		(unsigned)(Tk_Height(tkwin) - 2 * scrollPtr->inset));
-    }
-
     /*
-     * Draw the top or left arrow.  The coordinates of the polygon
-     * points probably seem odd, but they were carefully chosen with
-     * respect to X's rules for filling polygons.  These point choices
-     * cause the arrows to just fill the narrow dimension of the
-     * scrollbar and be properly centered.
+     * Draw the top or left arrow.  The coordinates of the polygon points
+     * probably seem odd, but they were carefully chosen with respect to X's
+     * rules for filling polygons.  These point choices cause the arrows to
+     * just fill the narrow dimension of the scrollbar and be properly
+     * centered.
      */
-    tile = NULL;
-    if (scrollPtr->activeField == TOP_ARROW) {
-	border = scrollPtr->activeBorder;
-	relief = scrollPtr->activeField == TOP_ARROW ? scrollPtr->activeRelief
-	    : TK_RELIEF_RAISED;
-	if (scrollPtr->activeTile != NULL) {
-	    Blt_SetTileOrigin(tkwin, scrollPtr->activeTile, 0, 0);
-	    tile = scrollPtr->activeTile;
-	}
+    if (scrollPtr->selField == TOP_ARROW) {
+	bg = scrollPtr->selBg;
+	relief = scrollPtr->selRelief;
+    } else if (scrollPtr->activeField == TOP_ARROW) {
+	bg = scrollPtr->activeBg;
+	relief = scrollPtr->activeRelief;
     } else {
-	border = scrollPtr->bgBorder;
+	bg = scrollPtr->bg;
 	relief = TK_RELIEF_RAISED;
-	if (scrollPtr->tile != NULL) {
-	    tile = scrollPtr->tile;
-	}
     }
     if (scrollPtr->vertical) {
 	points[0].x = scrollPtr->inset - 1;
@@ -992,43 +963,25 @@ DisplayScrollbar(clientData)
 	points[2].x = points[0].x;
 	points[2].y = width + scrollPtr->inset;
     }
-#ifdef notdef
-    if (tile != NULL) {
-	Blt_TilePolygon(tkwin, pixmap, tile, points, 3);
-	Tk_Draw3DPolygon(tkwin, pixmap, border, points, 3,
-	    elementBorderWidth, relief);
-    } else {
-	Tk_Fill3DPolygon(tkwin, pixmap, border, points, 3,
-	    elementBorderWidth, relief);
-    }
-#else
-    Blt_Fill3DRectangle(tkwin, pixmap, border, scrollPtr->inset, 
+    Blt_FillBackgroundRectangle(tkwin, pixmap, bg, scrollPtr->inset, 
        scrollPtr->inset, width, width, elementBorderWidth, relief); 
     
-    Blt_DrawArrow(scrollPtr->display, pixmap, scrollPtr->copyGC, 
-		  scrollPtr->inset + width / 2, 
-		  scrollPtr->inset + width / 2, 
-		  STD_ARROW_HEIGHT, 
-		  (scrollPtr->vertical) ? ARROW_UP : ARROW_LEFT);
-#endif    
+    Blt_DrawArrow(scrollPtr->display, pixmap, scrollPtr->arrowGC, 
+	scrollPtr->inset, scrollPtr->inset, width, width, 
+	elementBorderWidth, 
+	(scrollPtr->vertical) ? ARROW_UP : ARROW_LEFT);
     /*
      * Display the bottom or right arrow.
      */
-    tile = NULL;
-    if (scrollPtr->activeField == BOTTOM_ARROW) {
-	border = scrollPtr->activeBorder;
-	relief = scrollPtr->activeField == BOTTOM_ARROW
-	    ? scrollPtr->activeRelief : TK_RELIEF_RAISED;
-	if (scrollPtr->activeTile != NULL) {
-	    Blt_SetTileOrigin(tkwin, scrollPtr->activeTile, 0, 0);
-	    tile = scrollPtr->activeTile;
-	}
+    if (scrollPtr->selField == BOTTOM_ARROW) {
+	bg = scrollPtr->selBg;
+	relief = scrollPtr->selRelief;
+    } else if (scrollPtr->activeField == BOTTOM_ARROW) {
+	bg = scrollPtr->activeBg;
+	relief = scrollPtr->activeRelief;
     } else {
-	border = scrollPtr->bgBorder;
+	bg = scrollPtr->bg;
 	relief = TK_RELIEF_RAISED;
-	if (scrollPtr->tile != NULL) {
-	    tile = scrollPtr->tile;
-	}
     }
     if (scrollPtr->vertical) {
 	points[0].x = scrollPtr->inset;
@@ -1048,113 +1001,80 @@ DisplayScrollbar(clientData)
 	points[2].y = width / 2 + scrollPtr->inset;
     }
 #ifdef notdef
-    if (tile != NULL) {
-	Blt_TilePolygon(tkwin, pixmap, tile, points, 3);
-	Tk_Draw3DPolygon(tkwin, pixmap, border, points, 3,
-	    elementBorderWidth, relief);
-    } else {
-	Tk_Fill3DPolygon(tkwin, pixmap, border, points, 3,
-	    elementBorderWidth, relief);
+    Blt_FillBackgroundPolygon(tkwin, pixmap, bg, points, 3, elementBorderWidth,
+	relief);
     }
 #else
-    Blt_Fill3DRectangle(tkwin, pixmap, border, 
+    Blt_FillBackgroundRectangle(tkwin, pixmap, bg, 
 		       Tk_Width(tkwin) - (width + scrollPtr->inset), 
 		       Tk_Height(tkwin) - (width + scrollPtr->inset),
 		       width, width, elementBorderWidth, relief); 
     
-    Blt_DrawArrow(scrollPtr->display, pixmap, scrollPtr->copyGC, 
-		  Tk_Width(tkwin) - (scrollPtr->inset + width / 2) - 1, 
-		  Tk_Height(tkwin) - (scrollPtr->inset + width / 2) - 1, 
-		  STD_ARROW_HEIGHT, 
-		  (scrollPtr->vertical) ? ARROW_DOWN : ARROW_RIGHT);
+    Blt_DrawArrow(scrollPtr->display, pixmap, scrollPtr->arrowGC, 
+	Tk_Width(tkwin) - scrollPtr->inset - width, 
+	Tk_Height(tkwin) - scrollPtr->inset - width, 
+	width, width, elementBorderWidth,
+	(scrollPtr->vertical) ? ARROW_DOWN : ARROW_RIGHT);
 #endif    
     /*
      * Display the slider.
      */
-    tile = NULL;
     if (scrollPtr->activeField == SLIDER) {
-	border = scrollPtr->activeBorder;
-	relief = scrollPtr->activeField == SLIDER ? scrollPtr->activeRelief
-	    : TK_RELIEF_RAISED;
-	if (scrollPtr->activeTile != NULL) {
-	    Blt_SetTileOrigin(tkwin, scrollPtr->activeTile, 0, 0);
-	    tile = scrollPtr->activeTile;
-	}
-    } else {
-	border = scrollPtr->bgBorder;
+	bg = scrollPtr->activeBg;
 	relief = TK_RELIEF_RAISED;
-	if (scrollPtr->tile != NULL) {
-	    tile = scrollPtr->tile;
-	}
+    } else if (scrollPtr->activeField == SLIDER) {
+	bg = scrollPtr->activeBg;
+	relief = scrollPtr->activeRelief;
+    } else {
+	bg = scrollPtr->bg;
+	relief = TK_RELIEF_RAISED;
     }
     if (scrollPtr->vertical) {
-	if (tile != NULL) {
-	    Blt_TileRectangle(tkwin, pixmap, tile, scrollPtr->inset, 
-		scrollPtr->sliderFirst, width - 1,
-		scrollPtr->sliderLast - scrollPtr->sliderFirst - 1);
-	    Blt_Draw3DRectangle(tkwin, pixmap, border,
-		scrollPtr->inset, scrollPtr->sliderFirst,
-		width, scrollPtr->sliderLast - scrollPtr->sliderFirst,
+	Blt_FillBackgroundRectangle(tkwin, pixmap, bg, scrollPtr->inset, 
+		scrollPtr->sliderFirst, width, 
+		scrollPtr->sliderLast - scrollPtr->sliderFirst,
 		elementBorderWidth, relief);
-	} else {
-	    Blt_Fill3DRectangle(tkwin, pixmap, border,
-		scrollPtr->inset, scrollPtr->sliderFirst,
-		width, scrollPtr->sliderLast - scrollPtr->sliderFirst,
-		elementBorderWidth, relief);
-	}
     } else {
-	if (tile != NULL) {
-	    Blt_TileRectangle(tkwin, pixmap, tile, scrollPtr->sliderFirst, 
-		scrollPtr->inset,
-		scrollPtr->sliderLast - scrollPtr->sliderFirst - 1, width - 1);
-	    Blt_Draw3DRectangle(tkwin, pixmap, border,
-		scrollPtr->sliderFirst, scrollPtr->inset,
+	Blt_FillBackgroundRectangle(tkwin, pixmap, bg, scrollPtr->sliderFirst, 
+		scrollPtr->inset, 
 		scrollPtr->sliderLast - scrollPtr->sliderFirst, width,
 		elementBorderWidth, relief);
-	} else {
-	    Blt_Fill3DRectangle(tkwin, pixmap, border,
-		scrollPtr->sliderFirst, scrollPtr->inset,
-		scrollPtr->sliderLast - scrollPtr->sliderFirst, width,
-	       elementBorderWidth, relief);
-	}
     }
 
     /*
-     * Copy the information from the off-screen pixmap onto the screen,
-     * then delete the pixmap.
+     * Copy the information from the off-screen pixmap onto the screen, then
+     * delete the pixmap.
      */
 
     XCopyArea(scrollPtr->display, pixmap, Tk_WindowId(tkwin),
 	scrollPtr->copyGC, 0, 0, (unsigned)Tk_Width(tkwin),
 	(unsigned)Tk_Height(tkwin), 0, 0);
     Tk_FreePixmap(scrollPtr->display, pixmap);
-
   done:
     scrollPtr->flags &= ~REDRAW_PENDING;
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ScrollbarEventProc --
  *
- *	This procedure is invoked by the Tk dispatcher for various
- *	events on scrollbars.
+ *	This procedure is invoked by the Tk dispatcher for various events on
+ *	scrollbars.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	When the window gets deleted, internal structures get
- *	cleaned up.  When it gets exposed, it is redisplayed.
+ *	When the window gets deleted, internal structures get cleaned up.
+ *	When it gets exposed, it is redisplayed.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-
 static void
-ScrollbarEventProc(clientData, eventPtr)
-    ClientData clientData;	/* Information about window. */
-    XEvent *eventPtr;		/* Information about event. */
+ScrollbarEventProc(
+    ClientData clientData,	/* Information about window. */
+    XEvent *eventPtr)		/* Information about event. */
 {
     Scrollbar *scrollPtr = clientData;
 
@@ -1189,15 +1109,15 @@ ScrollbarEventProc(clientData, eventPtr)
 	}
     }
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ScrollbarCmdDeletedProc --
  *
- *	This procedure is invoked when a widget command is deleted.  If
- *	the widget isn't already in the process of being destroyed,
- *	this command destroys it.
+ *	This procedure is invoked when a widget command is deleted.  If the
+ *	widget isn't already in the process of being destroyed, this command
+ *	destroys it.
  *
  * Results:
  *	None.
@@ -1205,40 +1125,35 @@ ScrollbarEventProc(clientData, eventPtr)
  * Side effects:
  *	The widget is destroyed.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-
 static void
-ScrollbarCmdDeletedProc(clientData)
-    ClientData clientData;	/* Pointer to widget record for widget. */
+ScrollbarCmdDeletedProc(ClientData clientData)
 {
     Scrollbar *scrollPtr = clientData;
     Tk_Window tkwin = scrollPtr->tkwin;
 
     /*
-     * This procedure could be invoked either because the window was
-     * destroyed and the command was then deleted (in which case tkwin
-     * is NULL) or because the command was deleted, and then this procedure
-     * destroys the widget.
+     * This procedure could be invoked either because the window was destroyed
+     * and the command was then deleted (in which case tkwin is NULL) or
+     * because the command was deleted, and then this procedure destroys the
+     * widget.
      */
 
     if (tkwin != NULL) {
-#ifdef ITCL_NAMESPACES
-	Itk_SetWidgetCommand(scrollPtr->tkwin, (Tcl_Command) NULL);
-#endif
 	scrollPtr->tkwin = NULL;
 	Tk_DestroyWindow(tkwin);
     }
 }
-
+
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ComputeScrollbarGeometry --
  *
- *	After changes in a scrollbar's size or configuration, this
- *	procedure recomputes various geometry information used in
- *	displaying the scrollbar.
+ *	After changes in a scrollbar's size or configuration, this procedure
+ *	recomputes various geometry information used in displaying the
+ *	scrollbar.
  *
  * Results:
  *	None.
@@ -1246,97 +1161,99 @@ ScrollbarCmdDeletedProc(clientData)
  * Side effects:
  *	The scrollbar will be displayed differently.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-ComputeScrollbarGeometry(scrollPtr)
-    register Scrollbar *scrollPtr;	/* Scrollbar whose geometry may
-					 * have changed. */
+ComputeScrollbarGeometry(Scrollbar *sp)	
 {
     int width, fieldLength;
 
-    if (scrollPtr->highlightWidth < 0) {
-	scrollPtr->highlightWidth = 0;
+    if (sp->highlightWidth < 0) {
+	sp->highlightWidth = 0;
     }
-    scrollPtr->inset = scrollPtr->highlightWidth + scrollPtr->borderWidth;
-    width = (scrollPtr->vertical) ? Tk_Width(scrollPtr->tkwin)
-	: Tk_Height(scrollPtr->tkwin);
-    scrollPtr->arrowLength = width - 2 * scrollPtr->inset + 1;
-    fieldLength = (scrollPtr->vertical ? Tk_Height(scrollPtr->tkwin)
-	: Tk_Width(scrollPtr->tkwin))
-	- 2 * (scrollPtr->arrowLength + scrollPtr->inset);
+    sp->inset = sp->highlightWidth + sp->borderWidth;
+    width = (sp->vertical) ? Tk_Width(sp->tkwin) : Tk_Height(sp->tkwin);
+    sp->arrowLength = width - (2 * sp->inset + 1);
+    fieldLength = (sp->vertical ? Tk_Height(sp->tkwin) : 
+		   Tk_Width(sp->tkwin)) - 2 * (sp->arrowLength + sp->inset);
     if (fieldLength < 0) {
 	fieldLength = 0;
     }
-    scrollPtr->sliderFirst = fieldLength * scrollPtr->firstFraction;
-    scrollPtr->sliderLast = fieldLength * scrollPtr->lastFraction;
+    sp->sliderFirst = (int)(fieldLength * sp->firstFraction);
+    sp->sliderLast = (int)(fieldLength * sp->lastFraction);
 
     /*
-     * Adjust the slider so that some piece of it is always
-     * displayed in the scrollbar and so that it has at least
-     * a minimal width (so it can be grabbed with the mouse).
+     * Adjust the slider so that some piece of it is always displayed in the
+     * scrollbar and so that it has at least a minimal width (so it can be
+     * grabbed with the mouse).
      */
+    {
+	int minSliderLength, sliderLength;
 
-    if (scrollPtr->sliderFirst > (fieldLength - 2 * scrollPtr->borderWidth)) {
-	scrollPtr->sliderFirst = fieldLength - 2 * scrollPtr->borderWidth;
+	minSliderLength = sp->minSliderLength;
+	if (minSliderLength > fieldLength) {
+	    minSliderLength = fieldLength;
+	}
+	sliderLength = sp->sliderLast - sp->sliderFirst;
+	if (sliderLength < minSliderLength) {
+	    fieldLength -= minSliderLength - sliderLength;
+	    sp->sliderFirst = (int)(fieldLength * sp->firstFraction);
+	    sp->sliderLast = sp->sliderFirst + minSliderLength;
+	} else {
+	    if (sp->sliderFirst > (fieldLength - 2 * sp->borderWidth)) {
+		sp->sliderFirst = fieldLength - 2 * sp->borderWidth;
+	    }
+	    if (sp->sliderFirst < 0) {
+		sp->sliderFirst = 0;
+	    }
+	    if (sp->sliderLast > fieldLength) {
+		sp->sliderLast = fieldLength;
+	    }
+	}
     }
-    if (scrollPtr->sliderFirst < 0) {
-	scrollPtr->sliderFirst = 0;
-    }
-    if (scrollPtr->sliderLast < (scrollPtr->sliderFirst + MIN_SLIDER_LENGTH)) {
-	scrollPtr->sliderLast = scrollPtr->sliderFirst + MIN_SLIDER_LENGTH;
-    }
-    if (scrollPtr->sliderLast > fieldLength) {
-	scrollPtr->sliderLast = fieldLength;
-    }
-    scrollPtr->sliderFirst += scrollPtr->arrowLength + scrollPtr->inset;
-    scrollPtr->sliderLast += scrollPtr->arrowLength + scrollPtr->inset;
+    sp->sliderFirst += sp->arrowLength + sp->inset;
+    sp->sliderLast += sp->arrowLength + sp->inset;
 
     /*
-     * Register the desired geometry for the window (leave enough space
-     * for the two arrows plus a minimum-size slider, plus border around
-     * the whole window, if any).  Then arrange for the window to be
-     * redisplayed.
+     * Register the desired geometry for the window (leave enough space for
+     * the two arrows plus a minimum-size slider, plus border around the whole
+     * window, if any).  Then arrange for the window to be redisplayed.
      */
 
-    if (scrollPtr->vertical) {
-	Tk_GeometryRequest(scrollPtr->tkwin,
-	    scrollPtr->width + 2 * scrollPtr->inset,
-	    2 * (scrollPtr->arrowLength + scrollPtr->borderWidth
-		+ scrollPtr->inset));
+    if (sp->vertical) {
+	Tk_GeometryRequest(sp->tkwin, sp->width + 2 * sp->inset,
+	    2 * (sp->arrowLength + sp->borderWidth + sp->inset));
     } else {
-	Tk_GeometryRequest(scrollPtr->tkwin,
-	    2 * (scrollPtr->arrowLength + scrollPtr->borderWidth
-		+ scrollPtr->inset), scrollPtr->width + 2 * scrollPtr->inset);
+	Tk_GeometryRequest(sp->tkwin, 
+		2 * (sp->arrowLength + sp->borderWidth + sp->inset), 
+		sp->width + 2 * sp->inset);
     }
-    Tk_SetInternalBorder(scrollPtr->tkwin, scrollPtr->inset);
+    Tk_SetInternalBorder(sp->tkwin, sp->inset);
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ScrollbarPosition --
  *
- *	Determine the scrollbar element corresponding to a
- *	given position.
+ *	Determine the scrollbar element corresponding to a given position.
  *
  * Results:
- *	One of TOP_ARROW, TOP_GAP, etc., indicating which element
- *	of the scrollbar covers the position given by (x, y).  If
- *	(x,y) is outside the scrollbar entirely, then OUTSIDE is
- *	returned.
+ *	One of TOP_ARROW, TOP_GAP, etc., indicating which element of the
+ *	scrollbar covers the position given by (x, y).  If (x,y) is outside
+ *	the scrollbar entirely, then OUTSIDE is returned.
  *
  * Side effects:
  *	None.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ScrollbarPosition(scrollPtr, x, y)
-    register Scrollbar *scrollPtr;	/* Scrollbar widget record. */
-    int x, y;			/* Coordinates within scrollPtr's
-					 * window. */
+ScrollbarPosition(
+    Scrollbar *scrollPtr,	/* Scrollbar widget record. */
+    int x, int y)		/* Coordinates within scrollPtr's 
+				 * window. */
 {
     int length, width, tmp;
 
@@ -1351,8 +1268,8 @@ ScrollbarPosition(scrollPtr, x, y)
 	width = Tk_Height(scrollPtr->tkwin);
     }
 
-    if ((x < scrollPtr->inset) || (x >= (width - scrollPtr->inset))
-	|| (y < scrollPtr->inset) || (y >= (length - scrollPtr->inset))) {
+    if ((x < scrollPtr->inset) || (x >= (width - scrollPtr->inset)) || 
+	(y < scrollPtr->inset) || (y >= (length - scrollPtr->inset))) {
 	return OUTSIDE;
     }
     /*
@@ -1374,14 +1291,13 @@ ScrollbarPosition(scrollPtr, x, y)
     }
     return BOTTOM_GAP;
 }
-
+
 /*
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * EventuallyRedraw --
  *
- *	Arrange for one or more of the fields of a scrollbar
- *	to be redrawn.
+ *	Arrange for one or more of the fields of a scrollbar to be redrawn.
  *
  * Results:
  *	None.
@@ -1389,12 +1305,11 @@ ScrollbarPosition(scrollPtr, x, y)
  * Side effects:
  *	None.
  *
- *--------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static void
-EventuallyRedraw(scrollPtr)
-    register Scrollbar *scrollPtr;	/* Information about widget. */
+EventuallyRedraw(Scrollbar *scrollPtr) /* Information about widget. */
 {
     if ((scrollPtr->tkwin == NULL) || (!Tk_IsMapped(scrollPtr->tkwin))) {
 	return;
@@ -1406,22 +1321,11 @@ EventuallyRedraw(scrollPtr)
 }
 
 int
-Blt_ScrollbarInit(interp)
-    Tcl_Interp *interp;
+Blt_ScrollbarCmdInitProc(Tcl_Interp *interp)
 {
-    static Blt_CmdSpec cmdSpec =
-    {
-#if HAVE_NAMESPACES
-	"scrollbar", ScrollbarCmd,
-#else
-	"tilescrollbar", ScrollbarCmd,
-#endif /* HAVE_NAMESPACES */
-    };
+    static Blt_InitCmdSpec cmdSpec = { "scrollbar", ScrollbarCmd, };
 
-    if (Blt_InitCmd(interp, "blt::tile", &cmdSpec) == NULL) {
-	return TCL_ERROR;
-    }
-    return TCL_OK;
+    return Blt_InitCmd(interp, "::blt::tk", &cmdSpec);
 }
 
-#endif /* NO_TILESCROLLBAR */
+#endif /* NO_TKSCROLLBAR */

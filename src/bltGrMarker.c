@@ -2,41 +2,54 @@
 /*
  * bltGrMarker.c --
  *
- *	This module implements markers for the BLT graph widget.
+ * This module implements markers for the BLT graph widget.
  *
- * Copyright 1993-1998 Lucent Technologies, Inc.
+ *	Copyright 1993-2004 George A Howlett.
  *
- * Permission to use, copy, modify, and distribute this software and
- * its documentation for any purpose and without fee is hereby
- * granted, provided that the above copyright notice appear in all
- * copies and that both that the copyright notice and warranty
- * disclaimer appear in supporting documentation, and that the names
- * of Lucent Technologies any of their entities not be used in
- * advertising or publicity pertaining to distribution of the software
- * without specific, written prior permission.
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
- * Lucent Technologies disclaims all warranties with regard to this
- * software, including all implied warranties of merchantability and
- * fitness.  In no event shall Lucent Technologies be liable for any
- * special, indirect or consequential damages or any damages
- * whatsoever resulting from loss of use, data or profits, whether in
- * an action of contract, negligence or other tortuous action, arising
- * out of or in connection with the use or performance of this
- * software.
+ *	The above copyright notice and this permission notice shall be
+ *	included in all copies or substantial portions of the Software.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltGraph.h"
+#include "bltOp.h"
+#include "bltImage.h"
+#include "bltPicture.h"
+#include "bltPainter.h"
 #include "bltChain.h"
 #include "bltGrElem.h"
+#include "bltBitmap.h"
+
+typedef int (GraphMarkerProc)(Graph *graphPtr, Tcl_Interp *interp, int objc, 
+	Tcl_Obj *const *objv);
+
+#define GETBITMAP(b) \
+	(((b)->destBitmap == None) ? (b)->srcBitmap : (b)->destBitmap)
 
 #define MAX_OUTLINE_POINTS	12
+
+#define IMAGE_PHOTO		(1<<7)
 
 /* Map graph coordinates to normalized coordinates [0..1] */
 #define NORMALIZE(A,x) 	(((x) - (A)->axisRange.min) / (A)->axisRange.range)
 
 #define DEF_MARKER_ANCHOR	"center"
 #define DEF_MARKER_BACKGROUND	RGB_WHITE
-#define DEF_MARKER_BG_MONO	RGB_WHITE
 #define DEF_MARKER_BITMAP	(char *)NULL
 #define DEF_MARKER_CAP_STYLE	"butt"
 #define DEF_MARKER_COORDS	(char *)NULL
@@ -44,12 +57,9 @@
 #define DEF_MARKER_DASH_OFFSET	"0"
 #define DEF_MARKER_ELEMENT	(char *)NULL
 #define DEF_MARKER_FOREGROUND	RGB_BLACK
-#define DEF_MARKER_FG_MONO	RGB_BLACK
 #define DEF_MARKER_FILL_COLOR	RGB_RED
-#define DEF_MARKER_FILL_MONO	RGB_WHITE
 #define DEF_MARKER_FONT		STD_FONT
 #define DEF_MARKER_GAP_COLOR	RGB_PINK
-#define DEF_MARKER_GAP_MONO	RGB_BLACK
 #define DEF_MARKER_HEIGHT	"0"
 #define DEF_MARKER_HIDE		"no"
 #define DEF_MARKER_JOIN_STYLE	"miter"
@@ -59,12 +69,9 @@
 #define DEF_MARKER_MAP_Y	"y"
 #define DEF_MARKER_NAME		(char *)NULL
 #define DEF_MARKER_OUTLINE_COLOR RGB_BLACK
-#define DEF_MARKER_OUTLINE_MONO	RGB_BLACK
 #define DEF_MARKER_PAD		"4"
-#define DEF_MARKER_ROTATE	"0.0"
+#define DEF_MARKER_ANGLE	"0.0"
 #define DEF_MARKER_SCALE	"1.0"
-#define DEF_MARKER_SHADOW_COLOR	(char *)NULL
-#define DEF_MARKER_SHADOW_MONO	(char *)NULL
 #define DEF_MARKER_STATE	"normal"
 #define DEF_MARKER_STIPPLE	(char *)NULL
 #define DEF_MARKER_TEXT		(char *)NULL
@@ -74,46 +81,56 @@
 #define DEF_MARKER_XOR		"no"
 #define DEF_MARKER_X_OFFSET	"0"
 #define DEF_MARKER_Y_OFFSET	"0"
+#define DEF_MARKER_FILTER	"box"
 
-#define DEF_MARKER_TEXT_TAGS	"Text all"
-#define DEF_MARKER_IMAGE_TAGS	"Image all"
-#define DEF_MARKER_BITMAP_TAGS	"Bitmap all"
-#define DEF_MARKER_WINDOW_TAGS	"Window all"
-#define DEF_MARKER_POLYGON_TAGS	"Polygon all"
-#define DEF_MARKER_LINE_TAGS	"Line all"
+#define DEF_TEXT_TAGS		"Text all"
+#define DEF_IMAGE_TAGS		"Image all"
+#define DEF_BITMAP_TAGS		"Bitmap all"
+#define DEF_WINDOW_TAGS		"Window all"
+#define DEF_POLYGON_TAGS	"Polygon all"
+#define DEF_LINE_TAGS		"Line all"
 
-static Tk_OptionParseProc StringToCoordinates;
-static Tk_OptionPrintProc CoordinatesToString;
-static Tk_CustomOption coordsOption =
+static Blt_OptionParseProc ObjToCoordsProc;
+static Blt_OptionPrintProc CoordsToObjProc;
+static Blt_OptionFreeProc FreeCoordsProc;
+static Blt_CustomOption coordsOption =
 {
-    StringToCoordinates, CoordinatesToString, (ClientData)0
+    ObjToCoordsProc, CoordsToObjProc, FreeCoordsProc, (ClientData)0
 };
-extern Tk_CustomOption bltColorPairOption;
-extern Tk_CustomOption bltDashesOption;
-extern Tk_CustomOption bltDistanceOption;
-extern Tk_CustomOption bltListOption;
-extern Tk_CustomOption bltPadOption;
-extern Tk_CustomOption bltPositiveDistanceOption;
-extern Tk_CustomOption bltShadowOption;
-extern Tk_CustomOption bltStateOption;
-extern Tk_CustomOption bltXAxisOption;
-extern Tk_CustomOption bltYAxisOption;
+static Blt_OptionFreeProc FreeColorPairProc;
+static Blt_OptionParseProc ObjToColorPairProc;
+static Blt_OptionPrintProc ColorPairToObjProc;
+static Blt_CustomOption colorPairOption =
+{
+    ObjToColorPairProc, ColorPairToObjProc, FreeColorPairProc, (ClientData)0
+};
 
-typedef Marker *(MarkerCreateProc) _ANSI_ARGS_((void));
-typedef void (MarkerDrawProc) _ANSI_ARGS_((Marker *markerPtr, 
-	Drawable drawable));
-typedef void (MarkerFreeProc) _ANSI_ARGS_((Graph *graphPtr, Marker *markerPtr));
-typedef int (MarkerConfigProc) _ANSI_ARGS_((Marker *markerPtr));
-typedef void (MarkerMapProc) _ANSI_ARGS_((Marker *markerPtr));
-typedef void (MarkerPostScriptProc) _ANSI_ARGS_((Marker *markerPtr,
-	PsToken psToken));
-typedef int (MarkerPointProc) _ANSI_ARGS_((Marker *markerPtr, 
-	Point2D *samplePtr));
-typedef int (MarkerRegionProc) _ANSI_ARGS_((Marker *markerPtr, 
-	Extents2D *extsPtr, int enclosed));
+static Blt_OptionParseProc ObjToPictImageProc;
+static Blt_OptionPrintProc PictImageToObjProc;
+static Blt_OptionFreeProc FreePictImageProc;
+static Blt_CustomOption pictImageOption =
+{
+    ObjToPictImageProc, PictImageToObjProc, FreePictImageProc, (ClientData)0
+};
+
+BLT_EXTERN Blt_CustomOption bltXAxisOption;
+BLT_EXTERN Blt_CustomOption bltYAxisOption;
+BLT_EXTERN Blt_CustomOption bltFilterOption;
+
+typedef Marker *(MarkerCreateProc)(void);
+typedef void    (MarkerDrawProc)(Marker *markerPtr, Drawable drawable);
+typedef void    (MarkerFreeProc)(Marker *markerPtr);
+typedef int     (MarkerConfigProc)(Marker *markerPtr);
+typedef void    (MarkerMapProc)(Marker *markerPtr);
+typedef void    (MarkerPostscriptProc)(Marker *markerPtr, Blt_Ps ps);
+typedef int     (MarkerPointProc)(Marker *markerPtr, Point2d *samplePtr);
+typedef int     (MarkerRegionProc)(Marker *markerPtr, Region2d *extsPtr, 
+				   int enclosed);
+
+static Tcl_FreeProc FreeMarker;
 
 typedef struct {
-    Tk_ConfigSpec *configSpecs;	/* Marker configuration specifications */
+    Blt_ConfigSpec *configSpecs; /* Marker configuration specifications */
 
     MarkerConfigProc *configProc;
     MarkerDrawProc *drawProc;
@@ -121,363 +138,110 @@ typedef struct {
     MarkerMapProc *mapProc;
     MarkerPointProc *pointProc;
     MarkerRegionProc *regionProc;
-    MarkerPostScriptProc *postscriptProc;
+    MarkerPostscriptProc *postscriptProc;
 
 }  MarkerClass;
 
-
-
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Marker --
  *
- *	Structure defining the generic marker.  In C++ parlance this
- *	would be the base type from which all markers are derived.
+ *	Structure defining the generic marker.  In C++ parlance this would be
+ *	the base class from which all markers are derived.
  *
- *	This structure corresponds with the specific types of markers.
- *	Don't change this structure without changing the individual
- *	marker structures of each type below.
+ *	This structure corresponds with the specific types of markers.  Don't
+ *	change this structure without changing the individual marker
+ *	structures of each type below.
  *
- * ------------------------------------------------------------------- 
+ * -------------------------------------------------------------------------- 
  */
-struct MarkerStruct {
-    char *name;			/* Identifier for marker in list */
+struct _Marker {
+    GraphObj obj;		/* Must be first field in marker. */
 
-    Blt_Uid classUid;		/* Type of marker. */
-
-    Graph *graphPtr;		/* Graph widget of marker. */
-
-    unsigned int flags;
-
-    char **tags;
-
-    int hidden;			/* If non-zero, don't display the marker. */
+    MarkerClass *classPtr;
 
     Blt_HashEntry *hashPtr;
 
-    Blt_ChainLink *linkPtr;
+    Blt_ChainLink link;
 
-    Point2D *worldPts;		/* Coordinate array to position marker */
+    const char *elemName;	/* Element associated with marker. Let's you
+				 * link a marker to an element. The marker is
+				 * drawn only if the element is also
+				 * visible. */
+    Axis2d axes;
+
+    Point2d *worldPts;		/* Coordinate array to position marker */
+
     int nWorldPts;		/* Number of points in above array */
 
-    char *elemName;		/* Element associated with marker */
-
-    Axis2D axes;
-
-    int drawUnder;		/* If non-zero, draw the marker
-				 * underneath any elements. This can
-				 * be a performance penalty because
-				 * the graph must be redraw entirely
+    int drawUnder;		/* If non-zero, draw the marker underneath any
+				 * elements. This can be a performance penalty
+				 * because the graph must be redraw entirely
 				 * each time the marker is redrawn. */
 
-    int clipped;		/* Indicates if the marker is totally
-				 * clipped by the plotting area. */
+    int clipped;		/* Indicates if the marker is totally clipped
+				 * by the plotting area. */
+
+    unsigned int flags;		
+
 
     int xOffset, yOffset;	/* Pixel offset from graph position */
 
-    MarkerClass *classPtr;
-
     int state;
 };
-
 /*
- * -------------------------------------------------------------------
- *
- * TextMarker --
- *
- * -------------------------------------------------------------------
- */
-typedef struct {
-    char *name;			/* Identifier for marker */
-    Blt_Uid classUid;		/* Type of marker */
-    Graph *graphPtr;		/* The graph this marker belongs to */
-    unsigned int flags;
-    char **tags;
-    int hidden;			/* If non-zero, don't display the
-				 * marker. */
-
-    Blt_HashEntry *hashPtr;
-    Blt_ChainLink *linkPtr;
-
-    Point2D *worldPts;		/* Position of marker (1 X-Y coordinate) in
-				 * world (graph) coordinates. */
-    int nWorldPts;		/* Number of points */
-
-    char *elemName;		/* Element associated with marker */
-    Axis2D axes;
-    int drawUnder;		/* If non-zero, draw the marker
-				 * underneath any elements. There can
-				 * be a performance because the graph
-				 * must be redraw entirely each time
-				 * this marker is redrawn. */
-    int clipped;		/* Indicates if the marker is totally
-				 * clipped by the plotting area. */
-    int xOffset, yOffset;	/* pixel offset from anchor */
-
-    MarkerClass *classPtr;
-
-    int state;
-    /*
-     * Text specific fields and attributes
-     */
-#ifdef notdef
-    char *textVarName;		/* Name of variable (malloc'ed) or
-				 * NULL. If non-NULL, graph displays
-				 * the contents of this variable. */
-#endif
-    char *string;		/* Text string to be display.  The string
-				 * make contain newlines. */
-
-    Tk_Anchor anchor;		/* Indicates how to translate the given
-				 * marker position. */
-
-    Point2D anchorPos;		/* Translated anchor point. */
-
-    int width, height;		/* Dimension of bounding box.  */
-
-    TextStyle style;		/* Text attributes (font, fg, anchor, etc) */
-
-    TextLayout *textPtr;	/* Contains information about the layout
-				 * of the text. */
-    Point2D outline[5];
-    XColor *fillColor;
-    GC fillGC;
-} TextMarker;
-
-
-static Tk_ConfigSpec textConfigSpecs[] =
-{
-    {TK_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
-	DEF_MARKER_ANCHOR, Tk_Offset(TextMarker, anchor), 0},
-    {TK_CONFIG_COLOR, "-background", "background", "MarkerBackground",
-	(char *)NULL, Tk_Offset(TextMarker, fillColor),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_SYNONYM, "-bg", "background", "Background",
-	(char *)NULL, 0, 0},
-    {TK_CONFIG_CUSTOM, "-bindtags", "bindTags", "BindTags",
-	DEF_MARKER_TEXT_TAGS, Tk_Offset(Marker, tags),
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_CUSTOM, "-coords", "coords", "Coords",
-	DEF_MARKER_COORDS, Tk_Offset(Marker, worldPts),
-	TK_CONFIG_NULL_OK, &coordsOption},
-    {TK_CONFIG_STRING, "-element", "element", "Element",
-	DEF_MARKER_ELEMENT, Tk_Offset(Marker, elemName), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_SYNONYM, "-fg", "foreground", "Foreground",
-	(char *)NULL, 0, 0},
-    {TK_CONFIG_SYNONYM, "-fill", "background", (char *)NULL,
-	(char *)NULL, 0, 0},
-    {TK_CONFIG_FONT, "-font", "font", "Font",
-	DEF_MARKER_FONT, Tk_Offset(TextMarker, style.font), 0},
-    {TK_CONFIG_COLOR, "-foreground", "foreground", "Foreground",
-	DEF_MARKER_FOREGROUND, Tk_Offset(TextMarker, style.color),
-	TK_CONFIG_COLOR_ONLY},
-    {TK_CONFIG_COLOR, "-foreground", "foreground", "Foreground",
-	DEF_MARKER_FG_MONO, Tk_Offset(TextMarker, style.color),
-	TK_CONFIG_MONO_ONLY},
-    {TK_CONFIG_JUSTIFY, "-justify", "justify", "Justify",
-	DEF_MARKER_JUSTIFY, Tk_Offset(TextMarker, style.justify),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_BOOLEAN, "-hide", "hide", "Hide",
-	DEF_MARKER_HIDE, Tk_Offset(Marker, hidden),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-mapx", "mapX", "MapX",
-	DEF_MARKER_MAP_X, Tk_Offset(Marker, axes.x), 0, &bltXAxisOption},
-    {TK_CONFIG_CUSTOM, "-mapy", "mapY", "MapY",
-	DEF_MARKER_MAP_Y, Tk_Offset(Marker, axes.y), 0, &bltYAxisOption},
-    {TK_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL,
-	DEF_MARKER_NAME, Tk_Offset(Marker, name), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_SYNONYM, "-outline", "foreground", (char *)NULL,
-	(char *)NULL, 0, 0},
-    {TK_CONFIG_CUSTOM, "-padx", "padX", "PadX",
-	DEF_MARKER_PAD, Tk_Offset(TextMarker, style.padX),
-	TK_CONFIG_DONT_SET_DEFAULT, &bltPadOption},
-    {TK_CONFIG_CUSTOM, "-pady", "padY", "PadY",
-	DEF_MARKER_PAD, Tk_Offset(TextMarker, style.padY),
-	TK_CONFIG_DONT_SET_DEFAULT, &bltPadOption},
-    {TK_CONFIG_DOUBLE, "-rotate", "rotate", "Rotate",
-	DEF_MARKER_ROTATE, Tk_Offset(TextMarker, style.theta),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-shadow", "shadow", "Shadow",
-	DEF_MARKER_SHADOW_COLOR, Tk_Offset(TextMarker, style.shadow),
-	TK_CONFIG_COLOR_ONLY, &bltShadowOption},
-    {TK_CONFIG_CUSTOM, "-shadow", "shadow", "Shadow",
-	DEF_MARKER_SHADOW_MONO, Tk_Offset(TextMarker, style.shadow),
-	TK_CONFIG_MONO_ONLY, &bltShadowOption},
-    {TK_CONFIG_CUSTOM, "-state", "state", "State",
-	DEF_MARKER_STATE, Tk_Offset(Marker, state), 
-	TK_CONFIG_DONT_SET_DEFAULT, &bltStateOption},
-    {TK_CONFIG_STRING, "-text", "text", "Text",
-	DEF_MARKER_TEXT, Tk_Offset(TextMarker, string), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BOOLEAN, "-under", "under", "Under",
-	DEF_MARKER_UNDER, Tk_Offset(Marker, drawUnder),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset",
-	DEF_MARKER_X_OFFSET, Tk_Offset(Marker, xOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset",
-	DEF_MARKER_Y_OFFSET, Tk_Offset(Marker, yOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
-};
-
-
-/*
- * -------------------------------------------------------------------
- *
- * WindowMarker --
- *
- * -------------------------------------------------------------------
- */
-typedef struct {
-    char *name;			/* Identifier for marker */
-    Blt_Uid classUid;		/* Type of marker */
-    Graph *graphPtr;		/* Graph marker belongs to */
-    unsigned int flags;
-    char **tags;
-    int hidden;			/* Indicates if the marker is
-				 * currently hidden or not. */
-
-    Blt_HashEntry *hashPtr;
-    Blt_ChainLink *linkPtr;
-
-    Point2D *worldPts;		/* Position of marker (1 X-Y coordinate) in
-				 * world (graph) coordinates. */
-    int nWorldPts;		/* Number of points */
-
-    char *elemName;		/* Element associated with marker */
-    Axis2D axes;
-    int drawUnder;		/* If non-zero, draw the marker
-				 * underneath any elements. There can
-				 * be a performance because the graph
-				 * must be redraw entirely each time
-				 * this marker is redrawn. */
-    int clipped;		/* Indicates if the marker is totally
-				 * clipped by the plotting area. */
-    int xOffset, yOffset;	/* Pixel offset from anchor. */
-
-    MarkerClass *classPtr;
-
-    int state;
-
-    /*
-     * Window specific attributes
-     */
-    char *pathName;		/* Name of child widget to be displayed. */
-    Tk_Window tkwin;		/* Window to display. */
-    int reqWidth, reqHeight;	/* If non-zero, this overrides the size 
-				 * requested by the child widget. */
-
-    Tk_Anchor anchor;		/* Indicates how to translate the given
-				 * marker position. */
-
-    Point2D anchorPos;		/* Translated anchor point. */
-    int width, height;		/* Current size of the child window. */
-
-} WindowMarker;
-
-static Tk_ConfigSpec windowConfigSpecs[] =
-{
-    {TK_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
-	DEF_MARKER_ANCHOR, Tk_Offset(WindowMarker, anchor), 0},
-    {TK_CONFIG_CUSTOM, "-bindtags", "bindTags", "BindTags",
-	DEF_MARKER_WINDOW_TAGS, Tk_Offset(Marker, tags),
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_CUSTOM, "-coords", "coords", "Coords",
-	DEF_MARKER_COORDS, Tk_Offset(WindowMarker, worldPts),
-	TK_CONFIG_NULL_OK, &coordsOption},
-    {TK_CONFIG_STRING, "-element", "element", "Element",
-	DEF_MARKER_ELEMENT, Tk_Offset(Marker, elemName), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-height", "height", "Height",
-	DEF_MARKER_HEIGHT, Tk_Offset(WindowMarker, reqHeight),
-	TK_CONFIG_DONT_SET_DEFAULT, &bltPositiveDistanceOption},
-    {TK_CONFIG_BOOLEAN, "-hide", "hide", "Hide",
-	DEF_MARKER_HIDE, Tk_Offset(Marker, hidden),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-mapx", "mapX", "MapX",
-	DEF_MARKER_MAP_X, Tk_Offset(Marker, axes.x), 0, &bltXAxisOption},
-    {TK_CONFIG_CUSTOM, "-mapy", "mapY", "MapY",
-	DEF_MARKER_MAP_Y, Tk_Offset(Marker, axes.y), 0, &bltYAxisOption},
-    {TK_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL,
-	DEF_MARKER_NAME, Tk_Offset(Marker, name), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-state", "state", "State",
-	DEF_MARKER_STATE, Tk_Offset(Marker, state), 
-	TK_CONFIG_DONT_SET_DEFAULT, &bltStateOption},
-    {TK_CONFIG_BOOLEAN, "-under", "under", "Under",
-	DEF_MARKER_UNDER, Tk_Offset(Marker, drawUnder),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-width", "width", "Width",
-	DEF_MARKER_WIDTH, Tk_Offset(WindowMarker, reqWidth),
-	TK_CONFIG_DONT_SET_DEFAULT, &bltPositiveDistanceOption},
-    {TK_CONFIG_STRING, "-window", "window", "Window",
-	DEF_MARKER_WINDOW, Tk_Offset(WindowMarker, pathName),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset",
-	DEF_MARKER_X_OFFSET, Tk_Offset(Marker, xOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset",
-	DEF_MARKER_Y_OFFSET, Tk_Offset(Marker, yOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
-};
-
-/*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * BitmapMarker --
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    char *name;			/* Identifier for marker */
-    Blt_Uid classUid;		/* Type of marker */
-    Graph *graphPtr;		/* Graph marker belongs to */
-    unsigned int flags;
-    char **tags;
-    int hidden;			/* Indicates if the marker is currently
-				 * hidden or not. */
-
-    Blt_HashEntry *hashPtr;
-    Blt_ChainLink *linkPtr;
-
-    Point2D *worldPts;		/* Position of marker in world (graph)
-				 * coordinates. If 2 pairs of X-Y
-				 * coordinates are specified, then the
-				 * bitmap is resized to fit this area.
-				 * Otherwise if 1 pair, then the bitmap
-				 * is positioned at the coordinate at its
-				 * normal size. */
-    int nWorldPts;		/* Number of points */
-
-    char *elemName;		/* Element associated with marker */
-    Axis2D axes;
-    int drawUnder;		/* If non-zero, draw the marker
-				 * underneath any elements. There can
-				 * be a performance because the graph
-				 * must be redraw entirely each time
-				 * this marker is redrawn. */
-
-    int clipped;		/* Indicates if the marker is totally
-				 * clipped by the plotting area. */
-
-    int xOffset, yOffset;	/* Pixel offset from origin of bitmap */
+    GraphObj obj;		/* Must be first field in marker. */
 
     MarkerClass *classPtr;
 
+    Blt_HashEntry *hashPtr;
+
+    Blt_ChainLink link;
+
+    const char *elemName;	/* Element associated with marker. Let's you
+				 * link a marker to an element. The marker is
+				 * drawn only if the element is also
+				 * visible. */
+    Axis2d axes;
+
+    Point2d *worldPts;		/* Coordinate array to position marker */
+
+    int nWorldPts;		/* Number of points in above array */
+
+    int drawUnder;		/* If non-zero, draw the marker underneath any
+				 * elements. This can be a performance penalty
+				 * because the graph must be redraw entirely
+				 * each time the marker is redrawn. */
+
+    int clipped;		/* Indicates if the marker is totally clipped
+				 * by the plotting area. */
+
+    unsigned int flags;		
+
+
+    int xOffset, yOffset;	/* Pixel offset from graph position */
+
     int state;
 
-    /* Bitmap specific attributes */
-    Pixmap srcBitmap;		/* Original bitmap. May be further
-				 * scaled or rotated. */
-    double rotate;		/* Requested rotation of the bitmap */
-    double theta;		/* Normalized rotation (0..360
-				 * degrees) */
-    Tk_Anchor anchor;		/* If only one X-Y coordinate is
-				 * given, indicates how to translate
-				 * the given marker position.  Otherwise,
-				 * if there are two X-Y coordinates, then
-				 * this value is ignored. */
-    Point2D anchorPos;		/* Translated anchor point. */
+    /* Fields specific to bitmap markers. */
+
+    Pixmap srcBitmap;		/* Original bitmap. May be further scaled or
+				 * rotated. */
+    float reqAngle;		/* Requested rotation of the bitmap */
+    float angle;		/* Normalized rotation (0..360 degrees) */
+    Tk_Anchor anchor;		/* If only one X-Y coordinate is given,
+				 * indicates how to translate the given marker
+				 * position.  Otherwise, if there are two X-Y
+				 * coordinates, then this value is ignored. */
+    Point2d anchorPt;		/* Translated anchor point. */
 
     XColor *outlineColor;	/* Foreground color */
     XColor *fillColor;		/* Background color */
@@ -487,209 +251,230 @@ typedef struct {
     Pixmap destBitmap;		/* Bitmap to be drawn. */
     int destWidth, destHeight;	/* Dimensions of the final bitmap */
 
-    Point2D outline[MAX_OUTLINE_POINTS]; 
-				/* Polygon representing the background
-				 * of the bitmap. */
+    Point2d outline[MAX_OUTLINE_POINTS]; 
+				/* Polygon representing the background of the
+				 * bitmap. */
     int nOutlinePts;
 } BitmapMarker;
 
-static Tk_ConfigSpec bitmapConfigSpecs[] =
+static Blt_ConfigSpec bitmapConfigSpecs[] =
 {
-    {TK_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
-	DEF_MARKER_ANCHOR, Tk_Offset(BitmapMarker, anchor), 0},
-    {TK_CONFIG_COLOR, "-background", "background", "Background",
-	DEF_MARKER_BACKGROUND, Tk_Offset(BitmapMarker, fillColor),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_COLOR, "-background", "background", "Background",
-	DEF_MARKER_BG_MONO, Tk_Offset(BitmapMarker, fillColor),
-	TK_CONFIG_MONO_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_SYNONYM, "-bg", "background", (char *)NULL,
-	(char *)NULL, 0, 0},
-    {TK_CONFIG_CUSTOM, "-bindtags", "bindTags", "BindTags",
-	DEF_MARKER_BITMAP_TAGS, Tk_Offset(Marker, tags),
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_BITMAP, "-bitmap", "bitmap", "Bitmap",
-	DEF_MARKER_BITMAP, Tk_Offset(BitmapMarker, srcBitmap), 
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-coords", "coords", "Coords",
-	DEF_MARKER_COORDS, Tk_Offset(Marker, worldPts),
-	TK_CONFIG_NULL_OK, &coordsOption},
-    {TK_CONFIG_STRING, "-element", "element", "Element",
-	DEF_MARKER_ELEMENT, Tk_Offset(Marker, elemName), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_SYNONYM, "-fg", "foreground", (char *)NULL,
-	(char *)NULL, 0, 0},
-    {TK_CONFIG_SYNONYM, "-fill", "background", (char *)NULL,
-	(char *)NULL, 0, 0},
-    {TK_CONFIG_COLOR, "-foreground", "foreground", "Foreground",
-	DEF_MARKER_FOREGROUND, Tk_Offset(BitmapMarker, outlineColor),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_COLOR, "-foreground", "foreground", "Foreground",
-	DEF_MARKER_FG_MONO, Tk_Offset(BitmapMarker, outlineColor),
-	TK_CONFIG_MONO_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BOOLEAN, "-hide", "hide", "Hide",
-	DEF_MARKER_HIDE, Tk_Offset(Marker, hidden),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-mapx", "mapX", "MapX",
-	DEF_MARKER_MAP_X, Tk_Offset(Marker, axes.x), 0, &bltXAxisOption},
-    {TK_CONFIG_CUSTOM, "-mapy", "mapY", "MapY",
-	DEF_MARKER_MAP_Y, Tk_Offset(Marker, axes.y), 0, &bltYAxisOption},
-    {TK_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL,
-	DEF_MARKER_NAME, Tk_Offset(Marker, name), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_SYNONYM, "-outline", "foreground", (char *)NULL,
-	(char *)NULL, 0, 0},
-    {TK_CONFIG_DOUBLE, "-rotate", "rotate", "Rotate",
-	DEF_MARKER_ROTATE, Tk_Offset(BitmapMarker, rotate),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-state", "state", "State",
-	DEF_MARKER_STATE, Tk_Offset(Marker, state), 
-	TK_CONFIG_DONT_SET_DEFAULT, &bltStateOption},
-    {TK_CONFIG_BOOLEAN, "-under", "under", "Under",
-	DEF_MARKER_UNDER, Tk_Offset(Marker, drawUnder),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset",
-	DEF_MARKER_X_OFFSET, Tk_Offset(Marker, xOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset",
-	DEF_MARKER_Y_OFFSET, Tk_Offset(Marker, yOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+    {BLT_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor", DEF_MARKER_ANCHOR, 
+	Blt_Offset(BitmapMarker, anchor), 0},
+    {BLT_CONFIG_COLOR, "-background", "background", "Background",
+	DEF_MARKER_BACKGROUND, Blt_Offset(BitmapMarker, fillColor),
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_SYNONYM, "-bg", "background", (char *)NULL, (char *)NULL, 0, 0},
+    {BLT_CONFIG_LIST, "-bindtags", "bindTags", "BindTags", DEF_BITMAP_TAGS, 
+	Blt_Offset(BitmapMarker, obj.tags), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BITMAP, "-bitmap", "bitmap", "Bitmap", DEF_MARKER_BITMAP, 
+	Blt_Offset(BitmapMarker, srcBitmap), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CUSTOM, "-coords", "coords", "Coords", DEF_MARKER_COORDS, 
+	Blt_Offset(BitmapMarker, worldPts), BLT_CONFIG_NULL_OK, 
+	&coordsOption},
+    {BLT_CONFIG_STRING, "-element", "element", "Element", DEF_MARKER_ELEMENT, 
+	Blt_Offset(BitmapMarker, elemName), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_SYNONYM, "-fg", "foreground", (char *)NULL, (char *)NULL, 0, 0},
+    {BLT_CONFIG_SYNONYM, "-fill", "background", (char *)NULL, (char *)NULL, 
+	0, 0},
+    {BLT_CONFIG_COLOR, "-foreground", "foreground", "Foreground",
+	DEF_MARKER_FOREGROUND, Blt_Offset(BitmapMarker, outlineColor),
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BITMASK, "-hide", "hide", "Hide", DEF_MARKER_HIDE, 
+	Blt_Offset(BitmapMarker, flags), BLT_CONFIG_DONT_SET_DEFAULT,
+        (Blt_CustomOption *)HIDE},
+    {BLT_CONFIG_CUSTOM, "-mapx", "mapX", "MapX", DEF_MARKER_MAP_X, 
+	Blt_Offset(BitmapMarker, axes.x), 0, &bltXAxisOption},
+    {BLT_CONFIG_CUSTOM, "-mapy", "mapY", "MapY", DEF_MARKER_MAP_Y, 
+	Blt_Offset(BitmapMarker, axes.y), 0, &bltYAxisOption},
+    {BLT_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL, DEF_MARKER_NAME, 
+	Blt_Offset(BitmapMarker, obj.name), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_SYNONYM, "-outline", "foreground", (char *)NULL, (char *)NULL, 
+	0, 0},
+    {BLT_CONFIG_FLOAT, "-rotate", "rotate", "Rotate", DEF_MARKER_ANGLE, 
+	Blt_Offset(BitmapMarker, reqAngle), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STATE, "-state", "state", "State", DEF_MARKER_STATE, 
+	Blt_Offset(BitmapMarker, state), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BOOLEAN, "-under", "under", "Under", DEF_MARKER_UNDER, 
+	Blt_Offset(BitmapMarker, drawUnder), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset", DEF_MARKER_X_OFFSET, 
+	Blt_Offset(BitmapMarker, xOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset", DEF_MARKER_Y_OFFSET, 
+	Blt_Offset(BitmapMarker, yOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
 };
 
+static MarkerConfigProc ConfigureBitmapProc;
+static MarkerCreateProc CreateBitmapProc;
+static MarkerDrawProc DrawBitmapProc;
+static MarkerFreeProc FreeBitmapProc;
+static MarkerMapProc MapBitmapProc;
+static MarkerPointProc PointInBitmapProc;
+static MarkerPostscriptProc BitmapToPostscriptProc;
+static MarkerRegionProc RegionInBitmapProc;
+
+static MarkerClass bitmapMarkerClass = {
+    bitmapConfigSpecs,
+    ConfigureBitmapProc,
+    DrawBitmapProc,
+    FreeBitmapProc,
+    MapBitmapProc,
+    PointInBitmapProc,
+    RegionInBitmapProc,
+    BitmapToPostscriptProc,
+};
 
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ImageMarker --
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    char *name;			/* Identifier for marker */
-    Blt_Uid classUid;		/* Type of marker */
-    Graph *graphPtr;		/* Graph marker belongs to */
-    unsigned int flags;
-    char **tags;
-    int hidden;			/* Indicates if the marker is
-				 * currently hidden or not. */
-
-    Blt_HashEntry *hashPtr;
-    Blt_ChainLink *linkPtr;
-    Point2D *worldPts;		/* Position of marker in world (graph)
-				 * coordinates. If 2 pairs of X-Y
-				 * coordinates are specified, then the
-				 * image is resized to fit this area.
-				 * Otherwise if 1 pair, then the image
-				 * is positioned at the coordinate at
-				 * its normal size. */
-    int nWorldPts;		/* Number of points */
-
-    char *elemName;		/* Element associated with marker */
-    Axis2D axes;
-    int drawUnder;		/* If non-zero, draw the marker
-				 * underneath any elements. There can
-				 * be a performance because the graph
-				 * must be redraw entirely each time
-				 * this marker is redrawn. */
-    int clipped;		/* Indicates if the marker is totally
-				 * clipped by the plotting area. */
-    int xOffset, yOffset;	/* Pixel offset from anchor */
+    GraphObj obj;		/* Must be first field in marker. */
 
     MarkerClass *classPtr;
 
+    Blt_HashEntry *hashPtr;
+
+    Blt_ChainLink link;
+
+    const char *elemName;	/* Element associated with marker. Let's you
+				 * link a marker to an element. The marker is
+				 * drawn only if the element is also
+				 * visible. */
+    Axis2d axes;
+
+    Point2d *worldPts;		/* Coordinate array to position marker */
+
+    int nWorldPts;		/* Number of points in above array */
+
+    int drawUnder;		/* If non-zero, draw the marker underneath any
+				 * elements. This can be a performance penalty
+				 * because the graph must be redraw entirely
+				 * each time the marker is redrawn. */
+
+    int clipped;		/* Indicates if the marker is totally clipped
+				 * by the plotting area. */
+
+    unsigned int flags;		
+
+
+    int xOffset, yOffset;	/* Pixel offset from graph position */
+
     int state;
 
-    /* Image specific attributes */
-    char *imageName;		/* Name of image to be displayed. */
     Tk_Image tkImage;		/* Tk image to be displayed. */
     Tk_Anchor anchor;		/* Indicates how to translate the given
 				 * marker position. */
-    Point2D anchorPos;		/* Translated anchor point. */
-    int width, height;		/* Dimensions of the image */
-    Tk_Image tmpImage;
-    Pixmap pixmap;		/* Pixmap containing the scaled image */
-    ColorTable colorTable;	/* Pointer to color table */
-    Blt_ColorImage srcImage;
+    Point2d anchorPt;		/* Translated anchor point. */
+    int width, height;		/* Dimensions of the possibly scaled image. */
+    Blt_Painter painter;
+    Blt_Picture picture;
+    Blt_ResampleFilter filter;
+    int pictX, pictY;		/*  */
+    Blt_Picture scaled;		/* Pixmap containing the scaled image */
     GC gc;
 
 } ImageMarker;
 
-static Tk_ConfigSpec imageConfigSpecs[] =
+static Blt_ConfigSpec imageConfigSpecs[] =
 {
-    {TK_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor",
-	DEF_MARKER_ANCHOR, Tk_Offset(ImageMarker, anchor), 0},
-    {TK_CONFIG_CUSTOM, "-bindtags", "bindTags", "BindTags",
-	DEF_MARKER_IMAGE_TAGS, Tk_Offset(Marker, tags),
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_CUSTOM, "-coords", "coords", "Coords",
-	DEF_MARKER_COORDS, Tk_Offset(Marker, worldPts),
-	TK_CONFIG_NULL_OK, &coordsOption},
-    {TK_CONFIG_STRING, "-element", "element", "Element",
-	DEF_MARKER_ELEMENT, Tk_Offset(Marker, elemName), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BOOLEAN, "-hide", "hide", "Hide",
-	DEF_MARKER_HIDE, Tk_Offset(Marker, hidden),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_STRING, "-image", "image", "Image",
-	(char *)NULL, Tk_Offset(ImageMarker, imageName), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-mapx", "mapX", "MapX",
-	DEF_MARKER_MAP_X, Tk_Offset(Marker, axes.x), 0, &bltXAxisOption},
-    {TK_CONFIG_CUSTOM, "-mapy", "mapY", "MapY",
-	DEF_MARKER_MAP_Y, Tk_Offset(Marker, axes.y), 0, &bltYAxisOption},
-    {TK_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL,
-	DEF_MARKER_NAME, Tk_Offset(Marker, name), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-state", "state", "State",
-	DEF_MARKER_STATE, Tk_Offset(Marker, state), 
-	TK_CONFIG_DONT_SET_DEFAULT, &bltStateOption},
-    {TK_CONFIG_BOOLEAN, "-under", "under", "Under",
-	DEF_MARKER_UNDER, Tk_Offset(Marker, drawUnder),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset",
-	DEF_MARKER_X_OFFSET, Tk_Offset(Marker, xOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset",
-	DEF_MARKER_Y_OFFSET, Tk_Offset(Marker, yOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+    {BLT_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor", DEF_MARKER_ANCHOR, 
+	Blt_Offset(ImageMarker, anchor), 0},
+    {BLT_CONFIG_LIST, "-bindtags", "bindTags", "BindTags", DEF_IMAGE_TAGS, 
+	Blt_Offset(ImageMarker, obj.tags), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CUSTOM, "-coords", "coords", "Coords", DEF_MARKER_COORDS, 
+	Blt_Offset(ImageMarker, worldPts), BLT_CONFIG_NULL_OK, &coordsOption},
+    {BLT_CONFIG_STRING, "-element", "element", "Element", DEF_MARKER_ELEMENT, 
+	Blt_Offset(ImageMarker, elemName), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BITMASK, "-hide", "hide", "Hide", DEF_MARKER_HIDE,	
+	Blt_Offset(ImageMarker, flags), BLT_CONFIG_DONT_SET_DEFAULT,
+        (Blt_CustomOption *)HIDE},
+    {BLT_CONFIG_CUSTOM, "-image", "image", "Image", (char *)NULL, 
+	Blt_Offset(ImageMarker, picture), BLT_CONFIG_NULL_OK, &pictImageOption},
+    {BLT_CONFIG_CUSTOM, "-mapx", "mapX", "MapX", DEF_MARKER_MAP_X, 
+	Blt_Offset(ImageMarker, axes.x), 0, &bltXAxisOption},
+    {BLT_CONFIG_CUSTOM, "-mapy", "mapY", "MapY", DEF_MARKER_MAP_Y, 
+	Blt_Offset(ImageMarker, axes.y), 0, &bltYAxisOption},
+    {BLT_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL, DEF_MARKER_NAME, 
+	Blt_Offset(ImageMarker, obj.name), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CUSTOM, "-resamplefilter", "resampleFilter", "ResampleFilter", 
+        DEF_MARKER_FILTER, Blt_Offset(ImageMarker, filter), 
+	BLT_CONFIG_NULL_OK | BLT_CONFIG_DONT_SET_DEFAULT, &bltFilterOption},
+    {BLT_CONFIG_STATE, "-state", "state", "State", DEF_MARKER_STATE, 
+	Blt_Offset(ImageMarker, state), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BOOLEAN, "-under", "under", "Under", DEF_MARKER_UNDER, 
+	Blt_Offset(ImageMarker, drawUnder), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset", DEF_MARKER_X_OFFSET, 
+	Blt_Offset(ImageMarker, xOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset", DEF_MARKER_Y_OFFSET, 
+        Blt_Offset(ImageMarker, yOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+};
+
+static MarkerConfigProc ConfigureImageProc;
+static MarkerCreateProc CreateImageProc;
+static MarkerDrawProc DrawImageProc;
+static MarkerFreeProc FreeImageProc;
+static MarkerMapProc MapImageProc;
+static MarkerPointProc PointInImageProc;
+static MarkerPostscriptProc ImageToPostscriptProc;
+static MarkerRegionProc RegionInImageProc;
+
+static MarkerClass imageMarkerClass = {
+    imageConfigSpecs,
+    ConfigureImageProc,
+    DrawImageProc,
+    FreeImageProc,
+    MapImageProc,
+    PointInImageProc,
+    RegionInImageProc,
+    ImageToPostscriptProc,
 };
 
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * LineMarker --
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    char *name;			/* Identifier for marker */
-    Blt_Uid classUid;		/* Type is "linemarker" */
-    Graph *graphPtr;		/* Graph marker belongs to */
-    unsigned int flags;
-    char **tags;
-    int hidden;			/* Indicates if the marker is currently
-				 * hidden or not. */
-
-    Blt_HashEntry *hashPtr;
-    Blt_ChainLink *linkPtr;
-
-    Point2D *worldPts;		/* Position of marker (X-Y coordinates) in
-				 * world (graph) coordinates. */
-    int nWorldPts;		/* Number of points */
-
-    char *elemName;		/* Element associated with marker */
-    Axis2D axes;
-    int drawUnder;		/* If non-zero, draw the marker
-				 * underneath any elements. There can
-				 * be a performance because the graph
-				 * must be redraw entirely each time
-				 * this marker is redrawn. */
-    int clipped;		/* Indicates if the marker is totally
-				 * clipped by the plotting area. */
-    int xOffset, yOffset;	/* Pixel offset */
+    GraphObj obj;		/* Must be first field in marker. */
 
     MarkerClass *classPtr;
 
+    Blt_HashEntry *hashPtr;
+
+    Blt_ChainLink link;
+
+    const char *elemName;	/* Element associated with marker. Let's you
+				 * link a marker to an element. The marker is
+				 * drawn only if the element is also
+				 * visible. */
+    Axis2d axes;
+
+    Point2d *worldPts;		/* Coordinate array to position marker */
+
+    int nWorldPts;		/* Number of points in above array */
+
+    int drawUnder;		/* If non-zero, draw the marker underneath any
+				 * elements. This can be a performance penalty
+				 * because the graph must be redraw entirely
+				 * each time the marker is redrawn. */
+
+    int clipped;		/* Indicates if the marker is totally clipped
+				 * by the plotting area. */
+
+    unsigned int flags;		
+
+
+    int xOffset, yOffset;	/* Pixel offset from graph position */
+
     int state;
 
-    /* Line specific attributes */
     XColor *fillColor;
     XColor *outlineColor;	/* Foreground and background colors */
 
@@ -700,119 +485,132 @@ typedef struct {
 
     GC gc;			/* Private graphic context */
 
-    Segment2D *segments;	/* Malloc'ed array of points.
-				 * Represents individual line segments
-				 * (2 points per segment) comprising
-				 * the mapped line.  The segments may
-				 * not necessarily be connected after
-				 * clipping. */
+    Segment2d *segments;	/* Malloc'ed array of points.  Represents
+				 * individual line segments (2 points per
+				 * segment) comprising the mapped line.  The
+				 * segments may not necessarily be connected
+				 * after clipping. */
     int nSegments;		/* # segments in the above array. */
 
     int xor;
-    int xorState;		/* State of the XOR drawing. Indicates
-				 * if the marker is currently drawn. */
+    int xorState;		/* State of the XOR drawing. Indicates if the
+				 * marker is currently drawn. */
 } LineMarker;
 
-static Tk_ConfigSpec lineConfigSpecs[] =
+static Blt_ConfigSpec lineConfigSpecs[] =
 {
-    {TK_CONFIG_CUSTOM, "-bindtags", "bindTags", "BindTags",
-	DEF_MARKER_LINE_TAGS, Tk_Offset(Marker, tags),
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_CAP_STYLE, "-cap", "cap", "Cap",
-	DEF_MARKER_CAP_STYLE, Tk_Offset(LineMarker, capStyle),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-coords", "coords", "Coords",
-	DEF_MARKER_COORDS, Tk_Offset(Marker, worldPts),
-	TK_CONFIG_NULL_OK, &coordsOption},
-    {TK_CONFIG_CUSTOM, "-dashes", "dashes", "Dashes",
-	DEF_MARKER_DASHES, Tk_Offset(LineMarker, dashes),
-	TK_CONFIG_NULL_OK, &bltDashesOption},
-    {TK_CONFIG_CUSTOM, "-dashoffset", "dashOffset", "DashOffset",
-	DEF_MARKER_DASH_OFFSET, Tk_Offset(LineMarker, dashes.offset),
-	TK_CONFIG_DONT_SET_DEFAULT, &bltDistanceOption},
-    {TK_CONFIG_STRING, "-element", "element", "Element",
-	DEF_MARKER_ELEMENT, Tk_Offset(Marker, elemName), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_COLOR, "-fill", "fill", "Fill",
-	(char *)NULL, Tk_Offset(LineMarker, fillColor), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_JOIN_STYLE, "-join", "join", "Join",
-	DEF_MARKER_JOIN_STYLE, Tk_Offset(LineMarker, joinStyle),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-linewidth", "lineWidth", "LineWidth",
-	DEF_MARKER_LINE_WIDTH, Tk_Offset(LineMarker, lineWidth),
-	TK_CONFIG_DONT_SET_DEFAULT, &bltDistanceOption},
-    {TK_CONFIG_BOOLEAN, "-hide", "hide", "Hide",
-	DEF_MARKER_HIDE, Tk_Offset(Marker, hidden),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-mapx", "mapX", "MapX",
-	DEF_MARKER_MAP_X, Tk_Offset(Marker, axes.x), 0, &bltXAxisOption},
-    {TK_CONFIG_CUSTOM, "-mapy", "mapY", "MapY",
-	DEF_MARKER_MAP_Y, Tk_Offset(Marker, axes.y), 0, &bltYAxisOption},
-    {TK_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL,
-	DEF_MARKER_NAME, Tk_Offset(Marker, name), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_COLOR, "-outline", "outline", "Outline",
-	DEF_MARKER_OUTLINE_COLOR, Tk_Offset(LineMarker, outlineColor),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_COLOR, "-outline", "outline", "Outline",
-	DEF_MARKER_OUTLINE_MONO, Tk_Offset(LineMarker, outlineColor),
-	TK_CONFIG_MONO_ONLY | TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-state", "state", "State",
-	DEF_MARKER_STATE, Tk_Offset(Marker, state), 
-	TK_CONFIG_DONT_SET_DEFAULT, &bltStateOption},
-    {TK_CONFIG_BOOLEAN, "-under", "under", "Under",
-	DEF_MARKER_UNDER, Tk_Offset(Marker, drawUnder),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset",
-	DEF_MARKER_X_OFFSET, Tk_Offset(Marker, xOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_BOOLEAN, "-xor", "xor", "Xor",
-	DEF_MARKER_XOR, Tk_Offset(LineMarker, xor), TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset",
-	DEF_MARKER_Y_OFFSET, Tk_Offset(Marker, yOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+    {BLT_CONFIG_LIST, "-bindtags", "bindTags", "BindTags", DEF_LINE_TAGS, 
+	Blt_Offset(LineMarker, obj.tags), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CAP_STYLE, "-cap", "cap", "Cap", DEF_MARKER_CAP_STYLE, 
+	Blt_Offset(LineMarker, capStyle), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_CUSTOM, "-coords", "coords", "Coords", DEF_MARKER_COORDS, 
+	Blt_Offset(LineMarker, worldPts), BLT_CONFIG_NULL_OK, &coordsOption},
+    {BLT_CONFIG_DASHES, "-dashes", "dashes", "Dashes", DEF_MARKER_DASHES, 
+	Blt_Offset(LineMarker, dashes), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_PIXELS_NNEG, "-dashoffset", "dashOffset", "DashOffset",
+	DEF_MARKER_DASH_OFFSET, Blt_Offset(LineMarker, dashes.offset),
+	BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STRING, "-element", "element", "Element", DEF_MARKER_ELEMENT, 
+	Blt_Offset(LineMarker, elemName), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-fill", "fill", "Fill", (char *)NULL, 
+	Blt_Offset(LineMarker, fillColor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_JOIN_STYLE, "-join", "join", "Join", DEF_MARKER_JOIN_STYLE, 
+     Blt_Offset(LineMarker, joinStyle), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS_NNEG, "-linewidth", "lineWidth", "LineWidth",
+	DEF_MARKER_LINE_WIDTH, Blt_Offset(LineMarker, lineWidth),
+	BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BITMASK, "-hide", "hide", "Hide", DEF_MARKER_HIDE, 
+	Blt_Offset(LineMarker, flags), BLT_CONFIG_DONT_SET_DEFAULT,
+        (Blt_CustomOption *)HIDE},
+    {BLT_CONFIG_CUSTOM, "-mapx", "mapX", "MapX", DEF_MARKER_MAP_X, 
+	Blt_Offset(LineMarker, axes.x), 0, &bltXAxisOption},
+    {BLT_CONFIG_CUSTOM, "-mapy", "mapY", "MapY", DEF_MARKER_MAP_Y, 
+	Blt_Offset(LineMarker, axes.y), 0, &bltYAxisOption},
+    {BLT_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL, DEF_MARKER_NAME, 
+	Blt_Offset(LineMarker, obj.name), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-outline", "outline", "Outline",
+	DEF_MARKER_OUTLINE_COLOR, Blt_Offset(LineMarker, outlineColor),
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_STATE, "-state", "state", "State", DEF_MARKER_STATE, 
+	Blt_Offset(LineMarker, state), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BOOLEAN, "-under", "under", "Under", DEF_MARKER_UNDER, 
+	Blt_Offset(LineMarker, drawUnder), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset", DEF_MARKER_X_OFFSET, 
+	Blt_Offset(LineMarker, xOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BOOLEAN, "-xor", "xor", "Xor", DEF_MARKER_XOR, 
+	Blt_Offset(LineMarker, xor), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset", DEF_MARKER_Y_OFFSET, 
+	Blt_Offset(LineMarker, yOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+};
+
+static MarkerConfigProc ConfigureLineProc;
+static MarkerCreateProc CreateLineProc;
+static MarkerDrawProc DrawLineProc;
+static MarkerFreeProc FreeLineProc;
+static MarkerMapProc MapLineProc;
+static MarkerPointProc PointInLineProc;
+static MarkerPostscriptProc LineToPostscriptProc;
+static MarkerRegionProc RegionInLineProc;
+
+static MarkerClass lineMarkerClass = {
+    lineConfigSpecs,
+    ConfigureLineProc,
+    DrawLineProc,
+    FreeLineProc,
+    MapLineProc,
+    PointInLineProc,
+    RegionInLineProc,
+    LineToPostscriptProc,
 };
 
 /*
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * PolygonMarker --
  *
- * -------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 typedef struct {
-    char *name;			/* Identifier for marker */
-    Blt_Uid classUid;		/* Type of marker */
-    Graph *graphPtr;		/* Graph marker belongs to */
-    unsigned int flags;
-    char **tags;
-    int hidden;			/* Indicates if the marker is currently
-				 * hidden or not. */
-
-    Blt_HashEntry *hashPtr;
-    Blt_ChainLink *linkPtr;
-
-    Point2D *worldPts;		/* Position of marker (X-Y coordinates) in
-				 * world (graph) coordinates. */
-    int nWorldPts;		/* Number of points */
-
-    char *elemName;		/* Element associated with marker */
-    Axis2D axes;
-    int drawUnder;		/* If non-zero, draw the marker
-				 * underneath any elements. There can
-				 * be a performance because the graph
-				 * must be redraw entirely each time
-				 * this marker is redrawn. */
-    int clipped;		/* Indicates if the marker is totally
-				 * clipped by the plotting area. */
-    int xOffset, yOffset;	/* Pixel offset */
+    GraphObj obj;		/* Must be first field in marker. */
 
     MarkerClass *classPtr;
 
+    Blt_HashEntry *hashPtr;
+
+    Blt_ChainLink link;
+
+    const char *elemName;	/* Element associated with marker. Let's you
+				 * link a marker to an element. The marker is
+				 * drawn only if the element is also
+				 * visible. */
+    Axis2d axes;
+
+    Point2d *worldPts;		/* Coordinate array to position marker */
+
+    int nWorldPts;		/* Number of points in above array */
+
+    int drawUnder;		/* If non-zero, draw the marker underneath any
+				 * elements. This can be a performance penalty
+				 * because the graph must be redraw entirely
+				 * each time the marker is redrawn. */
+
+    int clipped;		/* Indicates if the marker is totally clipped
+				 * by the plotting area. */
+
+    unsigned int flags;		
+
+
+    int xOffset, yOffset;	/* Pixel offset from graph position */
+
     int state;
 
-    /* Polygon specific attributes and fields */
-
-    Point2D *screenPts;
+    Point2d *screenPts;		/* Array of points representing the polygon in
+				 * screen coordinates. It's not used for
+				 * drawing, but to generate the outlinePts and
+				 * fillPts arrays that are the coordinates of
+				 * the possibly clipped outline and filled
+				 * polygon. */
 
     ColorPair outline;
     ColorPair fill;
@@ -821,252 +619,413 @@ typedef struct {
     int lineWidth;		/* Width of polygon outline. */
     int capStyle;
     int joinStyle;
-    Blt_Dashes dashes;		/* List of dash values.  Indicates how
-				 * draw the dashed line.  If no dash
-				 * values are provided, or the first value
-				 * is zero, then the line is drawn solid. */
+    Blt_Dashes dashes;		/* List of dash values.  Indicates how to draw
+				 * the dashed line.  If no dash values are
+				 * provided, or the first value is zero, then
+				 * the line is drawn solid. */
 
-    GC outlineGC;		/* Graphics context to draw the outline of 
-				 * the polygon. */
+    GC outlineGC;		/* Graphics context to draw the outline of the
+				 * polygon. */
     GC fillGC;			/* Graphics context to draw the filled
 				 * polygon. */
 
-    Point2D *fillPts;		/* Malloc'ed array of points used to draw
-				 * the filled polygon. These points may
-				 * form a degenerate polygon after clipping.
-				 */
+    Point2d *fillPts;		/* Malloc'ed array of points used to draw the
+				 * filled polygon. These points may form a
+				 * degenerate polygon after clipping. */
 
     int nFillPts;		/* # points in the above array. */
 
-    Segment2D *outlinePts;	/* Malloc'ed array of points.
-				 * Represents individual line segments
-				 * (2 points per segment) comprising
-				 * the outline of the polygon.  The
-				 * segments may not necessarily be
-				 * closed or connected after clipping. */
+    Segment2d *outlinePts;	/* Malloc'ed array of points.  Represents
+				 * individual line segments (2 points per
+				 * segment) comprising the outline of the
+				 * polygon.  The segments may not necessarily
+				 * be closed or connected after clipping. */
 
     int nOutlinePts;		/* # points in the above array. */
 
     int xor;
-    int xorState;		/* State of the XOR drawing. Indicates
-				 * if the marker is visible. We have
-				 * to drawn it again to erase it. */
+    int xorState;		/* State of the XOR drawing. Indicates if the
+				 * marker is visible. We have to drawn it
+				 * again to erase it. */
 } PolygonMarker;
 
-static Tk_ConfigSpec polygonConfigSpecs[] =
+static Blt_ConfigSpec polygonConfigSpecs[] =
 {
-    {TK_CONFIG_CUSTOM, "-bindtags", "bindTags", "BindTags",
-	DEF_MARKER_POLYGON_TAGS, Tk_Offset(Marker, tags),
-	TK_CONFIG_NULL_OK, &bltListOption},
-    {TK_CONFIG_CAP_STYLE, "-cap", "cap", "Cap",
-	DEF_MARKER_CAP_STYLE, Tk_Offset(PolygonMarker, capStyle),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-coords", "coords", "Coords",
-	DEF_MARKER_COORDS, Tk_Offset(Marker, worldPts),
-	TK_CONFIG_NULL_OK, &coordsOption},
-    {TK_CONFIG_CUSTOM, "-dashes", "dashes", "Dashes",
-	DEF_MARKER_DASHES, Tk_Offset(PolygonMarker, dashes),
-	TK_CONFIG_NULL_OK, &bltDashesOption},
-    {TK_CONFIG_STRING, "-element", "element", "Element",
-	DEF_MARKER_ELEMENT, Tk_Offset(Marker, elemName), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-fill", "fill", "Fill",
-	DEF_MARKER_FILL_COLOR, Tk_Offset(PolygonMarker, fill),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK, &bltColorPairOption},
-    {TK_CONFIG_CUSTOM, "-fill", "fill", "Fill",
-	DEF_MARKER_FILL_MONO, Tk_Offset(PolygonMarker, fill),
-	TK_CONFIG_MONO_ONLY | TK_CONFIG_NULL_OK, &bltColorPairOption},
-    {TK_CONFIG_JOIN_STYLE, "-join", "join", "Join",
-	DEF_MARKER_JOIN_STYLE, Tk_Offset(PolygonMarker, joinStyle),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-linewidth", "lineWidth", "LineWidth",
-	DEF_MARKER_LINE_WIDTH, Tk_Offset(PolygonMarker, lineWidth),
-	TK_CONFIG_DONT_SET_DEFAULT, &bltDistanceOption},
-    {TK_CONFIG_BOOLEAN, "-hide", "hide", "Hide",
-	DEF_MARKER_HIDE, Tk_Offset(Marker, hidden),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_CUSTOM, "-mapx", "mapX", "MapX",
-	DEF_MARKER_MAP_X, Tk_Offset(Marker, axes.x), 0, &bltXAxisOption},
-    {TK_CONFIG_CUSTOM, "-mapy", "mapY", "MapY",
-	DEF_MARKER_MAP_Y, Tk_Offset(Marker, axes.y), 0, &bltYAxisOption},
-    {TK_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL,
-	DEF_MARKER_NAME, Tk_Offset(Marker, name), TK_CONFIG_NULL_OK},
-    {TK_CONFIG_CUSTOM, "-outline", "outline", "Outline",
-	DEF_MARKER_OUTLINE_COLOR, Tk_Offset(PolygonMarker, outline),
-	TK_CONFIG_COLOR_ONLY | TK_CONFIG_NULL_OK, &bltColorPairOption},
-    {TK_CONFIG_CUSTOM, "-outline", "outline", "Outline",
-	DEF_MARKER_OUTLINE_MONO, Tk_Offset(PolygonMarker, outline),
-	TK_CONFIG_MONO_ONLY | TK_CONFIG_NULL_OK, &bltColorPairOption},
-    {TK_CONFIG_CUSTOM, "-state", "state", "State",
-	DEF_MARKER_STATE, Tk_Offset(Marker, state), 
-	TK_CONFIG_DONT_SET_DEFAULT, &bltStateOption},
-    {TK_CONFIG_BITMAP, "-stipple", "stipple", "Stipple",
-	DEF_MARKER_STIPPLE, Tk_Offset(PolygonMarker, stipple),
-	TK_CONFIG_NULL_OK},
-    {TK_CONFIG_BOOLEAN, "-under", "under", "Under",
-	DEF_MARKER_UNDER, Tk_Offset(Marker, drawUnder),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset",
-	DEF_MARKER_X_OFFSET, Tk_Offset(Marker, xOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_BOOLEAN, "-xor", "xor", "Xor",
-	DEF_MARKER_XOR, Tk_Offset(PolygonMarker, xor), 
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset",
-	DEF_MARKER_Y_OFFSET, Tk_Offset(Marker, yOffset),
-	TK_CONFIG_DONT_SET_DEFAULT},
-    {TK_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+    {BLT_CONFIG_LIST, "-bindtags", "bindTags", "BindTags", DEF_POLYGON_TAGS, 
+	Blt_Offset(PolygonMarker, obj.tags), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CAP_STYLE, "-cap", "cap", "Cap", DEF_MARKER_CAP_STYLE, 
+	Blt_Offset(PolygonMarker, capStyle), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_CUSTOM, "-coords", "coords", "Coords", DEF_MARKER_COORDS, 
+	Blt_Offset(PolygonMarker, worldPts), BLT_CONFIG_NULL_OK, &coordsOption},
+    {BLT_CONFIG_DASHES, "-dashes", "dashes", "Dashes", DEF_MARKER_DASHES, 
+	Blt_Offset(PolygonMarker, dashes), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_STRING, "-element", "element", "Element", DEF_MARKER_ELEMENT, 
+	Blt_Offset(PolygonMarker, elemName), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CUSTOM, "-fill", "fill", "Fill", DEF_MARKER_FILL_COLOR, 
+	Blt_Offset(PolygonMarker, fill), BLT_CONFIG_NULL_OK, &colorPairOption},
+    {BLT_CONFIG_JOIN_STYLE, "-join", "join", "Join", DEF_MARKER_JOIN_STYLE, 
+	Blt_Offset(PolygonMarker, joinStyle), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS_NNEG, "-linewidth", "lineWidth", "LineWidth",
+	DEF_MARKER_LINE_WIDTH, Blt_Offset(PolygonMarker, lineWidth),
+	BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BITMASK, "-hide", "hide", "Hide", DEF_MARKER_HIDE, 
+	Blt_Offset(PolygonMarker, flags), BLT_CONFIG_DONT_SET_DEFAULT,
+        (Blt_CustomOption *)HIDE},
+    {BLT_CONFIG_CUSTOM, "-mapx", "mapX", "MapX", DEF_MARKER_MAP_X, 
+	Blt_Offset(PolygonMarker, axes.x), 0, &bltXAxisOption},
+    {BLT_CONFIG_CUSTOM, "-mapy", "mapY", "MapY", DEF_MARKER_MAP_Y, 
+	Blt_Offset(PolygonMarker, axes.y), 0, &bltYAxisOption},
+    {BLT_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL, DEF_MARKER_NAME, 
+	Blt_Offset(PolygonMarker, obj.name), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CUSTOM, "-outline", "outline", "Outline", 
+	DEF_MARKER_OUTLINE_COLOR, Blt_Offset(PolygonMarker, outline),
+	BLT_CONFIG_NULL_OK, &colorPairOption},
+    {BLT_CONFIG_STATE, "-state", "state", "State", DEF_MARKER_STATE, 
+	Blt_Offset(PolygonMarker, state), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BITMAP, "-stipple", "stipple", "Stipple", DEF_MARKER_STIPPLE, 
+	Blt_Offset(PolygonMarker, stipple), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BOOLEAN, "-under", "under", "Under", DEF_MARKER_UNDER, 
+	Blt_Offset(PolygonMarker, drawUnder), 
+	BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset", DEF_MARKER_X_OFFSET, 
+	Blt_Offset(PolygonMarker, xOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BOOLEAN, "-xor", "xor", "Xor", DEF_MARKER_XOR, 
+	Blt_Offset(PolygonMarker, xor), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset", DEF_MARKER_Y_OFFSET, 
+	Blt_Offset(PolygonMarker, yOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
 };
 
-static MarkerCreateProc CreateBitmapMarker, CreateLineMarker, CreateImageMarker,
-	CreatePolygonMarker, CreateTextMarker, CreateWindowMarker;
-
-static MarkerDrawProc DrawBitmapMarker, DrawLineMarker, DrawImageMarker,
-	DrawPolygonMarker, DrawTextMarker, DrawWindowMarker;
-
-static MarkerFreeProc FreeBitmapMarker, FreeLineMarker, FreeImageMarker, 
-	FreePolygonMarker, FreeTextMarker, FreeWindowMarker;
-
-static MarkerConfigProc ConfigureBitmapMarker, ConfigureLineMarker, 
-	ConfigureImageMarker, ConfigurePolygonMarker, ConfigureTextMarker, 
-	ConfigureWindowMarker;
-
-static MarkerMapProc MapBitmapMarker, MapLineMarker, MapImageMarker, 
-	MapPolygonMarker, MapTextMarker, MapWindowMarker;
-
-static MarkerPostScriptProc BitmapMarkerToPostScript, LineMarkerToPostScript, 
-	ImageMarkerToPostScript, PolygonMarkerToPostScript, 
-	TextMarkerToPostScript, WindowMarkerToPostScript;
-
-static MarkerPointProc PointInBitmapMarker, PointInLineMarker, 
-	PointInImageMarker, PointInPolygonMarker, PointInTextMarker, 
-	PointInWindowMarker;
-
-static MarkerRegionProc RegionInBitmapMarker, RegionInLineMarker, 
-	RegionInImageMarker, RegionInPolygonMarker, RegionInTextMarker, 
-	RegionInWindowMarker;
-
-static Tk_ImageChangedProc ImageChangedProc;
-
-static MarkerClass bitmapMarkerClass = {
-    bitmapConfigSpecs,
-    ConfigureBitmapMarker,
-    DrawBitmapMarker,
-    FreeBitmapMarker,
-    MapBitmapMarker,
-    PointInBitmapMarker,
-    RegionInBitmapMarker,
-    BitmapMarkerToPostScript,
-};
-
-static MarkerClass imageMarkerClass = {
-    imageConfigSpecs,
-    ConfigureImageMarker,
-    DrawImageMarker,
-    FreeImageMarker,
-    MapImageMarker,
-    PointInImageMarker,
-    RegionInImageMarker,
-    ImageMarkerToPostScript,
-};
-
-static MarkerClass lineMarkerClass = {
-    lineConfigSpecs,
-    ConfigureLineMarker,
-    DrawLineMarker,
-    FreeLineMarker,
-    MapLineMarker,
-    PointInLineMarker,
-    RegionInLineMarker,
-    LineMarkerToPostScript,
-};
+static MarkerConfigProc ConfigurePolygonProc;
+static MarkerCreateProc CreatePolygonProc;
+static MarkerDrawProc DrawPolygonProc;
+static MarkerFreeProc FreePolygonProc;
+static MarkerMapProc MapPolygonProc;
+static MarkerPointProc PointInPolygonProc;
+static MarkerPostscriptProc PolygonToPostscriptProc;
+static MarkerRegionProc RegionInPolygonProc;
 
 static MarkerClass polygonMarkerClass = {
     polygonConfigSpecs,
-    ConfigurePolygonMarker,
-    DrawPolygonMarker,
-    FreePolygonMarker,
-    MapPolygonMarker,
-    PointInPolygonMarker,
-    RegionInPolygonMarker,
-    PolygonMarkerToPostScript,
+    ConfigurePolygonProc,
+    DrawPolygonProc,
+    FreePolygonProc,
+    MapPolygonProc,
+    PointInPolygonProc,
+    RegionInPolygonProc,
+    PolygonToPostscriptProc,
 };
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * TextMarker --
+ *
+ *---------------------------------------------------------------------------
+ */
+typedef struct {
+    GraphObj obj;		/* Must be first field in marker. */
+
+    MarkerClass *classPtr;
+
+    Blt_HashEntry *hashPtr;
+
+    Blt_ChainLink link;
+
+    const char *elemName;	/* Element associated with marker. Let's you
+				 * link a marker to an element. The marker is
+				 * drawn only if the element is also
+				 * visible. */
+    Axis2d axes;
+
+    Point2d *worldPts;		/* Coordinate array to position marker */
+
+    int nWorldPts;		/* Number of points in above array */
+
+    int drawUnder;		/* If non-zero, draw the marker underneath any
+				 * elements. This can be a performance penalty
+				 * because the graph must be redraw entirely
+				 * each time the marker is redrawn. */
+
+    int clipped;		/* Indicates if the marker is totally clipped
+				 * by the plotting area. */
+
+    unsigned int flags;		
+
+
+    int xOffset, yOffset;	/* Pixel offset from graph position */
+
+    int state;
+
+    /* Fields specific to text markers. */
+#ifdef notdef
+    const char *textVarName;	/* Name of variable (malloc'ed) or NULL. If
+				 * non-NULL, graph displays the contents of
+				 * this variable. */
+#endif
+    const char *string;		/* Text string to be display.  The string make
+				 * contain newlines. */
+
+    Tk_Anchor anchor;		/* Indicates how to translate the given marker
+				 * position. */
+
+    Point2d anchorPt;		/* Translated anchor point. */
+
+    int width, height;		/* Dimension of bounding box.  */
+
+    TextStyle style;		/* Text attributes (font, fg, anchor, etc) */
+
+    TextLayout *textPtr;	/* Contains information about the layout of
+				 * the text. */
+    Point2d outline[5];
+    XColor *fillColor;
+    GC fillGC;
+} TextMarker;
+
+
+static Blt_ConfigSpec textConfigSpecs[] =
+{
+    {BLT_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor", DEF_MARKER_ANCHOR, 
+	Blt_Offset(TextMarker, anchor), 0},
+    {BLT_CONFIG_COLOR, "-background", "background", "MarkerBackground",
+	(char *)NULL, Blt_Offset(TextMarker, fillColor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_SYNONYM, "-bg", "background", "Background", (char *)NULL, 0, 0},
+    {BLT_CONFIG_LIST, "-bindtags", "bindTags", "BindTags", DEF_TEXT_TAGS,
+	Blt_Offset(TextMarker, obj.tags), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CUSTOM, "-coords", "coords", "Coords", DEF_MARKER_COORDS, 
+	Blt_Offset(TextMarker, worldPts), BLT_CONFIG_NULL_OK, 
+        &coordsOption},
+    {BLT_CONFIG_STRING, "-element", "element", "Element",
+	DEF_MARKER_ELEMENT, Blt_Offset(TextMarker, elemName), 
+        BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_SYNONYM, "-fg", "foreground", "Foreground", (char *)NULL, 0, 0},
+    {BLT_CONFIG_SYNONYM, "-fill", "background", (char *)NULL, (char *)NULL, 
+	0, 0},
+    {BLT_CONFIG_FONT, "-font", "font", "Font", 	DEF_MARKER_FONT, 
+	Blt_Offset(TextMarker, style.font), 0},
+    {BLT_CONFIG_COLOR, "-foreground", "foreground", "Foreground",
+	DEF_MARKER_FOREGROUND, Blt_Offset(TextMarker, style.color), 0},
+    {BLT_CONFIG_JUSTIFY, "-justify", "justify", "Justify",
+	DEF_MARKER_JUSTIFY, Blt_Offset(TextMarker, style.justify),
+	BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BITMASK, "-hide", "hide", "Hide", DEF_MARKER_HIDE, 
+	Blt_Offset(TextMarker, flags), BLT_CONFIG_DONT_SET_DEFAULT, 
+	(Blt_CustomOption *)HIDE},
+    {BLT_CONFIG_CUSTOM, "-mapx", "mapX", "MapX", DEF_MARKER_MAP_X, 
+	Blt_Offset(TextMarker, axes.x), 0, &bltXAxisOption},
+    {BLT_CONFIG_CUSTOM, "-mapy", "mapY", "MapY", DEF_MARKER_MAP_Y, 
+	Blt_Offset(TextMarker, axes.y), 0, &bltYAxisOption},
+    {BLT_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL, DEF_MARKER_NAME, 
+	Blt_Offset(TextMarker, obj.name), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_SYNONYM, "-outline", "foreground", (char *)NULL, (char *)NULL, 
+	0, 0},
+    {BLT_CONFIG_PAD, "-padx", "padX", "PadX", DEF_MARKER_PAD, 
+	Blt_Offset(TextMarker, style.xPad), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PAD, "-pady", "padY", "PadY", DEF_MARKER_PAD, 
+	Blt_Offset(TextMarker, style.yPad), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_FLOAT, "-rotate", "rotate", "Rotate", DEF_MARKER_ANGLE, 
+	Blt_Offset(TextMarker, style.angle), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STATE, "-state", "state", "State", DEF_MARKER_STATE, 
+	Blt_Offset(TextMarker, state), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STRING, "-text", "text", "Text", DEF_MARKER_TEXT, 
+	Blt_Offset(TextMarker, string), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_BOOLEAN, "-under", "under", "Under", DEF_MARKER_UNDER, 
+	Blt_Offset(TextMarker, drawUnder), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset", DEF_MARKER_X_OFFSET, 
+	Blt_Offset(TextMarker, xOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset", DEF_MARKER_Y_OFFSET, 
+	Blt_Offset(TextMarker, yOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+};
+
+static MarkerConfigProc ConfigureTextProc;
+static MarkerCreateProc CreateTextProc;
+static MarkerDrawProc DrawTextProc;
+static MarkerFreeProc FreeTextProc;
+static MarkerMapProc MapTextProc;
+static MarkerPointProc PointInTextProc;
+static MarkerPostscriptProc TextToPostscriptProc;
+static MarkerRegionProc RegionInTextProc;
 
 static MarkerClass textMarkerClass = {
     textConfigSpecs,
-    ConfigureTextMarker,
-    DrawTextMarker,
-    FreeTextMarker,
-    MapTextMarker,
-    PointInTextMarker,
-    RegionInTextMarker,
-    TextMarkerToPostScript,
+    ConfigureTextProc,
+    DrawTextProc,
+    FreeTextProc,
+    MapTextProc,
+    PointInTextProc,
+    RegionInTextProc,
+    TextToPostscriptProc,
 };
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * WindowMarker --
+ *
+ *---------------------------------------------------------------------------
+ */
+typedef struct {
+    GraphObj obj;		/* Must be first field in marker. */
+
+    MarkerClass *classPtr;
+
+    Blt_HashEntry *hashPtr;
+
+    Blt_ChainLink link;
+
+    const char *elemName;	/* Element associated with marker. Let's you
+				 * link a marker to an element. The marker is
+				 * drawn only if the element is also
+				 * visible. */
+    Axis2d axes;
+
+    Point2d *worldPts;		/* Coordinate array to position marker */
+
+    int nWorldPts;		/* Number of points in above array */
+
+    int drawUnder;		/* If non-zero, draw the marker underneath any
+				 * elements. This can be a performance penalty
+				 * because the graph must be redraw entirely
+				 * each time the marker is redrawn. */
+
+    int clipped;		/* Indicates if the marker is totally clipped
+				 * by the plotting area. */
+
+    unsigned int flags;		
+
+
+    int xOffset, yOffset;	/* Pixel offset from graph position */
+
+    int state;
+
+    /* Fields specific to window markers. */
+
+    const char *pathName;	/* Name of child widget to be displayed. */
+    Tk_Window tkwin;		/* Window to display. */
+    int reqWidth, reqHeight;	/* If non-zero, this overrides the size
+				 * requested by the child widget. */
+
+    Tk_Anchor anchor;		/* Indicates how to translate the given
+				 * marker position. */
+
+    Point2d anchorPt;		/* Translated anchor point. */
+    int width, height;		/* Current size of the child window. */
+
+} WindowMarker;
+
+static Blt_ConfigSpec windowConfigSpecs[] =
+{
+    {BLT_CONFIG_ANCHOR, "-anchor", "anchor", "Anchor", DEF_MARKER_ANCHOR, 
+	Blt_Offset(WindowMarker, anchor), 0},
+    {BLT_CONFIG_LIST, "-bindtags", "bindTags", "BindTags", DEF_WINDOW_TAGS, 
+	Blt_Offset(WindowMarker, obj.tags), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CUSTOM, "-coords", "coords", "Coords", DEF_MARKER_COORDS, 
+	Blt_Offset(WindowMarker, worldPts), BLT_CONFIG_NULL_OK, 
+	&coordsOption},
+    {BLT_CONFIG_STRING, "-element", "element", "Element", DEF_MARKER_ELEMENT, 
+	Blt_Offset(WindowMarker, elemName), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_PIXELS_POS, "-height", "height", "Height", DEF_MARKER_HEIGHT, 
+	Blt_Offset(WindowMarker, reqHeight), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BITMASK, "-hide", "hide", "Hide", DEF_MARKER_HIDE, 
+        Blt_Offset(WindowMarker, flags), BLT_CONFIG_DONT_SET_DEFAULT,
+        (Blt_CustomOption *)HIDE},
+    {BLT_CONFIG_CUSTOM, "-mapx", "mapX", "MapX", DEF_MARKER_MAP_X, 
+	Blt_Offset(WindowMarker, axes.x), 0, &bltXAxisOption},
+    {BLT_CONFIG_CUSTOM, "-mapy", "mapY", "MapY", DEF_MARKER_MAP_Y, 
+	Blt_Offset(WindowMarker, axes.y), 0, &bltYAxisOption},
+    {BLT_CONFIG_STRING, "-name", (char *)NULL, (char *)NULL, DEF_MARKER_NAME, 
+	Blt_Offset(WindowMarker, obj.name), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_STATE, "-state", "state", "State", DEF_MARKER_STATE, 
+	Blt_Offset(WindowMarker, state), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_BOOLEAN, "-under", "under", "Under", DEF_MARKER_UNDER, 
+	Blt_Offset(WindowMarker, drawUnder), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS_POS, "-width", "width", "Width", DEF_MARKER_WIDTH, 
+	Blt_Offset(WindowMarker, reqWidth), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STRING, "-window", "window", "Window", DEF_MARKER_WINDOW, 
+	Blt_Offset(WindowMarker, pathName), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_PIXELS, "-xoffset", "xOffset", "XOffset", DEF_MARKER_X_OFFSET, 
+	Blt_Offset(WindowMarker, xOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_PIXELS, "-yoffset", "yOffset", "YOffset", DEF_MARKER_Y_OFFSET, 
+	Blt_Offset(WindowMarker, yOffset), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
+};
+
+static MarkerConfigProc ConfigureWindowProc;
+static MarkerCreateProc CreateWindowProc;
+static MarkerDrawProc DrawWindowProc;
+static MarkerFreeProc FreeWindowProc;
+static MarkerMapProc MapWindowProc;
+static MarkerPointProc PointInWindowProc;
+static MarkerPostscriptProc WindowToPostscriptProc;
+static MarkerRegionProc RegionInWindowProc;
 
 static MarkerClass windowMarkerClass = {
     windowConfigSpecs,
-    ConfigureWindowMarker,
-    DrawWindowMarker,
-    FreeWindowMarker,
-    MapWindowMarker,
-    PointInWindowMarker,
-    RegionInWindowMarker,
-    WindowMarkerToPostScript,
+    ConfigureWindowProc,
+    DrawWindowProc,
+    FreeWindowProc,
+    MapWindowProc,
+    PointInWindowProc,
+    RegionInWindowProc,
+    WindowToPostscriptProc,
 };
+
+static Tk_ImageChangedProc ImageChangedProc;
+
+
 
 #ifdef notdef
 static MarkerClass rectangleMarkerClass = {
     rectangleConfigSpecs,
-    ConfigureRectangleMarker,
-    DrawRectangleMarker,
-    FreeRectangleMarker,
-    MapRectangleMarker,
-    PointInRectangleMarker,
-    RegionInRectangleMarker,
-    RectangleMarkerToPostScript,
+    ConfigureRectangleProc,
+    DrawRectangleProc,
+    FreeRectangleProc,
+    MapRectangleProc,
+    PointInRectangleProc,
+    RegionInRectangleProc,
+    RectangleToPostscriptProc,
 };
 
 static MarkerClass ovalMarkerClass = {
     ovalConfigSpecs,
-    ConfigureOvalMarker,
-    DrawOvalMarker,
-    FreeOvalMarker,
-    MapOvalMarker,
-    PointInOvalMarker,
-    RegionInOvalMarker,
-    OvalMarkerToPostScript,
+    ConfigureOvalProc,
+    DrawOvalProc,
+    FreeOvalProc,
+    MapOvalProc,
+    PointInOvalProc,
+    RegionInOvalProc,
+    OvalToPostscriptProc,
 };
 #endif
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * BoxesDontOverlap --
  *
- *	Tests if the bounding box of a marker overlaps the plotting
- *	area in any way.  If so, the marker will be drawn.  Just do a
- *	min/max test on the extents of both boxes.
+ *	Tests if the bounding box of a marker overlaps the plotting area in
+ *	any way.  If so, the marker will be drawn.  Just do a min/max test on
+ *	the extents of both boxes.
  *
  *	Note: It's assumed that the extents of the bounding box lie 
  *	      within the area.  So for a 10x10 rectangle, bottom and
  *	      left would be 9.
  *
  * Results:
- *	Returns 0 is the marker is visible in the plotting area, and
- *	1 otherwise (marker is clipped).
+ *	Returns 0 is the marker is visible in the plotting area, and 1
+ *	otherwise (marker is clipped).
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-BoxesDontOverlap(graphPtr, extsPtr)
-    Graph *graphPtr;
-    Extents2D *extsPtr;
+BoxesDontOverlap(Graph *graphPtr, Region2d *extsPtr)
 {
-/*
     assert(extsPtr->right >= extsPtr->left);
     assert(extsPtr->bottom >= extsPtr->top);
     assert(graphPtr->right >= graphPtr->left);
     assert(graphPtr->bottom >= graphPtr->top);
-*/
 
     return (((double)graphPtr->right < extsPtr->left) ||
 	    ((double)graphPtr->bottom < extsPtr->top) ||
@@ -1076,29 +1035,31 @@ BoxesDontOverlap(graphPtr, extsPtr)
 
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * GetCoordinate --
  *
- * 	Convert the expression string into a floating point value. The
- *	only reason we use this routine instead of Blt_ExprDouble is to
- *	handle "elastic" bounds.  That is, convert the strings "-Inf",
- *	"Inf" into -(DBL_MAX) and DBL_MAX respectively.
+ * 	Convert the expression string into a floating point value. The * only
+ * 	reason we use this routine instead of Blt_ExprDouble is to * handle
+ * 	"elastic" bounds.  That is, convert the strings "-Inf", * "Inf" into
+ * 	-(DBL_MAX) and DBL_MAX respectively.
  *
  * Results:
- *	The return value is a standard Tcl result.  The value of the
+ *	The return value is a standard TCL result.  The value of the
  * 	expression is passed back via valuePtr.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-GetCoordinate(interp, expr, valuePtr)
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    char *expr;			/* Numeric expression string to parse */
-    double *valuePtr;		/* Real-valued result of expression */
+GetCoordinate(
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tcl_Obj *objPtr,		/* Numeric expression string to parse */
+    double *valuePtr)		/* Real-valued result of expression */
 {
     char c;
-
+    const char *expr;
+    
+    expr = Tcl_GetString(objPtr);
     c = expr[0];
     if ((c == 'I') && (strcmp(expr, "Inf") == 0)) {
 	*valuePtr = DBL_MAX;	/* Elastic upper bound */
@@ -1106,7 +1067,7 @@ GetCoordinate(interp, expr, valuePtr)
 	*valuePtr = -DBL_MAX;	/* Elastic lower bound */
     } else if ((c == '+') && (expr[1] == 'I') && (strcmp(expr, "+Inf") == 0)) {
 	*valuePtr = DBL_MAX;	/* Elastic upper bound */
-    } else if (Tcl_ExprDouble(interp, expr, valuePtr) != TCL_OK) {
+    } else if (Blt_ExprDoubleFromObj(interp, objPtr, valuePtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     return TCL_OK;
@@ -1114,125 +1075,127 @@ GetCoordinate(interp, expr, valuePtr)
 
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * PrintCoordinate --
  *
- * 	Convert the floating point value into its string
- * 	representation.  The only reason this routine is used in
- * 	instead of sprintf, is to handle the "elastic" bounds.  That
- * 	is, convert the values DBL_MAX and -(DBL_MAX) into "+Inf" and
- * 	"-Inf" respectively.
+ * 	Convert the floating point value into its string representation.  The
+ * 	only reason this routine is used in instead of sprintf, is to handle
+ * 	the "elastic" bounds.  That is, convert the values DBL_MAX and
+ * 	-(DBL_MAX) into "+Inf" and "-Inf" respectively.
  *
  * Results:
- *	The return value is a standard Tcl result.  The string of the
- * 	expression is passed back via string.
+ *	The return value is a standard TCL result.  The string of the *
+ *	expression is passed back via string.
  *
- * ---------------------------------------------------------------------- */
-static char *
-PrintCoordinate(interp, x)
-    Tcl_Interp *interp;
-    double x;			/* Numeric value */
+ * -------------------------------------------------------------------------- */
+static Tcl_Obj *
+PrintCoordinate(double x)
 {
     if (x == DBL_MAX) {
-	return "+Inf";
+	return Tcl_NewStringObj("+Inf", -1);
     } else if (x == -DBL_MAX) {
-	return "-Inf";
+	return Tcl_NewStringObj("-Inf", -1);
     } else {
-	static char string[TCL_DOUBLE_SPACE + 1];
-
-	Tcl_PrintDouble(interp, (double)x, string);
-	return string;
+	return Tcl_NewDoubleObj(x);
     }
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ParseCoordinates --
  *
- *	The Tcl coordinate list is converted to their floating point
+ *	The TCL coordinate list is converted to their floating point
  *	values. It will then replace the current marker coordinates.
  *
- *	Since different marker types require different number of
- *	coordinates this must be checked here.
+ *	Since different marker types require different number of coordinates
+ *	this must be checked here.
  *
  * Results:
- *	The return value is a standard Tcl result.
+ *	The return value is a standard TCL result.
  *
  * Side effects:
- *	If the marker coordinates are reset, the graph is eventually
- *	redrawn with at the new marker coordinates.
+ *	If the marker coordinates are reset, the graph is eventually redrawn
+ *	with at the new marker coordinates.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ParseCoordinates(interp, markerPtr, nExprs, exprArr)
-    Tcl_Interp *interp;
-    Marker *markerPtr;
-    int nExprs;
-    char **exprArr;
+ParseCoordinates(
+    Tcl_Interp *interp,
+    Marker *markerPtr,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     int nWorldPts;
     int minArgs, maxArgs;
-    Point2D *worldPts;
-    register int i;
-    register Point2D *pointPtr;
-    double x, y;
+    Point2d *worldPts;
+    int i;
 
-    if (nExprs == 0) {
+    if (objc == 0) {
 	return TCL_OK;
     }
-    if (nExprs & 1) {
+    if (objc & 1) {
 	Tcl_AppendResult(interp, "odd number of marker coordinates specified",
 	    (char *)NULL);
 	return TCL_ERROR;
     }
-    if (markerPtr->classUid == bltLineMarkerUid) {
+    switch (markerPtr->obj.classId) {
+    case CID_MARKER_LINE:
 	minArgs = 4, maxArgs = 0;
-    } else if (markerPtr->classUid == bltPolygonMarkerUid) {
+	break;
+    case CID_MARKER_POLYGON:
 	minArgs = 6, maxArgs = 0;
-    } else if ((markerPtr->classUid == bltWindowMarkerUid) ||
-	       (markerPtr->classUid == bltTextMarkerUid)) {
+	break;
+    case CID_MARKER_WINDOW:
+    case CID_MARKER_TEXT:
 	minArgs = 2, maxArgs = 2;
-    } else if ((markerPtr->classUid == bltImageMarkerUid) ||
-	       (markerPtr->classUid == bltBitmapMarkerUid)) {
+	break;
+    case CID_MARKER_IMAGE:
+    case CID_MARKER_BITMAP:
 	minArgs = 2, maxArgs = 4;
-    } else {
+	break;
+    default:
 	Tcl_AppendResult(interp, "unknown marker type", (char *)NULL);
 	return TCL_ERROR;
     }
 
-    if (nExprs < minArgs) {
+    if (objc < minArgs) {
 	Tcl_AppendResult(interp, "too few marker coordinates specified",
 	    (char *)NULL);
 	return TCL_ERROR;
     }
-    if ((maxArgs > 0) && (nExprs > maxArgs)) {
+    if ((maxArgs > 0) && (objc > maxArgs)) {
 	Tcl_AppendResult(interp, "too many marker coordinates specified",
 	    (char *)NULL);
 	return TCL_ERROR;
     }
-    nWorldPts = nExprs / 2;
-    worldPts = Blt_Malloc(nWorldPts * sizeof(Point2D));
+    nWorldPts = objc / 2;
+    worldPts = Blt_Malloc(nWorldPts * sizeof(Point2d));
     if (worldPts == NULL) {
 	Tcl_AppendResult(interp, "can't allocate new coordinate array",
 	    (char *)NULL);
 	return TCL_ERROR;
     }
 
+    {
+	Point2d *pp;
+
+	pp = worldPts;
+	for (i = 0; i < objc; i += 2) {
+	    double x, y;
+	    
+	    if ((GetCoordinate(interp, objv[i], &x) != TCL_OK) ||
+		(GetCoordinate(interp, objv[i + 1], &y) != TCL_OK)) {
+		Blt_Free(worldPts);
+		return TCL_ERROR;
+	    }
+	    pp->x = x, pp->y = y, pp++;
+	}
+    }
     /* Don't free the old coordinate array until we've parsed the new
      * coordinates without errors.  */
-    pointPtr = worldPts;
-    for (i = 0; i < nExprs; i += 2) {
-	if ((GetCoordinate(interp, exprArr[i], &x) != TCL_OK) ||
-	    (GetCoordinate(interp, exprArr[i + 1], &y) != TCL_OK)) {
-	    Blt_Free(worldPts);
-	    return TCL_ERROR;
-	}
-	pointPtr->x = x, pointPtr->y = y;
-	pointPtr++;
-    }
     if (markerPtr->worldPts != NULL) {
 	Blt_Free(markerPtr->worldPts);
     }
@@ -1242,131 +1205,491 @@ ParseCoordinates(interp, markerPtr, nExprs, exprArr)
     return TCL_OK;
 }
 
-/*
- * ----------------------------------------------------------------------
- *
- * StringToCoordinates --
- *
- *	Given a Tcl list of numeric expression representing the
- *	element values, convert into an array of floating point
- *	values. In addition, the minimum and maximum values are saved.
- *	Since elastic values are allow (values which translate to the
- *	min/max of the graph), we must try to get the non-elastic
- *	minimum and maximum.
- *
- * Results:
- *	The return value is a standard Tcl result.  The vector is
- *	passed back via the vecPtr.
- *
- * ---------------------------------------------------------------------- 
- */
 /*ARGSUSED*/
-static int
-StringToCoordinates(clientData, interp, tkwin, string, widgRec, offset)
-    ClientData clientData;	/* Not used. */
-    Tcl_Interp *interp;		/* Interpreter to send results back to */
-    Tk_Window tkwin;		/* Not used. */
-    char *string;		/* Tcl list of numeric expressions */
-    char *widgRec;		/* Marker record */
-    int offset;			/* Not used. */
+static void
+FreeCoordsProc(
+    ClientData clientData,	/* Not used. */
+    Display *display,		/* Not used. */
+    char *widgRec,
+    int offset)
 {
     Marker *markerPtr = (Marker *)widgRec;
-    int nExprs;
-    char **exprArr;
-    int result;
+    Point2d **pointsPtr = (Point2d **)(widgRec + offset);
 
-    nExprs = 0;
-    if ((string != NULL) &&
-	(Tcl_SplitList(interp, string, &nExprs, &exprArr) != TCL_OK)) {
-	return TCL_ERROR;
+    if (*pointsPtr != NULL) {
+	Blt_Free(*pointsPtr);
+	*pointsPtr = NULL;
     }
-    if (nExprs == 0) {
-	if (markerPtr->worldPts != NULL) {
-	    Blt_Free(markerPtr->worldPts);
-	    markerPtr->worldPts = NULL;
-	}
-	markerPtr->nWorldPts = 0;
-	return TCL_OK;
-    }
-    result = ParseCoordinates(interp, markerPtr, nExprs, exprArr);
-    Blt_Free(exprArr);
-    return result;
+    markerPtr->nWorldPts = 0;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * CoordinatesToString --
+ * ObjToCoordsProc --
  *
- *	Convert the vector of floating point values into a Tcl list.
+ *	Given a TCL list of numeric expression representing the element
+ *	values, convert into an array of floating point values. In addition,
+ *	the minimum and maximum values are saved.  Since elastic values are
+ *	allow (values which translate to the min/max of the graph), we must
+ *	try to get the non-elastic minimum and maximum.
+ *
+ * Results:
+ *	The return value is a standard TCL result.  The vector is
+ *	passed back via the vecPtr.
+ *
+ * -------------------------------------------------------------------------- 
+ */
+/*ARGSUSED*/
+static int
+ObjToCoordsProc(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tk_Window tkwin,		/* Not used. */
+    Tcl_Obj *objPtr,		/* TCL list of numeric expressions */
+    char *widgRec,		/* Marker record */
+    int offset,			/* Not used. */
+    int flags)			/* Not used. */
+{
+    Marker *markerPtr = (Marker *)widgRec;
+    int objc;
+    Tcl_Obj **objv;
+
+    if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if (objc == 0) {
+	return TCL_OK;
+    }
+    return ParseCoordinates(interp, markerPtr, objc, objv);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * CoordsToObjProc --
+ *
+ *	Convert the vector of floating point values into a TCL list.
  *
  * Results:
  *	The string representation of the vector is returned.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
-static char *
-CoordinatesToString(clientData, tkwin, widgRec, offset, freeProcPtr)
-    ClientData clientData;	/* Not used. */
-    Tk_Window tkwin;		/* Not used. */
-    char *widgRec;		/* Marker record */
-    int offset;			/* Not used. */
-    Tcl_FreeProc **freeProcPtr;	/* Memory deallocation scheme to use */
+static Tcl_Obj *
+CoordsToObjProc(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,
+    Tk_Window tkwin,		/* Not used. */
+    char *widgRec,		/* Marker record */
+    int offset,			/* Not used. */
+    int flags)			/* Not used. */
 {
     Marker *markerPtr = (Marker *)widgRec;
-    Tcl_Interp *interp;
-    Tcl_DString dString;
-    char *result;
-    register int i;
-    register Point2D *p;
+    Tcl_Obj *listObjPtr;
+    Point2d *pp, *pend;
 
-    if (markerPtr->nWorldPts < 1) {
-	return "";
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    for (pp = markerPtr->worldPts, pend = pp + markerPtr->nWorldPts; pp < pend;
+	 pp++) {
+	Tcl_ListObjAppendElement(interp, listObjPtr, PrintCoordinate(pp->x));
+	Tcl_ListObjAppendElement(interp, listObjPtr, PrintCoordinate(pp->y));
     }
-    interp = markerPtr->graphPtr->interp;
+    return listObjPtr;
+}
 
-    Tcl_DStringInit(&dString);
-    p = markerPtr->worldPts;
-    for (i = 0; i < markerPtr->nWorldPts; i++) {
-	Tcl_DStringAppendElement(&dString, PrintCoordinate(interp, p->x));
-	Tcl_DStringAppendElement(&dString, PrintCoordinate(interp, p->y));
-	p++;
-    }
-    result = Tcl_DStringValue(&dString);
+/*LINTLIBRARY*/
+static int
+GetColorPair(
+    Tcl_Interp *interp,
+    Tk_Window tkwin,
+    Tcl_Obj *fgObjPtr, Tcl_Obj *bgObjPtr,
+    ColorPair *pairPtr,
+    int allowDefault)
+{
+    XColor *fgColor, *bgColor;
+    const char *string;
 
-    /*
-     * If memory wasn't allocated for the dynamic string, do it here (it's
-     * currently on the stack), so that Tcl can free it normally.
-     */
-    if (result == dString.staticSpace) {
-	result = Blt_Strdup(result);
+    fgColor = bgColor = NULL;
+    if (fgObjPtr != NULL) {
+	int length;
+
+	string = Tcl_GetStringFromObj(fgObjPtr, &length);
+	if (string[0] == '\0') {
+	    fgColor = NULL;
+	} else if ((allowDefault) && (string[0] == 'd') &&
+		   (strncmp(string, "defcolor", length) == 0)) {
+	    fgColor = COLOR_DEFAULT;
+	} else {
+	    fgColor = Tk_AllocColorFromObj(interp, tkwin, fgObjPtr);
+	    if (fgColor == NULL) {
+		return TCL_ERROR;
+	    }
+	}
     }
-    *freeProcPtr = (Tcl_FreeProc *)Blt_Free;
-    return result;
+    if (bgObjPtr != NULL) {
+	int length;
+
+	string = Tcl_GetStringFromObj(bgObjPtr, &length);
+	if (string[0] == '\0') {
+	    bgColor = NULL;
+	} else if ((allowDefault) && (string[0] == 'd') &&
+		   (strncmp(string, "defcolor", length) == 0)) {
+	    bgColor = COLOR_DEFAULT;
+	} else {
+	    bgColor = Tk_AllocColorFromObj(interp, tkwin, bgObjPtr);
+	    if (bgColor == NULL) {
+		return TCL_ERROR;
+	    }
+	}
+    }
+    if (pairPtr->fgColor != NULL) {
+	Tk_FreeColor(pairPtr->fgColor);
+    }
+    if (pairPtr->bgColor != NULL) {
+	Tk_FreeColor(pairPtr->bgColor);
+    }
+    pairPtr->fgColor = fgColor;
+    pairPtr->bgColor = bgColor;
+    return TCL_OK;
+}
+
+void
+Blt_FreeColorPair(ColorPair *pairPtr)
+{
+    if ((pairPtr->bgColor != NULL) && (pairPtr->bgColor != COLOR_DEFAULT)) {
+	Tk_FreeColor(pairPtr->bgColor);
+    }
+    if ((pairPtr->fgColor != NULL) && (pairPtr->fgColor != COLOR_DEFAULT)) {
+	Tk_FreeColor(pairPtr->fgColor);
+    }
+    pairPtr->bgColor = pairPtr->fgColor = NULL;
+}
+
+static void
+FreeColorPairProc(
+    ClientData clientData,	/* Not used. */
+    Display *display,		/* Not used. */
+    char *widgRec,
+    int offset)
+{
+    ColorPair *pairPtr = (ColorPair *)(widgRec + offset);
+
+    Blt_FreeColorPair(pairPtr);
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
+ *
+ * ObjToColorPairProc --
+ *
+ *	Convert the color names into pair of XColor pointers.
+ *
+ * Results:
+ *	A standard TCL result.  The color pointer is written into the
+ *	widget record.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ObjToColorPairProc(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tk_Window tkwin,		/* Not used. */
+    Tcl_Obj *objPtr,		/* String representing color */
+    char *widgRec,		/* Widget record */
+    int offset,			/* Offset to field in structure */
+    int flags)			/* Not used. */
+{
+    ColorPair *pairPtr = (ColorPair *)(widgRec + offset);
+    long longValue = (long)clientData;
+    int bool;
+    int objc;
+    Tcl_Obj **objv;
+
+    if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if (objc > 2) {
+	Tcl_AppendResult(interp, "too many names in colors list", 
+		(char *)NULL);
+	return TCL_ERROR;
+    }
+    if (objc == 0) {
+	Blt_FreeColorPair(pairPtr);
+	return TCL_OK;
+    }
+    bool = (int)longValue;
+    if (objc == 1) {
+	if (GetColorPair(interp, tkwin, objv[0], NULL, pairPtr, bool) 
+	    != TCL_OK) {
+	    return TCL_ERROR;
+	}
+    } else {
+	if (GetColorPair(interp, tkwin, objv[0], objv[1], pairPtr, bool) 
+	    != TCL_OK) {
+	    return TCL_ERROR;
+	}
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * NameOfColor --
+ *
+ *	Convert the color option value into a string.
+ *
+ * Results:
+ *	The static string representing the color option is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+static const char *
+NameOfColor(XColor *colorPtr)
+{
+    if (colorPtr == NULL) {
+	return "";
+    } else if (colorPtr == COLOR_DEFAULT) {
+	return "defcolor";
+    } else {
+	return Tk_NameOfColor(colorPtr);
+    }
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ColorPairToObjProc --
+ *
+ *	Convert the color pairs into color names.
+ *
+ * Results:
+ *	The string representing the symbol color is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static Tcl_Obj *
+ColorPairToObjProc(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,
+    Tk_Window tkwin,		/* Not used. */
+    char *widgRec,		/* Element information record */
+    int offset,			/* Offset to field in structure */
+    int flags)			/* Not used. */
+{
+    ColorPair *pairPtr = (ColorPair *)(widgRec + offset);
+    Tcl_Obj *listObjPtr;
+
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    Tcl_ListObjAppendElement(interp, listObjPtr, 
+		Tcl_NewStringObj(NameOfColor(pairPtr->fgColor), -1));
+    Tcl_ListObjAppendElement(interp, listObjPtr,
+		Tcl_NewStringObj(NameOfColor(pairPtr->bgColor), -1));
+    return listObjPtr;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ImageChangedProc
+ *
+ *
+ * Results:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+/* ARGSUSED */
+static void
+ImageChangedProc(
+    ClientData clientData,
+    int x, int y, int w, int h, /* Not used. */
+    int imageWidth, int imageHeight) /* Not used. */
+{
+    Graph *graphPtr;
+    ImageMarker *imPtr = clientData;
+
+    graphPtr = imPtr->obj.graphPtr;
+    if ((imPtr->picture != NULL) && (imPtr->flags & IMAGE_PHOTO)) {
+	Blt_FreePicture(imPtr->picture);
+    }
+    imPtr->picture = NULL;
+    imPtr->flags &= ~IMAGE_PHOTO;
+    if (Blt_ImageIsDeleted(imPtr->tkImage)) {
+	Tk_FreeImage(imPtr->tkImage);
+	imPtr->tkImage = NULL;
+	return;
+    }
+    if (Blt_IsPicture(imPtr->tkImage)) {
+	imPtr->picture = Blt_GetPictureFromImage(imPtr->tkImage);
+    } else {
+	Tk_PhotoHandle photo;
+
+	photo = Tk_FindPhoto(graphPtr->interp, Blt_NameOfImage(imPtr->tkImage));
+	if (photo == NULL) {
+	    return;		/* It's neither a photo nor a picture. */
+	}
+	imPtr->picture = Blt_PhotoToPicture(photo);
+	imPtr->flags |= IMAGE_PHOTO;
+    }
+    graphPtr->flags |= REDRAW_BACKING_STORE;
+    imPtr->flags |= MAP_ITEM;
+    Blt_EventuallyRedrawGraph(graphPtr);
+}
+
+/*ARGSUSED*/
+static void
+FreePictImageProc(
+    ClientData clientData,
+    Display *display,		/* Not used. */
+    char *widgRec,
+    int offset)
+{
+    ImageMarker *imPtr = (ImageMarker *)widgRec;
+
+    if ((imPtr->picture != NULL) && (imPtr->flags & IMAGE_PHOTO)) {
+	Blt_FreePicture(imPtr->picture);
+    }
+    imPtr->picture = NULL;
+    if (imPtr->tkImage != NULL) {
+	Tk_FreeImage(imPtr->tkImage);
+    }
+    imPtr->tkImage = NULL;
+    imPtr->flags &= ~IMAGE_PHOTO;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ObjToPictImageProc --
+ *
+ *	Given an image name, get the Tk image associated with it.
+ *
+ * Results:
+ *	The return value is a standard TCL result.  
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ObjToPictImageProc(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tk_Window tkwin,		/* Not used. */
+    Tcl_Obj *objPtr,		/* String representation of value. */
+    char *widgRec,		/* Widget record. */
+    int offset,			/* Offset to field in structure */
+    int flags)	
+{
+    ImageMarker *imPtr = (ImageMarker *)widgRec;
+    Blt_Picture *picturePtr = (Blt_Picture *)(widgRec + offset);
+    Tk_Image tkImage;
+    const char *name;
+
+    name = Tcl_GetString(objPtr);
+    tkImage = Tk_GetImage(interp, tkwin, name, ImageChangedProc, imPtr);
+    if (tkImage == NULL) {
+	return TCL_ERROR;
+    }
+    if (imPtr->tkImage != NULL) {
+	Tk_FreeImage(imPtr->tkImage);
+    }
+    if (*picturePtr != NULL) {
+	Blt_FreePicture(*picturePtr);
+    }
+    *picturePtr = NULL;
+    imPtr->tkImage = tkImage;
+    imPtr->flags &= ~IMAGE_PHOTO;
+    if (Blt_IsPicture(tkImage)) {
+	*picturePtr = Blt_GetPictureFromImage(tkImage);
+    } else {
+	Tk_PhotoHandle photo;
+	Graph *graphPtr;
+
+	graphPtr = imPtr->obj.graphPtr;
+	photo = Tk_FindPhoto(graphPtr->interp, Blt_NameOfImage(tkImage));
+	if (photo == NULL) {
+	    return TCL_ERROR;	/* It's neither a photo nor a picture. */
+	}
+	*picturePtr = Blt_PhotoToPicture(photo);
+	imPtr->flags |= IMAGE_PHOTO;
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * PictImageToObjProc --
+ *
+ *	Convert the image name into a string Tcl_Obj.
+ *
+ * Results:
+ *	The string representation of the image is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static Tcl_Obj *
+PictImageToObjProc(
+    ClientData clientData,	/* Not used. */
+    Tcl_Interp *interp,
+    Tk_Window tkwin,		/* Not used. */
+    char *widgRec,		/* Widget record */
+    int offset,			/* Offset to field in structure */
+    int flags)	
+{
+    ImageMarker *imPtr = (ImageMarker *)(widgRec);
+    
+    if (imPtr->tkImage == NULL) {
+	return Tcl_NewStringObj("", -1);
+    }
+    return Tcl_NewStringObj(Blt_NameOfImage(imPtr->tkImage), -1);
+}
+
+static INLINE int
+IsElementHidden(Marker *markerPtr)
+{
+    Blt_HashEntry *hPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
+
+    /* Look up the named element and see if it's hidden */
+    hPtr = Blt_FindHashEntry(&graphPtr->elements.table, markerPtr->elemName);
+    if (hPtr != NULL) {
+	Element *elemPtr;
+	
+	elemPtr = Blt_GetHashValue(hPtr);
+	if ((elemPtr->link == NULL) || (elemPtr->flags & HIDE)) {
+	    return TRUE;
+	}
+    }
+    return FALSE;
+}
+
+/*
+ *---------------------------------------------------------------------------
  *
  * HMap --
  *
- *	Map the given graph coordinate value to its axis, returning a
- *	window position.
+ *	Map the given graph coordinate value to its axis, returning a window
+ *	position.
  *
  * Results:
- *	Returns a floating point number representing the window
- *	coordinate position on the given axis.
+ *	Returns a floating point number representing the window coordinate
+ *	position on the given axis.
  *
- * ---------------------------------------------------------------------- 
+ * -------------------------------------------------------------------------- 
  */
 static double
-HMap(graphPtr, axisPtr, x)
-    Graph *graphPtr;
-    Axis *axisPtr;
-    double x;
+HMap(Axis *axisPtr, double x)
 {
-    register double norm;
+    double norm;
+    Graph *graphPtr = axisPtr->obj.graphPtr;
 
     if (x == DBL_MAX) {
 	norm = 1.0;
@@ -1390,26 +1713,24 @@ HMap(graphPtr, axisPtr, x)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * VMap --
  *
- *	Map the given graph coordinate value to its axis, returning a
- *	window position.
+ *	Map the given graph coordinate value to its axis, returning a window
+ *	position.
  *
  * Results:
- *	Returns a double precision number representing the window
- *	coordinate position on the given axis.
+ *	Returns a double precision number representing the window coordinate
+ *	position on the given axis.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static double
-VMap(graphPtr, axisPtr, y)
-    Graph *graphPtr;
-    Axis *axisPtr;
-    double y;
+VMap(Axis *axisPtr, double y)
 {
-    register double norm;
+    double norm;
+    Graph *graphPtr = axisPtr->obj.graphPtr;
 
     if (y == DBL_MAX) {
 	norm = 1.0;
@@ -1433,130 +1754,144 @@ VMap(graphPtr, axisPtr, y)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * MapPoint --
  *
  *	Maps the given graph x,y coordinate values to a window position.
  *
  * Results:
- *	Returns a XPoint structure containing the window coordinates
- *	of the given graph x,y coordinate.
+ *	Returns a XPoint structure containing the window coordinates of the
+ *	given graph x,y coordinate.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-static Point2D
-MapPoint(graphPtr, pointPtr, axesPtr)
-    Graph *graphPtr;
-    Point2D *pointPtr;		/* Graph X-Y coordinate. */
-    Axis2D *axesPtr;		/* Specifies which axes to use */
+static Point2d
+MapPoint(
+    Point2d *pointPtr,		/* Graph X-Y coordinate. */
+    Axis2d *axesPtr)		/* Specifies which axes to use */
 {
-    Point2D result;
+    Point2d result;
+    Graph *graphPtr = axesPtr->y->obj.graphPtr;
 
     if (graphPtr->inverted) {
-	result.x = HMap(graphPtr, axesPtr->y, pointPtr->y);
-	result.y = VMap(graphPtr, axesPtr->x, pointPtr->x);
+	result.x = HMap(axesPtr->y, pointPtr->y);
+	result.y = VMap(axesPtr->x, pointPtr->x);
     } else {
-	result.x = HMap(graphPtr, axesPtr->x, pointPtr->x);
-	result.y = VMap(graphPtr, axesPtr->y, pointPtr->y);
+	result.x = HMap(axesPtr->x, pointPtr->x);
+	result.y = VMap(axesPtr->y, pointPtr->y);
     }
     return result;		/* Result is screen coordinate. */
 }
 
 static Marker *
-CreateMarker(graphPtr, name, classUid)
-    Graph *graphPtr;
-    char *name;
-    Blt_Uid classUid;    
+CreateMarker(
+    Graph *graphPtr,
+    const char *name,
+    ClassId classId)
 {    
     Marker *markerPtr;
 
     /* Create the new marker based upon the given type */
-    if (classUid == bltBitmapMarkerUid) {
-	markerPtr = CreateBitmapMarker(); /* bitmap */
-    } else if (classUid == bltLineMarkerUid) {
-	markerPtr = CreateLineMarker(); /* line */
-    } else if (classUid == bltImageMarkerUid) {
-	markerPtr = CreateImageMarker(); /* image */
-    } else if (classUid == bltTextMarkerUid) {
-	markerPtr = CreateTextMarker(); /* text */
-    } else if (classUid == bltPolygonMarkerUid) {
-	markerPtr = CreatePolygonMarker(); /* polygon */
-    } else if (classUid == bltWindowMarkerUid) {
-	markerPtr = CreateWindowMarker(); /* window */
-    } else {
+    switch (classId) {
+    case CID_MARKER_BITMAP:
+	markerPtr = CreateBitmapProc(); /* bitmap */
+	break;
+    case CID_MARKER_LINE:
+	markerPtr = CreateLineProc(); /* line */
+	break;
+    case CID_MARKER_IMAGE:
+	markerPtr = CreateImageProc(); /* image */
+	break;
+    case CID_MARKER_TEXT:
+	markerPtr = CreateTextProc(); /* text */
+	break;
+    case CID_MARKER_POLYGON:
+	markerPtr = CreatePolygonProc(); /* polygon */
+	break;
+    case CID_MARKER_WINDOW:
+	markerPtr = CreateWindowProc(); /* window */
+	break;
+    default:
 	return NULL;
     }
-    assert(markerPtr);
-    markerPtr->graphPtr = graphPtr;
-    markerPtr->hidden = markerPtr->drawUnder = FALSE;
+    markerPtr->obj.graphPtr = graphPtr;
+    markerPtr->drawUnder = FALSE;
     markerPtr->flags |= MAP_ITEM;
-    markerPtr->name = Blt_Strdup(name);
-    markerPtr->classUid = classUid;
+    markerPtr->obj.name = Blt_AssertStrdup(name);
+    Blt_GraphSetObjectClass(&markerPtr->obj, classId);
     return markerPtr;
 }
 
+
 static void
-DestroyMarker(markerPtr)
-    Marker *markerPtr;
+DestroyMarker(Marker *markerPtr)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
 
     if (markerPtr->drawUnder) {
+	/* If the marker to be deleted is currently displayed below the
+	 * elements, then backing store needs to be repaired. */
 	graphPtr->flags |= REDRAW_BACKING_STORE;
     }
-    /* Free the resources allocated for the particular type of marker */
-    (*markerPtr->classPtr->freeProc) (graphPtr, markerPtr);
-    if (markerPtr->worldPts != NULL) {
-	Blt_Free(markerPtr->worldPts);
-    }
+    /* 
+     * Call the marker's type-specific deallocation routine. We do it first
+     * while all the marker fields are still valid.
+     */
+    (*markerPtr->classPtr->freeProc)(markerPtr);
+
+    /* Dump any bindings that might be registered for the marker. */
     Blt_DeleteBindings(graphPtr->bindTable, markerPtr);
-    Tk_FreeOptions(markerPtr->classPtr->configSpecs, (char *)markerPtr,
+
+    /* Release all the X resources associated with the marker. */
+    Blt_FreeOptions(markerPtr->classPtr->configSpecs, (char *)markerPtr,
 	graphPtr->display, 0);
+
     if (markerPtr->hashPtr != NULL) {
-	Blt_DeleteHashEntry(&graphPtr->markers.table, markerPtr->hashPtr);
+	Blt_DeleteHashEntry(&graphPtr->markers.table, 
+			    markerPtr->hashPtr);
     }
-    if (markerPtr->linkPtr != NULL) {
-	Blt_ChainDeleteLink(graphPtr->markers.displayList, markerPtr->linkPtr);
+    if (markerPtr->link != NULL) {
+	Blt_Chain_DeleteLink(graphPtr->markers.displayList, markerPtr->link);
     }
-    if (markerPtr->name != NULL) {
-	Blt_Free(markerPtr->name);
-    }
-    if (markerPtr->elemName != NULL) {
-	Blt_Free(markerPtr->elemName);
-    }
-    if (markerPtr->tags != NULL) {
-	Blt_Free(markerPtr->tags);
+    if (markerPtr->obj.name != NULL) {
+	Blt_Free(markerPtr->obj.name);
     }
     Blt_Free(markerPtr);
 }
 
+static void
+FreeMarker(DestroyData dataPtr) 
+{
+    Marker *markerPtr = (Marker *)dataPtr;
+    DestroyMarker(markerPtr);
+}
+
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * ConfigureBitmapMarker --
+ * ConfigureBitmapProc --
  *
- *	This procedure is called to process an argv/argc list, plus
- *	the Tk option database, in order to configure (or reconfigure)
- *	a bitmap marker.
+ *	This procedure is called to process an objv/objc list, plus the Tk
+ *	option database, in order to configure (or reconfigure) a bitmap
+ *	marker.
  *
  * Results:
- *	A standard Tcl result.  If TCL_ERROR is returned, then
- *	interp->result contains an error message.
+ *	A standard TCL result.  If TCL_ERROR is returned, then interp->result
+ *	contains an error message.
  *
  * Side effects:
- *	Configuration information, such as bitmap pixmap, colors,
- *	rotation, etc. get set for markerPtr; old resources get freed,
- *	if there were any.  The marker is eventually redisplayed.
+ *	Configuration information, such as bitmap pixmap, colors, rotation,
+ *	etc. get set for markerPtr; old resources get freed, if there were
+ *	any.  The marker is eventually redisplayed.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /* ARGSUSED */
 static int
-ConfigureBitmapMarker(markerPtr)
-    Marker *markerPtr;
+ConfigureBitmapProc(Marker *markerPtr)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     BitmapMarker *bmPtr = (BitmapMarker *)markerPtr;
     GC newGC;
     XGCValues gcValues;
@@ -1565,37 +1900,41 @@ ConfigureBitmapMarker(markerPtr)
     if (bmPtr->srcBitmap == None) {
 	return TCL_OK;
     }
-    if (bmPtr->destBitmap == None) {
-	bmPtr->destBitmap = bmPtr->srcBitmap;
-    }
-    bmPtr->theta = FMOD(bmPtr->rotate, 360.0);
-    if (bmPtr->theta < 0.0) {
-	bmPtr->theta += 360.0;
+    bmPtr->angle = FMOD(bmPtr->reqAngle, 360.0);
+    if (bmPtr->angle < 0.0) {
+	bmPtr->angle += 360.0;
     }
     gcMask = 0;
+
     if (bmPtr->outlineColor != NULL) {
 	gcMask |= GCForeground;
 	gcValues.foreground = bmPtr->outlineColor->pixel;
     }
+
     if (bmPtr->fillColor != NULL) {
+	/* Opaque bitmap: both foreground and background (fill) colors
+	 * are used. */
 	gcValues.background = bmPtr->fillColor->pixel;
 	gcMask |= GCBackground;
     } else {
+	/* Transparent bitmap: set the clip mask to the current bitmap. */
 	gcValues.clip_mask = bmPtr->srcBitmap;
 	gcMask |= GCClipMask;
     }
 
-    /* Note that while this is a "shared" GC, we're going to change
-     * the clip origin right before the bitmap is drawn anyways.  This
-     * assumes that any drawing code using this GC (with GCClipMask
-     * set) is going to want to set the clip origin anyways.  */
+    /* 
+     * This is technically a shared GC, but we're going to set/change the clip
+     * origin anyways before we draw the bitmap.  This relies on the fact that
+     * no other client will be allocated this GC with the GCClipMask set to
+     * this particular bitmap.
+     */
     newGC = Tk_GetGC(graphPtr->tkwin, gcMask, &gcValues);
     if (bmPtr->gc != NULL) {
 	Tk_FreeGC(graphPtr->display, bmPtr->gc);
     }
     bmPtr->gc = newGC;
 
-    /* Create background GC color */
+    /* Create the background GC containing the fill color. */
 
     if (bmPtr->fillColor != NULL) {
 	gcValues.foreground = bmPtr->fillColor->pixel;
@@ -1605,60 +1944,73 @@ ConfigureBitmapMarker(markerPtr)
 	}
 	bmPtr->fillGC = newGC;
     }
-    bmPtr->flags |= MAP_ITEM;
-    if (bmPtr->drawUnder) {
+
+    markerPtr->flags |= MAP_ITEM;
+    if (markerPtr->drawUnder) {
 	graphPtr->flags |= REDRAW_BACKING_STORE;
     }
+
     Blt_EventuallyRedrawGraph(graphPtr);
     return TCL_OK;
 }
 
+#ifdef notdef
+static void
+PrintPolyPoint(char *mesg, Point2d *points, int nPoints)
+{
+    int i;
+
+    fprintf(stderr, "%s:\t\tpoint[0]=%g,%g\n", mesg, points[0].x, points[0].y);
+    for (i = 1; i < nPoints; i++) {
+	fprintf(stderr, "\t\tpoint[%d]=%g,%g\n", i, points[i].x, points[i].y);
+    }
+}	
+#endif
+
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * MapBitmapMarker --
+ * MapBitmapProc --
  *
- * 	This procedure gets called each time the layout of the graph
- *	changes.  The x, y window coordinates of the bitmap marker are
- *	saved in the marker structure.
+ * 	This procedure gets called each time the layout of the graph changes.
+ * 	The x, y window coordinates of the bitmap marker are saved in the
+ * 	marker structure.
  *
  *	Additionly, if no background color was specified, the
- *	GCTileStipXOrigin and GCTileStipYOrigin attributes are set in
- *	the private GC.
+ *	GCTileStipXOrigin and GCTileStipYOrigin attributes are set in the
+ *	private GC.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	Window coordinates are saved and if no background color was
- * 	set, the GC stipple origins are changed to calculated window
- *	coordinates.
+ *	Window coordinates are saved and if no background color was set, the
+ *	GC stipple origins are changed to calculated window coordinates.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MapBitmapMarker(markerPtr)
-    Marker *markerPtr;
+MapBitmapProc(Marker *markerPtr)
 {
     BitmapMarker *bmPtr = (BitmapMarker *)markerPtr;
-    Extents2D exts;
-    Graph *graphPtr = markerPtr->graphPtr;
-    Point2D anchorPos;
-    Point2D corner1, corner2;
+    Region2d extents;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
+    Point2d anchorPt;
+    Point2d corner1, corner2;
     int destWidth, destHeight;
     int srcWidth, srcHeight;
-    register int i;
+    int i;
 
     if (bmPtr->srcBitmap == None) {
 	return;
     }
-    if (bmPtr->destBitmap != bmPtr->srcBitmap) {
+    if (bmPtr->destBitmap != None) {
 	Tk_FreePixmap(graphPtr->display, bmPtr->destBitmap);
-	bmPtr->destBitmap = bmPtr->srcBitmap;
+	bmPtr->destBitmap = None;
     }
     /* 
-     * Collect the coordinates.  The number of coordinates will determine
-     * the calculations to be made.
+     * Collect the coordinates.  The number of coordinates will determine the
+     * calculations to be made.
      * 
      *	   x1 y1	A single pair of X-Y coordinates.  They represent
      *			the anchor position of the bitmap.  
@@ -1671,11 +2023,11 @@ MapBitmapMarker(markerPtr)
      */   
     Tk_SizeOfBitmap(graphPtr->display, bmPtr->srcBitmap, &srcWidth, 
 		    &srcHeight);
-    corner1 = MapPoint(graphPtr, bmPtr->worldPts, &bmPtr->axes);
-    if (bmPtr->nWorldPts > 1) {
+    corner1 = MapPoint(markerPtr->worldPts, &markerPtr->axes);
+    if (markerPtr->nWorldPts > 1) {
 	double hold;
 
-	corner2 = MapPoint(graphPtr, bmPtr->worldPts + 1, &bmPtr->axes);
+	corner2 = MapPoint(markerPtr->worldPts + 1, &markerPtr->axes);
 	/* Flip the corners if necessary */
 	if (corner1.x > corner2.x) {
 	    hold = corner1.x, corner1.x = corner2.x, corner2.x = hold;
@@ -1690,105 +2042,97 @@ MapBitmapMarker(markerPtr)
     destWidth = (int)(corner2.x - corner1.x) + 1;
     destHeight = (int)(corner2.y - corner1.y) + 1;
 
-    if (bmPtr->nWorldPts == 1) {
-	anchorPos = Blt_TranslatePoint(&corner1, destWidth, destHeight, 
-		bmPtr->anchor);
+    if (markerPtr->nWorldPts == 1) {
+	anchorPt = Blt_AnchorPoint(corner1.x, corner1.y, (double)destWidth, 
+		(double)destHeight, bmPtr->anchor);
     } else {
-	anchorPos = corner1;
+	anchorPt = corner1;
     }
-    anchorPos.x += bmPtr->xOffset;
-    anchorPos.y += bmPtr->yOffset;
+    anchorPt.x += markerPtr->xOffset;
+    anchorPt.y += markerPtr->yOffset;
 
     /* Check if the bitmap sits at least partially in the plot area. */
-    exts.left = anchorPos.x;
-    exts.top = anchorPos.y;
-    exts.right = anchorPos.x + destWidth - 1;
-    exts.bottom = anchorPos.y + destHeight - 1;
-
-    bmPtr->clipped = BoxesDontOverlap(graphPtr, &exts);
-    if (bmPtr->clipped) {
-	return;			/* Bitmap is offscreen. Don't generate
-				 * rotated or scaled bitmaps. */
+    extents.left   = anchorPt.x;
+    extents.top    = anchorPt.y;
+    extents.right  = anchorPt.x + destWidth - 1;
+    extents.bottom = anchorPt.y + destHeight - 1;
+    markerPtr->clipped = BoxesDontOverlap(graphPtr, &extents);
+    if (markerPtr->clipped) {
+	return;			/* Bitmap is offscreen. Don't generate rotated
+				 * or scaled bitmaps. */
     }
 
     /*  
-     * Scale the bitmap if necessary. It's a little tricky because we
-     * only want to scale what's visible on the screen, not the entire
-     * bitmap.  
+     * Scale the bitmap if necessary. It's a little tricky because we only
+     * want to scale what's visible on the screen, not the entire bitmap.
      */
-    if ((bmPtr->theta != 0.0) || (destWidth != srcWidth) || 
+    if ((bmPtr->angle != 0.0f) || (destWidth != srcWidth) || 
 	(destHeight != srcHeight)) {
-	int regionWidth, regionHeight;
-	Region2D region;	/* Indicates the portion of the scaled
-				 * bitmap that we want to display. */
+	int regionX, regionY, regionWidth, regionHeight; 
 	double left, right, top, bottom;
 
-	/*
-	 * Determine the region of the bitmap visible in the plot area.
-	 */
-	left = MAX(graphPtr->left, exts.left);
-	right = MIN(graphPtr->right, exts.right);
-	top = MAX(graphPtr->top, exts.top);
-	bottom = MIN(graphPtr->bottom, exts.bottom);
+	/* Ignore parts of the bitmap outside of the plot area. */
+	left   = MAX(graphPtr->left, extents.left);
+	right  = MIN(graphPtr->right, extents.right);
+	top    = MAX(graphPtr->top, extents.top);
+	bottom = MIN(graphPtr->bottom, extents.bottom);
 
-	region.left = region.top = 0;
-	if (graphPtr->left > exts.left) {
-	    region.left = (int)(graphPtr->left - exts.left);
+	/* Determine the portion of the scaled bitmap to display. */
+	regionX = regionY = 0;
+	if (graphPtr->left > extents.left) {
+	    regionX = (int)(graphPtr->left - extents.left);
 	}
-	if (graphPtr->top > exts.top) {
-	    region.top = (int)(graphPtr->top - exts.top);
+	if (graphPtr->top > extents.top) {
+	    regionY = (int)(graphPtr->top - extents.top);
 	}	    
 	regionWidth = (int)(right - left) + 1;
 	regionHeight = (int)(bottom - top) + 1;
-	region.right = region.left + (int)(right - left);
-	region.bottom = region.top + (int)(bottom - top);
 	
-	anchorPos.x = left;
-	anchorPos.y = top;
-	bmPtr->destBitmap = Blt_ScaleRotateBitmapRegion(graphPtr->tkwin, 
-		bmPtr->srcBitmap, srcWidth, srcHeight, 
-		region.left, region.top, regionWidth, regionHeight, 
-		destWidth, destHeight, bmPtr->theta);
+	anchorPt.x = left;
+	anchorPt.y = top;
+	bmPtr->destBitmap = Blt_ScaleRotateBitmapArea(graphPtr->tkwin, 
+		bmPtr->srcBitmap, srcWidth, srcHeight, regionX, regionY, 
+		regionWidth, regionHeight, destWidth, destHeight, bmPtr->angle);
 	bmPtr->destWidth = regionWidth;
 	bmPtr->destHeight = regionHeight;
     } else {
 	bmPtr->destWidth = srcWidth;
 	bmPtr->destHeight = srcHeight;
-	bmPtr->destBitmap = bmPtr->srcBitmap;
+	bmPtr->destBitmap = None;
     }
-    bmPtr->anchorPos = anchorPos;
+    bmPtr->anchorPt = anchorPt;
     {
 	double xScale, yScale;
 	double tx, ty;
 	double rotWidth, rotHeight;
-	Point2D polygon[5];
+	Point2d polygon[5];
 	int n;
 
 	/* 
-	 * Compute a polygon to represent the background area of the bitmap.  
-	 * This is needed for backgrounds of arbitrarily rotated bitmaps.  
-	 * We also use it to print a background in PostScript. 
+	 * Compute a polygon to represent the background area of the bitmap.
+	 * This is needed for backgrounds of arbitrarily rotated bitmaps.  We
+	 * also use it to print a background in PostScript.
 	 */
-	Blt_GetBoundingBox(srcWidth, srcHeight, bmPtr->theta, &rotWidth, 
+	Blt_GetBoundingBox(srcWidth, srcHeight, bmPtr->angle, &rotWidth, 
 			   &rotHeight, polygon);
 	xScale = (double)destWidth / rotWidth;
 	yScale = (double)destHeight / rotHeight;
 	
 	/* 
-	 * Adjust each point of the polygon. Both scale it to the new size
-	 * and translate it to the actual screen position of the bitmap.
+	 * Adjust each point of the polygon. Both scale it to the new size and
+	 * translate it to the actual screen position of the bitmap.
 	 */
-	tx = exts.left + destWidth * 0.5;
-	ty = exts.top + destHeight * 0.5;
+	tx = extents.left + destWidth * 0.5;
+	ty = extents.top + destHeight * 0.5;
 	for (i = 0; i < 4; i++) {
 	    polygon[i].x = (polygon[i].x * xScale) + tx;
 	    polygon[i].y = (polygon[i].y * yScale) + ty;
 	}
-	Blt_GraphExtents(graphPtr, &exts);
-	n = Blt_PolyRectClip(&exts, polygon, 4, bmPtr->outline); 
+	Blt_GraphExtents(graphPtr, &extents);
+	n = Blt_PolyRectClip(&extents, polygon, 4, bmPtr->outline); 
 	assert(n <= MAX_OUTLINE_POINTS);
 	if (n < 3) { 
-	    memcpy(&bmPtr->outline, polygon, sizeof(Point2D) * 4);
+	    memcpy(&bmPtr->outline, polygon, sizeof(Point2d) * 4);
 	    bmPtr->nOutlinePts = 4;
 	} else {
 	    bmPtr->nOutlinePts = n;
@@ -1797,134 +2141,124 @@ MapBitmapMarker(markerPtr)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * PointInBitmapMarker --
+ * PointInBitmapProc --
  *
- *	Indicates if the given point is over the bitmap marker.  The
- *	area of the bitmap is the rectangle.
+ *	Indicates if the given point is over the bitmap marker.  The area of
+ *	the bitmap is the rectangle.
  *
  * Results:
  *	Returns 1 is the point is over the bitmap marker, 0 otherwise.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-PointInBitmapMarker(markerPtr, samplePtr)
-    Marker *markerPtr;
-    Point2D *samplePtr;
+PointInBitmapProc(Marker *markerPtr, Point2d *samplePtr)
 {
     BitmapMarker *bmPtr = (BitmapMarker *)markerPtr;
 
     if (bmPtr->srcBitmap == None) {
 	return 0;
     }
-    if (bmPtr->theta != 0.0) {
-	Point2D points[MAX_OUTLINE_POINTS];
-	register int i;
+    if (bmPtr->angle != 0.0f) {
+	Point2d points[MAX_OUTLINE_POINTS];
+	int i;
 
 	/*  
-	 * Generate the bounding polygon (isolateral) for the bitmap
-	 * and see if the point is inside of it.  
+	 * Generate the bounding polygon (isolateral) for the bitmap and see
+	 * if the point is inside of it.
 	 */
 	for (i = 0; i < bmPtr->nOutlinePts; i++) {
-	    points[i].x = bmPtr->outline[i].x + bmPtr->anchorPos.x;
-	    points[i].y = bmPtr->outline[i].y + bmPtr->anchorPos.y;
+	    points[i].x = bmPtr->outline[i].x + bmPtr->anchorPt.x;
+	    points[i].y = bmPtr->outline[i].y + bmPtr->anchorPt.y;
 	}
 	return Blt_PointInPolygon(samplePtr, points, bmPtr->nOutlinePts);
     }
-    return ((samplePtr->x >= bmPtr->anchorPos.x) && 
-	    (samplePtr->x < (bmPtr->anchorPos.x + bmPtr->destWidth)) &&
-	    (samplePtr->y >= bmPtr->anchorPos.y) && 
-	    (samplePtr->y < (bmPtr->anchorPos.y + bmPtr->destHeight)));
+    return ((samplePtr->x >= bmPtr->anchorPt.x) && 
+	    (samplePtr->x < (bmPtr->anchorPt.x + bmPtr->destWidth)) &&
+	    (samplePtr->y >= bmPtr->anchorPt.y) && 
+	    (samplePtr->y < (bmPtr->anchorPt.y + bmPtr->destHeight)));
 }
 
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * RegionInBitmapMarker --
+ * RegionInBitmapProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-RegionInBitmapMarker(markerPtr, extsPtr, enclosed)
-    Marker *markerPtr;
-    Extents2D *extsPtr;
-    int enclosed;
+RegionInBitmapProc(Marker *markerPtr, Region2d *extsPtr, int enclosed)
 {
     BitmapMarker *bmPtr = (BitmapMarker *)markerPtr;
 
-    if (bmPtr->nWorldPts < 1) {
+    if (markerPtr->nWorldPts < 1) {
 	return FALSE;
     }
-    if (bmPtr->theta != 0.0) {
-	Point2D points[MAX_OUTLINE_POINTS];
-	register int i;
+    if (bmPtr->angle != 0.0f) {
+	Point2d points[MAX_OUTLINE_POINTS];
+	int i;
 	
 	/*  
-	 * Generate the bounding polygon (isolateral) for the bitmap
-	 * and see if the point is inside of it.  
+	 * Generate the bounding polygon (isolateral) for the bitmap and see
+	 * if the point is inside of it.
 	 */
 	for (i = 0; i < bmPtr->nOutlinePts; i++) {
-	    points[i].x = bmPtr->outline[i].x + bmPtr->anchorPos.x;
-	    points[i].y = bmPtr->outline[i].y + bmPtr->anchorPos.y;
+	    points[i].x = bmPtr->outline[i].x + bmPtr->anchorPt.x;
+	    points[i].y = bmPtr->outline[i].y + bmPtr->anchorPt.y;
 	}
 	return Blt_RegionInPolygon(extsPtr, points, bmPtr->nOutlinePts, 
 		   enclosed);
     }
     if (enclosed) {
-	return ((bmPtr->anchorPos.x >= extsPtr->left) &&
-		(bmPtr->anchorPos.y >= extsPtr->top) && 
-		((bmPtr->anchorPos.x + bmPtr->destWidth) <= extsPtr->right) &&
-		((bmPtr->anchorPos.y + bmPtr->destHeight) <= extsPtr->bottom));
+	return ((bmPtr->anchorPt.x >= extsPtr->left) &&
+		(bmPtr->anchorPt.y >= extsPtr->top) && 
+		((bmPtr->anchorPt.x + bmPtr->destWidth) <= extsPtr->right) &&
+		((bmPtr->anchorPt.y + bmPtr->destHeight) <= extsPtr->bottom));
     }
-    return !((bmPtr->anchorPos.x >= extsPtr->right) ||
-	     (bmPtr->anchorPos.y >= extsPtr->bottom) ||
-	     ((bmPtr->anchorPos.x + bmPtr->destWidth) <= extsPtr->left) ||
-	     ((bmPtr->anchorPos.y + bmPtr->destHeight) <= extsPtr->top));
+    return !((bmPtr->anchorPt.x >= extsPtr->right) ||
+	     (bmPtr->anchorPt.y >= extsPtr->bottom) ||
+	     ((bmPtr->anchorPt.x + bmPtr->destWidth) <= extsPtr->left) ||
+	     ((bmPtr->anchorPt.y + bmPtr->destHeight) <= extsPtr->top));
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * DrawBitmapMarker --
+ * DrawBitmapProc --
  *
- *	Draws the bitmap marker that have a transparent of filled
- *	background.  
+ *	Draws the bitmap marker that have a transparent of filled background.
  *
  * Results:
  *	None.
  *
  * Side effects:
  *	GC stipple origins are changed to current window coordinates.
- *	Commands are output to X to draw the marker in its current
- *	mode.
+ *	Commands are output to X to draw the marker in its current mode.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DrawBitmapMarker(markerPtr, drawable)
-    Marker *markerPtr;
-    Drawable drawable;		/* Pixmap or window to draw into */
+DrawBitmapProc(Marker *markerPtr, Drawable drawable)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     BitmapMarker *bmPtr = (BitmapMarker *)markerPtr;
-    double theta;
+    double rangle;
+    Pixmap bitmap;
 
-    if ((bmPtr->destBitmap == None) || (bmPtr->destWidth < 1) || 
-	(bmPtr->destHeight < 1)) {
+    bitmap = GETBITMAP(bmPtr);
+    if ((bitmap == None) || (bmPtr->destWidth < 1) || (bmPtr->destHeight < 1)) {
 	return;
     }
-    theta = FMOD(bmPtr->theta, (double)90.0);
-    if ((bmPtr->fillColor == NULL) || (theta != 0.0)) {
+    rangle = FMOD(bmPtr->angle, 90.0);
+    if ((bmPtr->fillColor == NULL) || (rangle != 0.0)) {
 
 	/* 
-	 * If the bitmap is rotated and a filled background is
-	 * required, then a filled polygon is drawn before the
-	 * bitmap. 
+	 * If the bitmap is rotated and a filled background is required, then
+	 * a filled polygon is drawn before the bitmap.
 	 */
-
 	if (bmPtr->fillColor != NULL) {
 	    int i;
 	    XPoint polygon[MAX_OUTLINE_POINTS];
@@ -1936,64 +2270,65 @@ DrawBitmapMarker(markerPtr, drawable)
 	    XFillPolygon(graphPtr->display, drawable, bmPtr->fillGC,
 		 polygon, bmPtr->nOutlinePts, Convex, CoordModeOrigin);
 	}
-	XSetClipMask(graphPtr->display, bmPtr->gc, bmPtr->destBitmap);
-	XSetClipOrigin(graphPtr->display, bmPtr->gc, (int)bmPtr->anchorPos.x, 
-	       (int)bmPtr->anchorPos.y);
+	XSetClipMask(graphPtr->display, bmPtr->gc, bitmap);
+	XSetClipOrigin(graphPtr->display, bmPtr->gc, (int)bmPtr->anchorPt.x, 
+	       (int)bmPtr->anchorPt.y);
     } else {
 	XSetClipMask(graphPtr->display, bmPtr->gc, None);
 	XSetClipOrigin(graphPtr->display, bmPtr->gc, 0, 0);
     }
-    XCopyPlane(graphPtr->display, bmPtr->destBitmap, drawable, bmPtr->gc, 0, 0,
-	bmPtr->destWidth, bmPtr->destHeight, (int)bmPtr->anchorPos.x, 
-	(int)bmPtr->anchorPos.y, 1);
+    XCopyPlane(graphPtr->display, bitmap, drawable, bmPtr->gc, 0, 0,
+	bmPtr->destWidth, bmPtr->destHeight, (int)bmPtr->anchorPt.x, 
+	(int)bmPtr->anchorPt.y, 1);
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * BitmapMarkerToPostScript --
+ * BitmapToPostscriptProc --
  *
  *	Generates PostScript to print a bitmap marker.
  *
  * Results:
  *	None.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-BitmapMarkerToPostScript(markerPtr, psToken)
-    Marker *markerPtr;		/* Marker to be printed */
-    PsToken psToken;
+BitmapToPostscriptProc(Marker *markerPtr, Blt_Ps ps)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     BitmapMarker *bmPtr = (BitmapMarker *)markerPtr;
+    Pixmap bitmap;
 
-    if (bmPtr->destBitmap == None) {
-	return;
+    bitmap = GETBITMAP(bmPtr);
+    if ((bitmap == None) || (bmPtr->destWidth < 1) || (bmPtr->destHeight < 1)) {
+	return;			/* No bitmap to display. */
     }
     if (bmPtr->fillColor != NULL) {
-	Blt_BackgroundToPostScript(psToken, bmPtr->fillColor);
-	Blt_PolygonToPostScript(psToken, bmPtr->outline, 4);
+	Blt_Ps_XSetBackground(ps, bmPtr->fillColor);
+	Blt_Ps_XFillPolygon(ps, bmPtr->outline, 4);
     }
-    Blt_ForegroundToPostScript(psToken, bmPtr->outlineColor);
+    Blt_Ps_XSetForeground(ps, bmPtr->outlineColor);
 
-    Blt_FormatToPostScript(psToken,
+    Blt_Ps_Format(ps,
 	"  gsave\n    %g %g translate\n    %d %d scale\n", 
-	   bmPtr->anchorPos.x, bmPtr->anchorPos.y + bmPtr->destHeight, 
+	   bmPtr->anchorPt.x, bmPtr->anchorPt.y + bmPtr->destHeight, 
 	   bmPtr->destWidth, -bmPtr->destHeight);
-    Blt_FormatToPostScript(psToken, "    %d %d true [%d 0 0 %d 0 %d] {",
+    Blt_Ps_Format(ps, "    %d %d true [%d 0 0 %d 0 %d] {",
 	bmPtr->destWidth, bmPtr->destHeight, bmPtr->destWidth, 
 	-bmPtr->destHeight, bmPtr->destHeight);
-    Blt_BitmapDataToPostScript(psToken, graphPtr->display, bmPtr->destBitmap,
+    Blt_Ps_XSetBitmapData(ps, graphPtr->display, bitmap,
 	bmPtr->destWidth, bmPtr->destHeight);
-    Blt_AppendToPostScript(psToken, "    } imagemask\n",
-	"grestore\n", (char *)NULL);
+    Blt_Ps_VarAppend(ps, 
+		     "    } imagemask\n",
+		     "grestore\n", (char *)NULL);
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * FreeBitmapMarker --
+ * FreeBitmapProc --
  *
  *	Releases the memory and attributes of the bitmap marker.
  *
@@ -2001,18 +2336,16 @@ BitmapMarkerToPostScript(markerPtr, psToken)
  *	None.
  *
  * Side effects:
- *	Bitmap attributes (GCs, colors, bitmap, etc) get destroyed.
- *	Memory is released, X resources are freed, and the graph is
- *	redrawn.
+ *	Bitmap attributes (GCs, colors, bitmap, etc) get destroyed.  Memory is
+ *	released, X resources are freed, and the graph is redrawn.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-FreeBitmapMarker(graphPtr, markerPtr)
-    Graph *graphPtr;
-    Marker *markerPtr;
+FreeBitmapProc(Marker *markerPtr)
 {
     BitmapMarker *bmPtr = (BitmapMarker *)markerPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
 
     if (bmPtr->gc != NULL) {
 	Tk_FreeGC(graphPtr->display, bmPtr->gc);
@@ -2020,15 +2353,15 @@ FreeBitmapMarker(graphPtr, markerPtr)
     if (bmPtr->fillGC != NULL) {
 	Tk_FreeGC(graphPtr->display, bmPtr->fillGC);
     }
-    if (bmPtr->destBitmap != bmPtr->srcBitmap) {
+    if (bmPtr->destBitmap != None) {
 	Tk_FreePixmap(graphPtr->display, bmPtr->destBitmap);
     }
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * CreateBitmapMarker --
+ * CreateBitmapProc --
  *
  *	Allocate memory and initialize methods for the new bitmap marker.
  *
@@ -2038,120 +2371,60 @@ FreeBitmapMarker(graphPtr, markerPtr)
  * Side effects:
  *	Memory is allocated for the bitmap marker structure.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Marker *
-CreateBitmapMarker()
+CreateBitmapProc(void)
 {
     BitmapMarker *bmPtr;
 
-    bmPtr = Blt_Calloc(1, sizeof(BitmapMarker));
-    if (bmPtr != NULL) {
-	bmPtr->classPtr = &bitmapMarkerClass;
-    }
+    bmPtr = Blt_AssertCalloc(1, sizeof(BitmapMarker));
+    bmPtr->classPtr = &bitmapMarkerClass;
     return (Marker *)bmPtr;
 }
 
-/*
- *----------------------------------------------------------------------
- *
- * ImageChangedProc
- *
- *
- * Results:
- *	None.
- *
- *----------------------------------------------------------------------
- */
-/* ARGSUSED */
-static void
-ImageChangedProc(clientData, x, y, width, height, imageWidth, imageHeight)
-    ClientData clientData;
-    int x, y, width, height;	/* Not used. */
-    int imageWidth, imageHeight; /* Not used. */
-{
-    ImageMarker *imPtr = clientData;
-    Tk_PhotoHandle photo;
-    
-    photo = Blt_FindPhoto(imPtr->graphPtr->interp, imPtr->imageName);
-    if (photo != NULL) {
-	if (imPtr->srcImage != NULL) {
-	    Blt_FreeColorImage(imPtr->srcImage);
-	}
-	/* Convert the latest incarnation of the photo image back to a
-	 * color image that we can scale. */
-	imPtr->srcImage = Blt_PhotoToColorImage(photo);
-    }
-    imPtr->graphPtr->flags |= REDRAW_BACKING_STORE;
-    imPtr->flags |= MAP_ITEM;
-    Blt_EventuallyRedrawGraph(imPtr->graphPtr);
-}
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * ConfigureImageMarker --
+ * ConfigureImageProc --
  *
- *	This procedure is called to process an argv/argc list, plus
- *	the Tk option database, in order to configure (or reconfigure)
- *	a image marker.
+ *	This procedure is called to process an objv/objc list, plus the Tk
+ *	option database, in order to configure (or reconfigure) a image
+ *	marker.
  *
  * Results:
- *	A standard Tcl result.  If TCL_ERROR is returned, then
- *	interp->result contains an error message.
+ *	A standard TCL result.  If TCL_ERROR is returned, then interp->result
+ *	contains an error message.
  *
  * Side effects:
- *	Configuration information, such as image pixmap, colors,
- *	rotation, etc. get set for markerPtr; old resources get freed,
- *	if there were any.  The marker is eventually redisplayed.
+ *	Configuration information, such as image pixmap, colors, rotation,
+ *	etc. get set for markerPtr; old resources get freed, if there were
+ *	any.  The marker is eventually redisplayed.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigureImageMarker(markerPtr)
-    Marker *markerPtr;
+ConfigureImageProc(Marker *markerPtr)
 {
     ImageMarker *imPtr = (ImageMarker *)markerPtr;
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
+    Blt_Painter painter;
+    GC newGC;
 
-    if (Blt_ConfigModified(markerPtr->classPtr->configSpecs, "-image", 
-			   (char *)NULL)) {
-	Tcl_Interp *interp = graphPtr->interp;
-
-	if (imPtr->tkImage != NULL) {
-	    Tk_FreeImage(imPtr->tkImage);
-	    imPtr->tkImage = NULL;
-	}
-	if (imPtr->imageName[0] != '\0') {
-	    GC newGC;
-	    Tk_PhotoHandle photo;
-
-	    imPtr->tkImage = Tk_GetImage(interp, graphPtr->tkwin,
-		imPtr->imageName, ImageChangedProc, imPtr);
-	    if (imPtr->tkImage == NULL) {
-		Tcl_AppendResult(interp, "can't find an image \"", 
-			imPtr->imageName, "\"", (char *)NULL);
-		Blt_Free(imPtr->imageName);
-		imPtr->imageName = NULL;
-		return TCL_ERROR;
-	    }
-	    photo = Blt_FindPhoto(interp, imPtr->imageName);
-	    if (photo != NULL) {
-		if (imPtr->srcImage != NULL) {
-		    Blt_FreeColorImage(imPtr->srcImage);
-		}
-		/* Convert the photo into a color image */
-		imPtr->srcImage = Blt_PhotoToColorImage(photo);
-	    }
-	    newGC = Tk_GetGC(graphPtr->tkwin, 0L, (XGCValues *)NULL);
-	    if (imPtr->gc != NULL) {
-		Tk_FreeGC(graphPtr->display, imPtr->gc);
-	    }
-	    imPtr->gc = newGC;
-	}
+    newGC = Tk_GetGC(graphPtr->tkwin, 0L, (XGCValues *)NULL);
+    if (imPtr->gc != NULL) {
+	Tk_FreeGC(graphPtr->display, imPtr->gc);
     }
-    imPtr->flags |= MAP_ITEM;
-    if (imPtr->drawUnder) {
+    imPtr->gc = newGC;
+
+    painter = Blt_GetPainter(graphPtr->tkwin, 1.0);
+    if (imPtr->painter != NULL) {
+	Blt_FreePainter(painter);
+    }
+    imPtr->painter = painter;
+    markerPtr->flags |= MAP_ITEM;
+    if (markerPtr->drawUnder) {
 	graphPtr->flags |= REDRAW_BACKING_STORE;
     }
     Blt_EventuallyRedrawGraph(graphPtr);
@@ -2159,226 +2432,196 @@ ConfigureImageMarker(markerPtr)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * MapImageMarker --
+ * MapImageProc --
  *
- * 	This procedure gets called each time the layout of the graph
- *	changes.  The x, y window coordinates of the image marker are
- *	saved in the marker structure.
+ * 	This procedure gets called each time the layout of the graph changes.
+ * 	The x, y window coordinates of the image marker are saved in the
+ * 	marker structure.
  *
- *	Additionly, if no background color was specified, the
- *	GCTileStipXOrigin and GCTileStipYOrigin attributes are set in
- *	the private GC.
+ *	In addition, if no background color was specified, the
+ *	GCTileStipXOrigin and GCTileStipYOrigin attributes will not set in the
+ *	private GC.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	Window coordinates are saved and if no background color was *
- *	set, the GC stipple origins are changed to calculated window
- *	coordinates.
+ *	Window coordinates are saved and if no background color was set, the
+ *	GC stipple origins are changed to calculated window coordinates.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MapImageMarker(markerPtr)
-    Marker *markerPtr;
+MapImageProc(Marker *markerPtr)
 {
-    Extents2D exts;
+    Region2d extents;
     Graph *graphPtr;
     ImageMarker *imPtr;
-    Point2D anchorPos;
-    Point2D corner1, corner2;
-    int scaledWidth, scaledHeight;
+    Point2d anchorPt;
+    Point2d c1, c2;
+    int newWidth, newHeight;
     int srcWidth, srcHeight;
+    int x, y, w, h;
+    int left, right, top, bottom;
 
     imPtr = (ImageMarker *)markerPtr;
-    if (imPtr->tkImage == NULL) {
+    if (imPtr->picture == NULL) {
 	return;
     }
-    graphPtr = imPtr->graphPtr;
-    corner1 = MapPoint(graphPtr, imPtr->worldPts, &imPtr->axes);
-    if (imPtr->srcImage == NULL) {
-	/* 
-	 * Don't scale or rotate non-photo images.
-	 */
-	Tk_SizeOfImage(imPtr->tkImage, &srcWidth, &srcHeight);
-	imPtr->width = srcWidth;
-	imPtr->height = srcHeight;
-	imPtr->anchorPos.x = corner1.x + imPtr->xOffset;
-	imPtr->anchorPos.y = corner1.y + imPtr->yOffset;
-	exts.left = imPtr->anchorPos.x;
-	exts.top = imPtr->anchorPos.y;
-	exts.right = exts.left + srcWidth - 1;
-	exts.bottom = exts.top + srcHeight - 1;
-	imPtr->clipped = BoxesDontOverlap(graphPtr, &exts);
-	return;
+    if (imPtr->scaled != NULL) { 
+	Blt_FreePicture(imPtr->scaled);
+	imPtr->scaled = NULL;
     }
-	
-    imPtr->width = srcWidth = Blt_ColorImageWidth(imPtr->srcImage);
-    imPtr->height = srcHeight = Blt_ColorImageHeight(imPtr->srcImage);
-    if ((srcWidth == 0) && (srcHeight == 0)) {
-	imPtr->clipped = TRUE;
+    graphPtr = markerPtr->obj.graphPtr;
+    c1 = MapPoint(markerPtr->worldPts, &markerPtr->axes);
+
+    imPtr->width = srcWidth = Blt_PictureWidth(imPtr->picture);
+    imPtr->height = srcHeight = Blt_PictureHeight(imPtr->picture);
+
+    if ((srcWidth == 0) || (srcHeight == 0)) {
+	markerPtr->clipped = TRUE;
 	return;			/* Empty image. */
     }
-    if (imPtr->nWorldPts > 1) {
+    if (markerPtr->nWorldPts > 1) {
 	double hold;
 
-	corner2 = MapPoint(graphPtr, imPtr->worldPts + 1, &imPtr->axes);
+	c2 = MapPoint(markerPtr->worldPts + 1, &markerPtr->axes);
 	/* Flip the corners if necessary */
-	if (corner1.x > corner2.x) {
-	    hold = corner1.x, corner1.x = corner2.x, corner2.x = hold;
+	if (c1.x > c2.x) {
+	    hold = c1.x, c1.x = c2.x, c2.x = hold;
 	}
-	if (corner1.y > corner2.y) {
-	    hold = corner1.y, corner1.y = corner2.y, corner2.y = hold;
+	if (c1.y > c2.y) {
+	    hold = c1.y, c1.y = c2.y, c2.y = hold;
 	}
     } else {
-	corner2.x = corner1.x + srcWidth - 1;
-	corner2.y = corner1.y + srcHeight - 1;
+	c2.x = c1.x + srcWidth - 1;
+	c2.y = c1.y + srcHeight - 1;
     }
-    scaledWidth = (int)(corner2.x - corner1.x) + 1;
-    scaledHeight = (int)(corner2.y - corner1.y) + 1;
+    newWidth = (int)(c2.x - c1.x) + 1;
+    newHeight = (int)(c2.y - c1.y) + 1;
 
-    if (imPtr->nWorldPts == 1) {
-	anchorPos = Blt_TranslatePoint(&corner1, scaledWidth, scaledHeight, 
-		imPtr->anchor);
+    if (markerPtr->nWorldPts == 1) {
+	anchorPt = Blt_AnchorPoint(c1.x, c1.y, (double)newWidth, 
+		(double)newHeight, imPtr->anchor);
     } else {
-	anchorPos = corner1;
+	anchorPt = c1;
     }
-    anchorPos.x += imPtr->xOffset;
-    anchorPos.y += imPtr->yOffset;
+    anchorPt.x += markerPtr->xOffset;
+    anchorPt.y += markerPtr->yOffset;
 
     /* Check if the image sits at least partially in the plot area. */
-    exts.left = anchorPos.x;
-    exts.top = anchorPos.y;
-    exts.right = anchorPos.x + scaledWidth - 1;
-    exts.bottom = anchorPos.y + scaledHeight - 1;
+    extents.left   = anchorPt.x;
+    extents.top    = anchorPt.y;
+    extents.right  = anchorPt.x + newWidth - 1;
+    extents.bottom = anchorPt.y + newHeight - 1;
 
-    imPtr->clipped = BoxesDontOverlap(graphPtr, &exts);
-    if (imPtr->clipped) {
-	return;			/* Image is offscreen. Don't generate
-				 * rotated or scaled images. */
+    markerPtr->clipped = BoxesDontOverlap(graphPtr, &extents);
+    if (markerPtr->clipped) {
+	return;			/* Image is offscreen. Don't generate rotated
+				 * or scaled images. */
     }
-    if ((scaledWidth != srcWidth) || (scaledHeight != srcHeight)) {
-	Tk_PhotoHandle photo;
-	Blt_ColorImage destImage;
-	int x, y, width, height;
-	int left, right, top, bottom;
 
-	/* Determine the region of the subimage inside of the
-	 * destination image. */
- 	left = MAX((int)exts.left, graphPtr->left);
-	top = MAX((int)exts.top, graphPtr->top);
-	right = MIN((int)exts.right, graphPtr->right);
-	bottom = MIN((int)exts.bottom, graphPtr->bottom);
+    /* Determine the extents of the subimage inside of the destination
+     * image. */
+    left =   MAX((int)extents.left, graphPtr->left);
+    top =    MAX((int)extents.top, graphPtr->top);
+    right =  MIN((int)extents.right, graphPtr->right);
+    bottom = MIN((int)extents.bottom, graphPtr->bottom);
+    
+    /* Reset image location and coordinates to that of the region */
+    anchorPt.x = left;
+    anchorPt.y = top;
+    
+    x = y = 0;
+    if (graphPtr->left > (int)extents.left) {
+	x = graphPtr->left - (int)extents.left;
+    } 
+    if (graphPtr->top > (int)extents.top) {
+	y = graphPtr->top - (int)extents.top;
+    } 
+    w  = (int)(right - left + 1);
+    h = (int)(bottom - top + 1);
+    
+    if (markerPtr->nWorldPts > 1) {
+	Blt_Picture scaled;
 
-	/* Reset image location and coordinates to that of the region */
-	anchorPos.x = left;
-	anchorPos.y = top;
-
-	x = y = 0;
-	if (graphPtr->left > (int)exts.left) {
-	    x = graphPtr->left - (int)exts.left;
-	} 
-	if (graphPtr->top > (int)exts.top) {
-	    y = graphPtr->top - (int)exts.top;
-	} 
-	width = (int)(right - left + 1);
-	height = (int)(bottom - top + 1);
-
-	destImage = Blt_ResizeColorSubimage(imPtr->srcImage, x, y, width, 
-		height, scaledWidth, scaledHeight);
-#ifdef notyet
-	/* Now convert the color image into a pixmap */
-	if (imPtr->pixmap != None) {
-	    Blt_FreeColorTable(imPtr->colorTable);
-	    Tk_FreePixmap(Tk_Display(graphPtr->tkwin), imPtr->pixmap);
-	    imPtr->colorTable = NULL;
-	}
-	imPtr->pixmap = Blt_ColorImageToPixmap(graphPtr->interp,
-	    graphPtr->tkwin, destImage, &imPtr->colorTable);
-#else
-	imPtr->pixmap = None;
-	if (imPtr->tmpImage == NULL) {
-	    imPtr->tmpImage = Blt_CreateTemporaryImage(graphPtr->interp, 
-		     graphPtr->tkwin, imPtr);
-	    if (imPtr->tmpImage == NULL) {
-		return;
-	    }
-	}	    
-	/* Put the scaled colorimage into the photo. */
-	photo = Blt_FindPhoto(graphPtr->interp, 
-			      Blt_NameOfImage(imPtr->tmpImage));
-	Blt_ColorImageToPhoto(destImage, photo);
-#endif
-	Blt_FreeColorImage(destImage);
-	imPtr->width = width;
-	imPtr->height = height;
+	scaled = Blt_ScalePictureArea(imPtr->picture, x, y, w, h, 
+				      newWidth, newHeight);
+	imPtr->scaled = scaled;
+	imPtr->pictX = 0;
+	imPtr->pictY = 0;
+    } else {
+	imPtr->pictX = x;
+	imPtr->pictY = y;
     }
-    imPtr->anchorPos = anchorPos;
+    imPtr->width = newWidth;
+    imPtr->height = newHeight;
+    imPtr->anchorPt = anchorPt;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * PointInWindowMarker --
+ * PointInWindowProc --
  *
- *	Indicates if the given point is over the window marker.  The
- *	area of the window is the rectangle.
+ *	Indicates if the given point is over the window marker.  The area of
+ *	the window is the rectangle.
  *
  * Results:
  *	Returns 1 is the point is over the window marker, 0 otherwise.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-PointInImageMarker(markerPtr, samplePtr)
-    Marker *markerPtr;
-    Point2D *samplePtr;
+PointInImageProc(Marker *markerPtr, Point2d *samplePtr)
 {
     ImageMarker *imPtr = (ImageMarker *)markerPtr;
+    double left, right, top, bottom;
+    
+    left = imPtr->anchorPt.x;
+    right = imPtr->anchorPt.x + imPtr->width;
+    top = imPtr->anchorPt.y;
+    bottom = imPtr->anchorPt.y + imPtr->height;
 
-    return ((samplePtr->x >= imPtr->anchorPos.x) && 
-	    (samplePtr->x < (imPtr->anchorPos.x + imPtr->width)) &&
-	    (samplePtr->y >= imPtr->anchorPos.y) && 
-	    (samplePtr->y < (imPtr->anchorPos.y + imPtr->height)));
+    return ((samplePtr->x >= left) && (samplePtr->x < right) &&
+	    (samplePtr->y >= top) && (samplePtr->y < bottom));
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * RegionInImageMarker --
+ * RegionInImageProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-RegionInImageMarker(markerPtr, extsPtr, enclosed)
-    Marker *markerPtr;
-    Extents2D *extsPtr;
-    int enclosed;
+RegionInImageProc(Marker *markerPtr, Region2d *regPtr, int enclosed)
 {
     ImageMarker *imPtr = (ImageMarker *)markerPtr;
 
-    if (imPtr->nWorldPts < 1) {
-	return FALSE;
+    if (markerPtr->nWorldPts > 0) {
+	double left, right, top, bottom;
+
+	left = imPtr->anchorPt.x;
+	right = imPtr->anchorPt.x + imPtr->width;
+	top = imPtr->anchorPt.y;
+	bottom = imPtr->anchorPt.y + imPtr->height;
+	if (enclosed) {
+	    return ((left >= regPtr->left) && (top >= regPtr->top) && 
+		    (right <= regPtr->right) && (bottom <= regPtr->bottom));
+	} 
+	return !((left >= regPtr->right) || (top >= regPtr->bottom) ||
+		 (right <= regPtr->left) || (bottom <= regPtr->top));
     }
-    if (enclosed) {
-	return ((imPtr->anchorPos.x >= extsPtr->left) &&
-		(imPtr->anchorPos.y >= extsPtr->top) && 
-		((imPtr->anchorPos.x + imPtr->width) <= extsPtr->right) &&
-		((imPtr->anchorPos.y + imPtr->height) <= extsPtr->bottom));
-    } 
-    return !((imPtr->anchorPos.x >= extsPtr->right) ||
-	     (imPtr->anchorPos.y >= extsPtr->bottom) ||
-	     ((imPtr->anchorPos.x + imPtr->width) <= extsPtr->left) ||
-	     ((imPtr->anchorPos.y + imPtr->height) <= extsPtr->top));
+    return FALSE;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * DrawImageMarker --
+ * DrawImageProc --
  *
  *	This procedure is invoked to draw a image marker.
  *
@@ -2389,119 +2632,83 @@ RegionInImageMarker(markerPtr, extsPtr, enclosed)
  *	GC stipple origins are changed to current window coordinates.
  *	Commands are output to X to draw the marker in its current mode.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DrawImageMarker(markerPtr, drawable)
-    Marker *markerPtr;
-    Drawable drawable;		/* Pixmap or window to draw into */
+DrawImageProc(Marker *markerPtr, Drawable drawable)
 {
     ImageMarker *imPtr = (ImageMarker *)markerPtr;
-    int width, height;
+    Blt_Picture picture;
 
-    if ((imPtr->tkImage == NULL) || (Tk_ImageIsDeleted(imPtr->tkImage))) {
-	return;
-    }
-    if (imPtr->pixmap == None) {
-	Pixmap pixmap;
-	Tk_Image tkImage;
-
-	tkImage = (imPtr->tmpImage != NULL) ? imPtr->tmpImage : imPtr->tkImage;
-	Tk_SizeOfImage(tkImage, &width, &height);
-	/* pixmap = Tk_ImageGetPhotoPixmap(tkImage); */
-	pixmap = None;
-	if (pixmap == None) {	/* May not be a "photo" image. */
-	    Tk_RedrawImage(tkImage, 0, 0, width, height, drawable,
-			   (int)imPtr->anchorPos.x, (int)imPtr->anchorPos.y);
-	} else {
-	    XCopyArea(imPtr->graphPtr->display, pixmap, drawable,
-		      imPtr->gc, 0, 0, width, height, (int)imPtr->anchorPos.x, 
-			(int)imPtr->anchorPos.y);
-	}
-    } else {
-	XCopyArea(imPtr->graphPtr->display, imPtr->pixmap, drawable,
-	    imPtr->gc, 0, 0, imPtr->width, imPtr->height,
-	    (int)imPtr->anchorPos.x, (int)imPtr->anchorPos.y);
+    picture = (imPtr->scaled != NULL) ? imPtr->scaled : imPtr->picture;
+    if (picture != NULL) {
+	Blt_PaintPictureWithBlend(imPtr->painter, drawable, picture, 
+		imPtr->pictX, imPtr->pictY, imPtr->width, imPtr->height, 
+		(int)imPtr->anchorPt.x, (int)imPtr->anchorPt.y, 0, 0.4);
     }
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * ImageMarkerToPostScript --
+ * ImageToPostscriptProc --
  *
  *	This procedure is invoked to print a image marker.
  *
  * Results:
  *	None.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-ImageMarkerToPostScript(markerPtr, psToken)
-    Marker *markerPtr;		/* Marker to be printed */
-    PsToken psToken;
+ImageToPostscriptProc(Marker *markerPtr, Blt_Ps ps)
 {
     ImageMarker *imPtr = (ImageMarker *)markerPtr;
-    char *imageName;
-    Tk_PhotoHandle photo;
+    Blt_Picture picture;
 
-    if ((imPtr->tkImage == NULL) || (Tk_ImageIsDeleted(imPtr->tkImage))) {
-	return;			/* Image doesn't exist anymore */
+    picture = (imPtr->scaled != NULL) ? imPtr->scaled : imPtr->picture;
+    if (picture != NULL) {
+	Blt_Ps_DrawPicture(ps, picture, imPtr->anchorPt.x, imPtr->anchorPt.y);
     }
-    imageName = (imPtr->tmpImage == NULL) 
-	? Blt_NameOfImage(imPtr->tkImage) : Blt_NameOfImage(imPtr->tmpImage);
-    photo = Blt_FindPhoto(markerPtr->graphPtr->interp, imageName);
-    if (photo == NULL) {
-	return;			/* Image isn't a photo image */
-    }
-    Blt_PhotoToPostScript(psToken, photo, imPtr->anchorPos.x, 
-			  imPtr->anchorPos.y);
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * FreeImageMarker --
+ * FreeImageProc --
  *
- *	Destroys the structure containing the attributes of the image
- * 	marker.
+ *	Destroys the structure containing the attributes of the image marker.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	Image attributes (GCs, colors, image, etc) get destroyed.
- *	Memory is released, X resources are freed, and the graph is
- *	redrawn.
+ *	Image attributes (GCs, colors, image, etc) get destroyed.  Memory is
+ *	released, X resources are freed, and the graph is redrawn.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-FreeImageMarker(graphPtr, markerPtr)
-    Graph *graphPtr;
-    Marker *markerPtr;
+FreeImageProc(Marker *markerPtr)
 {
     ImageMarker *imPtr = (ImageMarker *)markerPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
 
-    if (imPtr->pixmap != None) {
-	Tk_FreePixmap(graphPtr->display, imPtr->pixmap);
+    if (imPtr->painter != NULL) {
+	Blt_FreePainter(imPtr->painter);
     }
-    if (imPtr->tkImage != NULL) {
-	Tk_FreeImage(imPtr->tkImage);
+    if (imPtr->scaled != NULL) {
+	Blt_FreePicture(imPtr->scaled);
     }
-    if (imPtr->tmpImage != NULL) {
-	Blt_DestroyTemporaryImage(graphPtr->interp, imPtr->tmpImage);
-    }	
-    if (imPtr->srcImage != NULL) {
-	Blt_FreeColorImage(imPtr->srcImage);
+    if (imPtr->gc != NULL) {
+	Tk_FreeGC(graphPtr->display, imPtr->gc);
     }
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * CreateImageMarker --
+ * CreateImageProc --
  *
  *	Allocate memory and initialize methods for the new image marker.
  *
@@ -2511,53 +2718,49 @@ FreeImageMarker(graphPtr, markerPtr)
  * Side effects:
  *	Memory is allocated for the image marker structure.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Marker *
-CreateImageMarker()
+CreateImageProc(void)
 {
     ImageMarker *imPtr;
 
-    imPtr = Blt_Calloc(1, sizeof(ImageMarker));
-    if (imPtr != NULL) {
-	imPtr->classPtr = &imageMarkerClass;
-    }
+    imPtr = Blt_AssertCalloc(1, sizeof(ImageMarker));
+    imPtr->classPtr = &imageMarkerClass;
     return (Marker *)imPtr;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * ConfigureTextMarker --
+ * ConfigureTextProc --
  *
- *	This procedure is called to process an argv/argc list, plus
- *	the Tk option database, in order to configure (or
- *	reconfigure) a text marker.
+ *	This procedure is called to process an objv/objc list, plus the Tk
+ *	option database, in order to configure (or reconfigure) a text marker.
  *
  * Results:
- *	A standard Tcl result.  If TCL_ERROR is returned, then
- *	interp->result contains an error message.
+ *	A standard TCL result.  If TCL_ERROR is returned, then interp->result
+ *	contains an error message.
  *
  * Side effects:
- *	Configuration information, such as text string, colors, font,
- *	etc. get set for markerPtr;  old resources get freed, if there
- *	were any.  The marker is eventually redisplayed.
+ *	Configuration information, such as text string, colors, font, etc. get
+ *	set for markerPtr; old resources get freed, if there were any.  The
+ *	marker is eventually redisplayed.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigureTextMarker(markerPtr)
-    Marker *markerPtr;
+ConfigureTextProc(Marker *markerPtr)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     TextMarker *tmPtr = (TextMarker *)markerPtr;
     GC newGC;
     XGCValues gcValues;
     unsigned long gcMask;
 
-    tmPtr->style.theta = FMOD(tmPtr->style.theta, 360.0);
-    if (tmPtr->style.theta < 0.0) {
-	tmPtr->style.theta += 360.0;
+    tmPtr->style.angle = (float)FMOD(tmPtr->style.angle, 360.0);
+    if (tmPtr->style.angle < 0.0f) {
+	tmPtr->style.angle += 360.0f;
     }
     newGC = NULL;
     if (tmPtr->fillColor != NULL) {
@@ -2569,9 +2772,8 @@ ConfigureTextMarker(markerPtr)
 	Tk_FreeGC(graphPtr->display, tmPtr->fillGC);
     }
     tmPtr->fillGC = newGC;
-    Blt_ResetTextStyle(graphPtr->tkwin, &tmPtr->style);
 
-    if (Blt_ConfigModified(tmPtr->classPtr->configSpecs, "-text", 
+    if (Blt_ConfigModified(markerPtr->classPtr->configSpecs, "-text", 
 	(char *)NULL)) {
 	if (tmPtr->textPtr != NULL) {
 	    Blt_Free(tmPtr->textPtr);
@@ -2579,12 +2781,13 @@ ConfigureTextMarker(markerPtr)
 	}
 	tmPtr->width = tmPtr->height = 0;
 	if (tmPtr->string != NULL) {
-	    register int i;
+	    int i;
 	    double rotWidth, rotHeight;
 
-	    tmPtr->textPtr = Blt_GetTextLayout(tmPtr->string, &tmPtr->style);
+	    tmPtr->textPtr = 
+		Blt_Ts_CreateLayout(tmPtr->string, -1, &tmPtr->style);
 	    Blt_GetBoundingBox(tmPtr->textPtr->width, tmPtr->textPtr->height, 
-	       tmPtr->style.theta, &rotWidth, &rotHeight, tmPtr->outline);
+	       tmPtr->style.angle, &rotWidth, &rotHeight, tmPtr->outline);
 	    tmPtr->width = ROUND(rotWidth);
 	    tmPtr->height = ROUND(rotHeight);
 	    for (i = 0; i < 4; i++) {
@@ -2595,8 +2798,8 @@ ConfigureTextMarker(markerPtr)
 	    tmPtr->outline[4].y = tmPtr->outline[0].y;
 	}
     }
-    tmPtr->flags |= MAP_ITEM;
-    if (tmPtr->drawUnder) {
+    markerPtr->flags |= MAP_ITEM;
+    if (markerPtr->drawUnder) {
 	graphPtr->flags |= REDRAW_BACKING_STORE;
     }
     Blt_EventuallyRedrawGraph(graphPtr);
@@ -2604,134 +2807,126 @@ ConfigureTextMarker(markerPtr)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * MapTextMarker --
+ * MapTextProc --
  *
  *	Calculate the layout position for a text marker.  Positional
- *	information is saved in the marker.  If the text is rotated,
- *	a bitmap containing the text is created.
+ *	information is saved in the marker.  If the text is rotated, a bitmap
+ *	containing the text is created.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	If no background color has been specified, the GC stipple
- *	origins are changed to current window coordinates. For both
- *	rotated and non-rotated text, if any old bitmap is leftover,
- *	it is freed.
+ *	If no background color has been specified, the GC stipple origins are
+ *	changed to current window coordinates. For both rotated and
+ *	non-rotated text, if any old bitmap is leftover, it is freed.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MapTextMarker(markerPtr)
-    Marker *markerPtr;
+MapTextProc(Marker *markerPtr)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     TextMarker *tmPtr = (TextMarker *)markerPtr;
-    Extents2D exts;
-    Point2D anchorPos;
+    Region2d extents;
+    Point2d anchorPt;
 
     if (tmPtr->string == NULL) {
 	return;
     }
-    anchorPos = MapPoint(graphPtr, tmPtr->worldPts, &tmPtr->axes);
-    anchorPos = Blt_TranslatePoint(&anchorPos, tmPtr->width, tmPtr->height, 
-	tmPtr->anchor);
-    anchorPos.x += tmPtr->xOffset;
-    anchorPos.y += tmPtr->yOffset;
+    anchorPt = MapPoint(markerPtr->worldPts, &markerPtr->axes);
+    anchorPt = Blt_AnchorPoint(anchorPt.x, anchorPt.y, (double)(tmPtr->width), 
+	(double)(tmPtr->height), tmPtr->anchor);
+    anchorPt.x += markerPtr->xOffset;
+    anchorPt.y += markerPtr->yOffset;
     /*
-     * Determine the bounding box of the text and test to see if it
-     * is at least partially contained within the plotting area.
+     * Determine the bounding box of the text and test to see if it is at
+     * least partially contained within the plotting area.
      */
-    exts.left = anchorPos.x;
-    exts.top = anchorPos.y;
-    exts.right = anchorPos.x + tmPtr->width - 1;
-    exts.bottom = anchorPos.y + tmPtr->height - 1;
-    tmPtr->clipped = BoxesDontOverlap(graphPtr, &exts);
-    tmPtr->anchorPos = anchorPos;
+    extents.left = anchorPt.x;
+    extents.top = anchorPt.y;
+    extents.right = anchorPt.x + tmPtr->width - 1;
+    extents.bottom = anchorPt.y + tmPtr->height - 1;
+    markerPtr->clipped = BoxesDontOverlap(graphPtr, &extents);
+    tmPtr->anchorPt = anchorPt;
 
 }
 
 static int
-PointInTextMarker(markerPtr, samplePtr)
-    Marker *markerPtr;
-    Point2D *samplePtr;
+PointInTextProc(Marker *markerPtr, Point2d *samplePtr)
 {
     TextMarker *tmPtr = (TextMarker *)markerPtr;
 
     if (tmPtr->string == NULL) {
 	return 0;
     }
-    if (tmPtr->style.theta != 0.0) {
-	Point2D points[5];
-	register int i;
+    if (tmPtr->style.angle != 0.0f) {
+	Point2d points[5];
+	int i;
 
 	/* 
-	 * Figure out the bounding polygon (isolateral) for the text
-	 * and see if the point is inside of it.
+	 * Figure out the bounding polygon (isolateral) for the text and see
+	 * if the point is inside of it.
 	 */
-
 	for (i = 0; i < 5; i++) {
-	    points[i].x = tmPtr->outline[i].x + tmPtr->anchorPos.x;
-	    points[i].y = tmPtr->outline[i].y + tmPtr->anchorPos.y;
+	    points[i].x = tmPtr->outline[i].x + tmPtr->anchorPt.x;
+	    points[i].y = tmPtr->outline[i].y + tmPtr->anchorPt.y;
 	}
 	return Blt_PointInPolygon(samplePtr, points, 5);
     } 
-    return ((samplePtr->x >= tmPtr->anchorPos.x) && 
-	    (samplePtr->x < (tmPtr->anchorPos.x + tmPtr->width)) &&
-	    (samplePtr->y >= tmPtr->anchorPos.y) && 
-	    (samplePtr->y < (tmPtr->anchorPos.y + tmPtr->height)));
+    return ((samplePtr->x >= tmPtr->anchorPt.x) && 
+	    (samplePtr->x < (tmPtr->anchorPt.x + tmPtr->width)) &&
+	    (samplePtr->y >= tmPtr->anchorPt.y) && 
+	    (samplePtr->y < (tmPtr->anchorPt.y + tmPtr->height)));
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * RegionInTextMarker --
+ * RegionInTextProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-RegionInTextMarker(markerPtr, extsPtr, enclosed)
-    Marker *markerPtr;
-    Extents2D *extsPtr;
-    int enclosed;
+RegionInTextProc(Marker *markerPtr, Region2d *extsPtr, int enclosed)
 {
     TextMarker *tmPtr = (TextMarker *)markerPtr;
 
-    if (tmPtr->nWorldPts < 1) {
+    if (markerPtr->nWorldPts < 1) {
 	return FALSE;
     }
-    if (tmPtr->style.theta != 0.0) {
-	Point2D points[5];
-	register int i;
+    if (tmPtr->style.angle != 0.0f) {
+	Point2d points[5];
+	int i;
 	
 	/*  
-	 * Generate the bounding polygon (isolateral) for the bitmap
-	 * and see if the point is inside of it.  
+	 * Generate the bounding polygon (isolateral) for the bitmap and see
+	 * if the point is inside of it.
 	 */
 	for (i = 0; i < 4; i++) {
-	    points[i].x = tmPtr->outline[i].x + tmPtr->anchorPos.x;
-	    points[i].y = tmPtr->outline[i].y + tmPtr->anchorPos.y;
+	    points[i].x = tmPtr->outline[i].x + tmPtr->anchorPt.x;
+	    points[i].y = tmPtr->outline[i].y + tmPtr->anchorPt.y;
 	}
 	return Blt_RegionInPolygon(extsPtr, points, 4, enclosed);
     } 
     if (enclosed) {
-	return ((tmPtr->anchorPos.x >= extsPtr->left) &&
-		(tmPtr->anchorPos.y >= extsPtr->top) && 
-		((tmPtr->anchorPos.x + tmPtr->width) <= extsPtr->right) &&
-		((tmPtr->anchorPos.y + tmPtr->height) <= extsPtr->bottom));
+	return ((tmPtr->anchorPt.x >= extsPtr->left) &&
+		(tmPtr->anchorPt.y >= extsPtr->top) && 
+		((tmPtr->anchorPt.x + tmPtr->width) <= extsPtr->right) &&
+		((tmPtr->anchorPt.y + tmPtr->height) <= extsPtr->bottom));
     }
-    return !((tmPtr->anchorPos.x >= extsPtr->right) ||
-	     (tmPtr->anchorPos.y >= extsPtr->bottom) ||
-	     ((tmPtr->anchorPos.x + tmPtr->width) <= extsPtr->left) ||
-	     ((tmPtr->anchorPos.y + tmPtr->height) <= extsPtr->top));
+    return !((tmPtr->anchorPt.x >= extsPtr->right) ||
+	     (tmPtr->anchorPt.y >= extsPtr->bottom) ||
+	     ((tmPtr->anchorPt.x + tmPtr->width) <= extsPtr->left) ||
+	     ((tmPtr->anchorPt.y + tmPtr->height) <= extsPtr->top));
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * DrawTextMarker --
+ * DrawTextProc --
  *
  *	Draws the text marker on the graph.
  *
@@ -2739,52 +2934,47 @@ RegionInTextMarker(markerPtr, extsPtr, enclosed)
  *	None.
  *
  * Side effects:
- *	Commands are output to X to draw the marker in its current
- *	mode.
+ *	Commands are output to X to draw the marker in its current mode.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DrawTextMarker(markerPtr, drawable)
-    Marker *markerPtr;
-    Drawable drawable;		/* Pixmap or window to draw into */
+DrawTextProc(Marker *markerPtr, Drawable drawable) 
 {
     TextMarker *tmPtr = (TextMarker *)markerPtr;
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
 
     if (tmPtr->string == NULL) {
 	return;
     }
     if (tmPtr->fillGC != NULL) {
-	XPoint pointArr[4];
-	register int i;
+	XPoint points[4];
+	int i;
 
 	/*
-	 * Simulate the rotated background of the bitmap by
-	 * filling a bounding polygon with the background color.
+	 * Simulate the rotated background of the bitmap by filling a bounding
+	 * polygon with the background color.
 	 */
 	for (i = 0; i < 4; i++) {
-	    pointArr[i].x = (short int)
-		(tmPtr->outline[i].x + tmPtr->anchorPos.x);
-	    pointArr[i].y = (short int)
-		(tmPtr->outline[i].y + tmPtr->anchorPos.y);
+	    points[i].x = (short int)(tmPtr->outline[i].x + tmPtr->anchorPt.x);
+	    points[i].y = (short int)(tmPtr->outline[i].y + tmPtr->anchorPt.y);
 	}
-	XFillPolygon(graphPtr->display, drawable, tmPtr->fillGC, pointArr, 4,
+	XFillPolygon(graphPtr->display, drawable, tmPtr->fillGC, points, 4,
 	    Convex, CoordModeOrigin);
     }
     if (tmPtr->style.color != NULL) {
-	Blt_DrawTextLayout(graphPtr->tkwin, drawable, tmPtr->textPtr,
-	    &tmPtr->style, (int)tmPtr->anchorPos.x, (int)tmPtr->anchorPos.y);
+	Blt_Ts_DrawLayout(graphPtr->tkwin, drawable, tmPtr->textPtr,
+	    &tmPtr->style, (int)tmPtr->anchorPt.x, (int)tmPtr->anchorPt.y, -1);
     }
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * TextMarkerToPostScript --
+ * TextToPostscriptProc --
  *
- *	Outputs PostScript commands to draw a text marker at a given
- *	x,y coordinate, rotation, anchor, and font.
+ *	Outputs PostScript commands to draw a text marker at a given x,y
+ *	coordinate, rotation, anchor, and font.
  *
  * Results:
  *	None.
@@ -2792,12 +2982,10 @@ DrawTextMarker(markerPtr, drawable)
  * Side effects:
  *	PostScript font and color settings are changed.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-TextMarkerToPostScript(markerPtr, psToken)
-    Marker *markerPtr;
-    PsToken psToken;
+TextToPostscriptProc(Marker *markerPtr, Blt_Ps ps)
 {
     TextMarker *tmPtr = (TextMarker *)markerPtr;
 
@@ -2805,59 +2993,56 @@ TextMarkerToPostScript(markerPtr, psToken)
 	return;
     }
     if (tmPtr->fillGC != NULL) {
-	Point2D polygon[4];
-	register int i;
+	Point2d points[4];
+	int i;
 
 	/*
-	 * Simulate the rotated background of the bitmap by
-	 * filling a bounding polygon with the background color.
+	 * Simulate the rotated background of the bitmap by filling a bounding
+	 * polygon with the background color.
 	 */
 	for (i = 0; i < 4; i++) {
-	    polygon[i].x = tmPtr->outline[i].x + tmPtr->anchorPos.x;
-	    polygon[i].y = tmPtr->outline[i].y + tmPtr->anchorPos.y;
+	    points[i].x = tmPtr->outline[i].x + tmPtr->anchorPt.x;
+	    points[i].y = tmPtr->outline[i].y + tmPtr->anchorPt.y;
 	}
-	Blt_BackgroundToPostScript(psToken, tmPtr->fillColor);
-	Blt_PolygonToPostScript(psToken, polygon, 4);
+	Blt_Ps_XSetBackground(ps, tmPtr->fillColor);
+	Blt_Ps_XFillPolygon(ps, points, 4);
     }
-    Blt_TextToPostScript(psToken, tmPtr->string, &tmPtr->style, 
-		 tmPtr->anchorPos.x, tmPtr->anchorPos.y);
+    Blt_Ps_DrawText(ps, tmPtr->string, &tmPtr->style, tmPtr->anchorPt.x, 
+	tmPtr->anchorPt.y);
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * FreeTextMarker --
+ * FreeTextProc --
  *
- *	Destroys the structure containing the attributes of the text
- * 	marker.
+ *	Destroys the structure containing the attributes of the text marker.
  *
  * Results:
  *	None.
  *
  * Side effects:
  *	Text attributes (GCs, colors, stipple, font, etc) get destroyed.
- *	Memory is released, X resources are freed, and the graph is
- *	redrawn.
+ *	Memory is released, X resources are freed, and the graph is redrawn.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-FreeTextMarker(graphPtr, markerPtr)
-    Graph *graphPtr;
-    Marker *markerPtr;
+FreeTextProc(Marker *markerPtr)
 {
     TextMarker *tmPtr = (TextMarker *)markerPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
 
-    Blt_FreeTextStyle(graphPtr->display, &tmPtr->style);
+    Blt_Ts_FreeStyle(graphPtr->display, &tmPtr->style);
     if (tmPtr->textPtr != NULL) {
 	Blt_Free(tmPtr->textPtr);
     }
 }
 
 /*
- * ----------------------------------------------------------------------
- *
- * CreateTextMarker --
+ *---------------------------------------------------------------------------
+
+ * CreateTextProc --
  *
  *	Allocate memory and initialize methods for the new text marker.
  *
@@ -2867,66 +3052,56 @@ FreeTextMarker(graphPtr, markerPtr)
  * Side effects:
  *	Memory is allocated for the text marker structure.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Marker *
-CreateTextMarker()
+CreateTextProc(void)
 {
     TextMarker *tmPtr;
 
-    tmPtr = Blt_Calloc(1, sizeof(TextMarker));
-    assert(tmPtr);
-
+    tmPtr = Blt_AssertCalloc(1, sizeof(TextMarker));
     tmPtr->classPtr = &textMarkerClass;
-    Blt_InitTextStyle(&tmPtr->style);
+    Blt_Ts_InitStyle(tmPtr->style);
     tmPtr->style.anchor = TK_ANCHOR_NW;
     tmPtr->style.padLeft = tmPtr->style.padRight = 4;
     tmPtr->style.padTop = tmPtr->style.padBottom = 4;
-
     return (Marker *)tmPtr;
 }
 
-
-static void ChildEventProc _ANSI_ARGS_((ClientData clientData,
-	XEvent *eventPtr));
-static void ChildGeometryProc _ANSI_ARGS_((ClientData clientData,
-	Tk_Window tkwin));
-
-static void ChildCustodyProc _ANSI_ARGS_((ClientData clientData,
-	Tk_Window tkwin));
-
+static Tk_EventProc ChildEventProc;
+static Tk_GeomRequestProc ChildGeometryProc;
+static Tk_GeomLostSlaveProc ChildCustodyProc;
 static Tk_GeomMgr winMarkerMgrInfo =
 {
-    "graph",			/* Name of geometry manager used by winfo */
+    (char *)"graph",		/* Name of geometry manager used by winfo */
     ChildGeometryProc,		/* Procedure to for new geometry requests */
     ChildCustodyProc,		/* Procedure when window is taken away */
 };
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * ConfigureWindowMarker --
+ * ConfigureWindowProc --
  *
- *	This procedure is called to process an argv/argc list, plus
- *	the Tk option database, in order to configure (or reconfigure)
- *	a window marker.
+ *	This procedure is called to process an objv/objc list, plus the Tk
+ *	option database, in order to configure (or reconfigure) a window
+ *	marker.
  *
  * Results:
- *	A standard Tcl result.  If TCL_ERROR is returned, then
- *	interp->result contains an error message.
+ *	A standard TCL result.  If TCL_ERROR is returned, then interp->result
+ *	contains an error message.
  *
  * Side effects:
  *	Configuration information, such as window pathname, placement,
- *	etc. get set for markerPtr; old resources get freed, if there
- *	were any.  The marker is eventually redisplayed.
+ *	etc. get set for markerPtr; old resources get freed, if there were
+ *	any.  The marker is eventually redisplayed.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigureWindowMarker(markerPtr)
-    Marker *markerPtr;
+ConfigureWindowProc(Marker *markerPtr)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     WindowMarker *wmPtr = (WindowMarker *)markerPtr;
     Tk_Window tkwin;
 
@@ -2956,9 +3131,8 @@ ConfigureWindowMarker(markerPtr)
 	Tk_ManageGeometry(tkwin, &winMarkerMgrInfo, wmPtr);
     }
     wmPtr->tkwin = tkwin;
-
-    wmPtr->flags |= MAP_ITEM;
-    if (wmPtr->drawUnder) {
+    markerPtr->flags |= MAP_ITEM;
+    if (markerPtr->drawUnder) {
 	graphPtr->flags |= REDRAW_BACKING_STORE;
     }
     Blt_EventuallyRedrawGraph(graphPtr);
@@ -2966,9 +3140,9 @@ ConfigureWindowMarker(markerPtr)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * MapWindowMarker --
+ * MapWindowProc --
  *
  *	Calculate the layout position for a window marker.  Positional
  *	information is saved in the marker.
@@ -2976,21 +3150,21 @@ ConfigureWindowMarker(markerPtr)
  * Results:
  *	None.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MapWindowMarker(markerPtr)
-    Marker *markerPtr;
+MapWindowProc(Marker *markerPtr)
 {
     WindowMarker *wmPtr = (WindowMarker *)markerPtr;
-    Graph *graphPtr = markerPtr->graphPtr;
-    Extents2D exts;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
+    Point2d anchorPt;
+    Region2d extents;
     int width, height;
 
     if (wmPtr->tkwin == (Tk_Window)NULL) {
 	return;
     }
-    wmPtr->anchorPos = MapPoint(graphPtr, wmPtr->worldPts, &wmPtr->axes);
+    anchorPt = MapPoint(markerPtr->worldPts, &markerPtr->axes);
 
     width = Tk_ReqWidth(wmPtr->tkwin);
     height = Tk_ReqHeight(wmPtr->tkwin);
@@ -3000,86 +3174,79 @@ MapWindowMarker(markerPtr)
     if (wmPtr->reqHeight > 0) {
 	height = wmPtr->reqHeight;
     }
-    wmPtr->anchorPos = Blt_TranslatePoint(&wmPtr->anchorPos, width, height, 
-	wmPtr->anchor);
-    wmPtr->anchorPos.x += wmPtr->xOffset;
-    wmPtr->anchorPos.y += wmPtr->yOffset;
+    wmPtr->anchorPt = Blt_AnchorPoint(anchorPt.x, anchorPt.y, (double)width, 
+	(double)height, wmPtr->anchor);
+    wmPtr->anchorPt.x += markerPtr->xOffset;
+    wmPtr->anchorPt.y += markerPtr->yOffset;
     wmPtr->width = width;
     wmPtr->height = height;
 
     /*
-     * Determine the bounding box of the window and test to see if it
-     * is at least partially contained within the plotting area.
+     * Determine the bounding box of the window and test to see if it is at
+     * least partially contained within the plotting area.
      */
-    exts.left = wmPtr->anchorPos.x;
-    exts.top = wmPtr->anchorPos.y;
-    exts.right = wmPtr->anchorPos.x + wmPtr->width - 1;
-    exts.bottom = wmPtr->anchorPos.y + wmPtr->height - 1;
-    wmPtr->clipped = BoxesDontOverlap(graphPtr, &exts);
+    extents.left = wmPtr->anchorPt.x;
+    extents.top = wmPtr->anchorPt.y;
+    extents.right = wmPtr->anchorPt.x + wmPtr->width - 1;
+    extents.bottom = wmPtr->anchorPt.y + wmPtr->height - 1;
+    markerPtr->clipped = BoxesDontOverlap(graphPtr, &extents);
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * PointInWindowMarker --
+ * PointInWindowProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-PointInWindowMarker(markerPtr, samplePtr)
-    Marker *markerPtr;
-    Point2D *samplePtr;
+PointInWindowProc(Marker *markerPtr, Point2d *samplePtr)
 {
     WindowMarker *wmPtr = (WindowMarker *)markerPtr;
 
-    return ((samplePtr->x >= wmPtr->anchorPos.x) && 
-	    (samplePtr->x < (wmPtr->anchorPos.x + wmPtr->width)) &&
-	    (samplePtr->y >= wmPtr->anchorPos.y) && 
-	    (samplePtr->y < (wmPtr->anchorPos.y + wmPtr->height)));
+    return ((samplePtr->x >= wmPtr->anchorPt.x) && 
+	    (samplePtr->x < (wmPtr->anchorPt.x + wmPtr->width)) &&
+	    (samplePtr->y >= wmPtr->anchorPt.y) && 
+	    (samplePtr->y < (wmPtr->anchorPt.y + wmPtr->height)));
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * RegionInWindowMarker --
+ * RegionInWindowProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-RegionInWindowMarker(markerPtr, extsPtr, enclosed)
-    Marker *markerPtr;
-    Extents2D *extsPtr;
-    int enclosed;
+RegionInWindowProc(Marker *markerPtr, Region2d *extsPtr, int enclosed)
 {
     WindowMarker *wmPtr = (WindowMarker *)markerPtr;
 
-    if (wmPtr->nWorldPts < 1) {
+    if (markerPtr->nWorldPts < 1) {
 	return FALSE;
     }
     if (enclosed) {
-	return ((wmPtr->anchorPos.x >= extsPtr->left) &&
-		(wmPtr->anchorPos.y >= extsPtr->top) && 
-		((wmPtr->anchorPos.x + wmPtr->width) <= extsPtr->right) &&
-		((wmPtr->anchorPos.y + wmPtr->height) <= extsPtr->bottom));
+	return ((wmPtr->anchorPt.x >= extsPtr->left) &&
+		(wmPtr->anchorPt.y >= extsPtr->top) && 
+		((wmPtr->anchorPt.x + wmPtr->width) <= extsPtr->right) &&
+		((wmPtr->anchorPt.y + wmPtr->height) <= extsPtr->bottom));
     }
-    return !((wmPtr->anchorPos.x >= extsPtr->right) ||
-	     (wmPtr->anchorPos.y >= extsPtr->bottom) ||
-	     ((wmPtr->anchorPos.x + wmPtr->width) <= extsPtr->left) ||
-	     ((wmPtr->anchorPos.y + wmPtr->height) <= extsPtr->top));
+    return !((wmPtr->anchorPt.x >= extsPtr->right) ||
+	     (wmPtr->anchorPt.y >= extsPtr->bottom) ||
+	     ((wmPtr->anchorPt.x + wmPtr->width) <= extsPtr->left) ||
+	     ((wmPtr->anchorPt.y + wmPtr->height) <= extsPtr->top));
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * DrawWindowMarker --
+ * DrawWindowProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static void
-DrawWindowMarker(markerPtr, drawable)
-    Marker *markerPtr;
-    Drawable drawable;		/* Pixmap or window to draw into */
+DrawWindowProc(Marker *markerPtr, Drawable drawable)
 {
     WindowMarker *wmPtr = (WindowMarker *)markerPtr;
 
@@ -3088,10 +3255,10 @@ DrawWindowMarker(markerPtr, drawable)
     }
     if ((wmPtr->height != Tk_Height(wmPtr->tkwin)) ||
 	(wmPtr->width != Tk_Width(wmPtr->tkwin)) ||
-	((int)wmPtr->anchorPos.x != Tk_X(wmPtr->tkwin)) ||
-	((int)wmPtr->anchorPos.y != Tk_Y(wmPtr->tkwin))) {
-	Tk_MoveResizeWindow(wmPtr->tkwin, (int)wmPtr->anchorPos.x, 
-	    (int)wmPtr->anchorPos.y, wmPtr->width, wmPtr->height);
+	((int)wmPtr->anchorPt.x != Tk_X(wmPtr->tkwin)) ||
+	((int)wmPtr->anchorPt.y != Tk_Y(wmPtr->tkwin))) {
+	Tk_MoveResizeWindow(wmPtr->tkwin, (int)wmPtr->anchorPt.x, 
+	    (int)wmPtr->anchorPt.y, wmPtr->width, wmPtr->height);
     }
     if (!Tk_IsMapped(wmPtr->tkwin)) {
 	Tk_MapWindow(wmPtr->tkwin);
@@ -3099,16 +3266,14 @@ DrawWindowMarker(markerPtr, drawable)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * WindowMarkerToPostScript --
+ * WindowToPostscriptProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-WindowMarkerToPostScript(markerPtr, psToken)
-    Marker *markerPtr;
-    PsToken psToken;
+WindowToPostscriptProc(Marker *markerPtr, Blt_Ps ps)
 {
     WindowMarker *wmPtr = (WindowMarker *)markerPtr;
 
@@ -3116,18 +3281,18 @@ WindowMarkerToPostScript(markerPtr, psToken)
 	return;
     }
     if (Tk_IsMapped(wmPtr->tkwin)) {
-	Blt_WindowToPostScript(psToken, wmPtr->tkwin, wmPtr->anchorPos.x, 
-	       wmPtr->anchorPos.y);
+	Blt_Ps_XDrawWindow(ps, wmPtr->tkwin, wmPtr->anchorPt.x, 
+		wmPtr->anchorPt.y);
     }
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * FreeWindowMarker --
+ * FreeWindowProc --
  *
- *	Destroys the structure containing the attributes of the window
- *      marker.
+ *	Destroys the structure containing the attributes of the window *
+ *	marker.
  *
  * Results:
  *	None.
@@ -3135,13 +3300,10 @@ WindowMarkerToPostScript(markerPtr, psToken)
  * Side effects:
  *	Window is destroyed and removed from the screen.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
-/*ARGSUSED*/
 static void
-FreeWindowMarker(graphPtr, markerPtr)
-    Graph *graphPtr;
-    Marker *markerPtr;
+FreeWindowProc(Marker *markerPtr)
 {
     WindowMarker *wmPtr = (WindowMarker *)markerPtr;
 
@@ -3154,9 +3316,9 @@ FreeWindowMarker(graphPtr, markerPtr)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * CreateWindowMarker --
+ * CreateWindowProc --
  *
  *	Allocate memory and initialize methods for the new window marker.
  *
@@ -3166,29 +3328,26 @@ FreeWindowMarker(graphPtr, markerPtr)
  * Side effects:
  *	Memory is allocated for the window marker structure.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Marker *
-CreateWindowMarker()
+CreateWindowProc(void)
 {
     WindowMarker *wmPtr;
 
-    wmPtr = Blt_Calloc(1, sizeof(WindowMarker));
-    if (wmPtr != NULL) {
-	wmPtr->classPtr = &windowMarkerClass;
-    }
+    wmPtr = Blt_AssertCalloc(1, sizeof(WindowMarker));
+    wmPtr->classPtr = &windowMarkerClass;
     return (Marker *)wmPtr;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ChildEventProc --
  *
- *	This procedure is invoked whenever StructureNotify events
- *	occur for a window that's managed as part of a graph window
- *	marker. This procedure's only purpose is to clean up when
- *	windows are deleted.
+ *	This procedure is invoked whenever StructureNotify events occur for a
+ *	window that's managed as part of a graph window marker. This
+ *	procedure's only purpose is to clean up when windows are deleted.
  *
  * Results:
  *	None.
@@ -3197,12 +3356,10 @@ CreateWindowMarker()
  *	The window is disassociated from the window item when it is
  *	deleted.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-ChildEventProc(clientData, eventPtr)
-    ClientData clientData;	/* Pointer to record describing window item. */
-    XEvent *eventPtr;		/* Describes what just happened. */
+ChildEventProc(ClientData clientData, XEvent *eventPtr)
 {
     WindowMarker *wmPtr = clientData;
 
@@ -3212,12 +3369,12 @@ ChildEventProc(clientData, eventPtr)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ChildGeometryProc --
  *
- *	This procedure is invoked whenever a window that's associated
- *	with a window item changes its requested dimensions.
+ *	This procedure is invoked whenever a window that's associated with a
+ *	window item changes its requested dimensions.
  *
  * Results:
  *	None.
@@ -3226,13 +3383,11 @@ ChildEventProc(clientData, eventPtr)
  *	The size and location on the window of the window may change,
  *	depending on the options specified for the window item.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /* ARGSUSED */
 static void
-ChildGeometryProc(clientData, tkwin)
-    ClientData clientData;	/* Pointer to record for window item. */
-    Tk_Window tkwin;		/* Window that changed its desired size. */
+ChildGeometryProc(ClientData clientData, Tk_Window tkwin)
 {
     WindowMarker *wmPtr = clientData;
 
@@ -3245,95 +3400,95 @@ ChildGeometryProc(clientData, tkwin)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ChildCustodyProc --
  *
- *	This procedure is invoked when an embedded window has been
- *	stolen by another geometry manager.  The information and
- *	memory associated with the widget is released.
+ *	This procedure is invoked when an embedded window has been stolen by
+ *	another geometry manager.  The information and memory associated with
+ *	the widget is released.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	Arranges for the graph to be redrawn without the embedded
- *	widget at the next idle point.
+ *	Arranges for the graph to be redrawn without the embedded widget at
+ *	the next idle point.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
  /* ARGSUSED */
 static void
-ChildCustodyProc(clientData, tkwin)
-    ClientData clientData;	/* Window marker to be destroyed. */
-    Tk_Window tkwin;		/* Not used. */
+ChildCustodyProc(ClientData clientData, Tk_Window tkwin)
 {
     Marker *markerPtr = clientData;
     Graph *graphPtr;
 
-    graphPtr = markerPtr->graphPtr;
-    DestroyMarker(markerPtr);
+    graphPtr = markerPtr->obj.graphPtr;
+    markerPtr->flags |= DELETE_PENDING;
+    Tcl_EventuallyFree(markerPtr, FreeMarker);
     /*
-     * Not really needed. We should get an Expose event when the
-     * child window is unmapped.
+     * Not really needed. We should get an Expose event when the child window
+     * is unmapped.
      */
     Blt_EventuallyRedrawGraph(graphPtr);
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * MapLineMarker --
+ * MapLineProc --
  *
  *	Calculate the layout position for a line marker.  Positional
- *	information is saved in the marker.  The line positions are
- *	stored in an array of points (malloc'ed).
+ *	information is saved in the marker.  The line positions are stored in
+ *	an array of points (malloc'ed).
  *
  * Results:
  *	None.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MapLineMarker(markerPtr)
-    Marker *markerPtr;
+MapLineProc(Marker *markerPtr)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     LineMarker *lmPtr = (LineMarker *)markerPtr;
-    Point2D *srcPtr, *endPtr;
-    Segment2D *segments, *segPtr;
-    Point2D p, q, next;
-    Extents2D exts;
+    Point2d *srcPtr, *pend;
+    Segment2d *segments, *segPtr;
+    Point2d p, q;
+    Region2d extents;
 
     lmPtr->nSegments = 0;
     if (lmPtr->segments != NULL) {
 	Blt_Free(lmPtr->segments);
     }
-    if (lmPtr->nWorldPts < 2) {
+    if (markerPtr->nWorldPts < 2) {
 	return;			/* Too few points */
     }
-    Blt_GraphExtents(graphPtr, &exts);
+    Blt_GraphExtents(graphPtr, &extents);
 
     /* 
-     * Allow twice the number of world coordinates. The line will
-     * represented as series of line segments, not one continous
-     * polyline.  This is because clipping against the plot area may
-     * chop the line into several disconnected segments.
+     * Allow twice the number of world coordinates. The line will represented
+     * as series of line segments, not one continous polyline.  This is
+     * because clipping against the plot area may chop the line into several
+     * disconnected segments.
      */
-    segments = Blt_Malloc(lmPtr->nWorldPts * sizeof(Segment2D));
-    srcPtr = lmPtr->worldPts;
-    p = MapPoint(graphPtr, srcPtr, &lmPtr->axes);
-    p.x += lmPtr->xOffset;
-    p.y += lmPtr->yOffset;
+    segments = Blt_AssertMalloc(markerPtr->nWorldPts * sizeof(Segment2d));
+    srcPtr = markerPtr->worldPts;
+    p = MapPoint(srcPtr, &markerPtr->axes);
+    p.x += markerPtr->xOffset;
+    p.y += markerPtr->yOffset;
 
     segPtr = segments;
-    for (srcPtr++, endPtr = lmPtr->worldPts + lmPtr->nWorldPts; 
-	 srcPtr < endPtr; srcPtr++) {
-	next = MapPoint(graphPtr, srcPtr, &lmPtr->axes);
-	next.x += lmPtr->xOffset;
-	next.y += lmPtr->yOffset;
+    for (srcPtr++, pend = markerPtr->worldPts + markerPtr->nWorldPts; 
+	 srcPtr < pend; srcPtr++) {
+	Point2d next;
+
+	next = MapPoint(srcPtr, &markerPtr->axes);
+	next.x += markerPtr->xOffset;
+	next.y += markerPtr->yOffset;
 	q = next;
-	if (Blt_LineRectClip(&exts, &p, &q)) {
+	if (Blt_LineRectClip(&extents, &p, &q)) {
 	    segPtr->p = p;
 	    segPtr->q = q;
 	    segPtr++;
@@ -3342,46 +3497,39 @@ MapLineMarker(markerPtr)
     }
     lmPtr->nSegments = segPtr - segments;
     lmPtr->segments = segments;
-    lmPtr->clipped = (lmPtr->nSegments == 0);
+    markerPtr->clipped = (lmPtr->nSegments == 0);
 }
 
 static int
-PointInLineMarker(markerPtr, samplePtr)
-    Marker *markerPtr;
-    Point2D *samplePtr;
+PointInLineProc(Marker *markerPtr, Point2d *samplePtr)
 {
     LineMarker *lmPtr = (LineMarker *)markerPtr;
 
     return Blt_PointInSegments(samplePtr, lmPtr->segments, lmPtr->nSegments, 
-	   (double)lmPtr->graphPtr->halo);
+	   (double)markerPtr->obj.graphPtr->halo);
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * RegionInLineMarker --
+ * RegionInLineProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-RegionInLineMarker(markerPtr, extsPtr, enclosed)
-    Marker *markerPtr;
-    Extents2D *extsPtr;
-    int enclosed;
+RegionInLineProc(Marker *markerPtr, Region2d *extsPtr, int enclosed)
 {
-    LineMarker *lmPtr = (LineMarker *)markerPtr;
-
-    if (lmPtr->nWorldPts < 2) {
+    if (markerPtr->nWorldPts < 2) {
 	return FALSE;
     }
     if (enclosed) {
-	Point2D p;
-	Point2D *pointPtr, *endPtr;
+	Point2d *pp, *pend;
 
-	for (pointPtr = lmPtr->worldPts, 
-		 endPtr = lmPtr->worldPts + lmPtr->nWorldPts;
-	     pointPtr < endPtr; pointPtr++) {
-	    p = MapPoint(lmPtr->graphPtr, pointPtr, &lmPtr->axes);
+	for (pp = markerPtr->worldPts, pend = pp + markerPtr->nWorldPts; 
+	     pp < pend; pp++) {
+	    Point2d p;
+
+	    p = MapPoint(pp, &markerPtr->axes);
 	    if ((p.x < extsPtr->left) && (p.x > extsPtr->right) &&
 		(p.y < extsPtr->top) && (p.y > extsPtr->bottom)) {
 		return FALSE;
@@ -3389,16 +3537,16 @@ RegionInLineMarker(markerPtr, extsPtr, enclosed)
 	}
 	return TRUE;		/* All points inside bounding box. */
     } else {
-	Point2D p, q;
 	int count;
-	Point2D *pointPtr, *endPtr;
+	Point2d *pp, *pend;
 
 	count = 0;
-	for (pointPtr = lmPtr->worldPts, 
-		 endPtr = lmPtr->worldPts + (lmPtr->nWorldPts - 1);
-	     pointPtr < endPtr; pointPtr++) {
-	    p = MapPoint(lmPtr->graphPtr, pointPtr, &lmPtr->axes);
-	    q = MapPoint(lmPtr->graphPtr, pointPtr + 1, &lmPtr->axes);
+	for (pp = markerPtr->worldPts, pend = pp + (markerPtr->nWorldPts - 1); 
+		pp < pend; pp++) {
+	    Point2d p, q;
+
+	    p = MapPoint(pp, &markerPtr->axes);
+	    q = MapPoint(pp + 1, &markerPtr->axes);
 	    if (Blt_LineRectClip(extsPtr, &p, &q)) {
 		count++;
 	    }
@@ -3408,21 +3556,19 @@ RegionInLineMarker(markerPtr, extsPtr, enclosed)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * DrawLineMarker --
+ * DrawLineProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-DrawLineMarker(markerPtr, drawable)
-    Marker *markerPtr;
-    Drawable drawable;		/* Pixmap or window to draw into */
+DrawLineProc(Marker *markerPtr, Drawable drawable)
 {
     LineMarker *lmPtr = (LineMarker *)markerPtr;
 
     if (lmPtr->nSegments > 0) {
-	Graph *graphPtr = markerPtr->graphPtr;
+	Graph *graphPtr = markerPtr->obj.graphPtr;
 
 	Blt_Draw2DSegments(graphPtr->display, drawable, lmPtr->gc, 
 		lmPtr->segments, lmPtr->nSegments);
@@ -3433,31 +3579,29 @@ DrawLineMarker(markerPtr, drawable)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * ConfigureLineMarker --
+ * ConfigureLineProc --
  *
- *	This procedure is called to process an argv/argc list, plus
- *	the Tk option database, in order to configure (or reconfigure)
- *	a line marker.
+ *	This procedure is called to process an objv/objc list, plus the Tk
+ *	option database, in order to configure (or reconfigure) a line marker.
  *
  * Results:
- *	A standard Tcl result.  If TCL_ERROR is returned, then
- *	interp->result contains an error message.
+ *	A standard TCL result.  If TCL_ERROR is returned, then interp->result
+ *	contains an error message.
  *
  * Side effects:
  *	Configuration information, such as line width, colors, dashes,
- *	etc. get set for markerPtr; old resources get freed, if there
- *	were any.  The marker is eventually redisplayed.
+ *	etc. get set for markerPtr; old resources get freed, if there were
+ *	any.  The marker is eventually redisplayed.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-ConfigureLineMarker(markerPtr)
-    Marker *markerPtr;
+ConfigureLineProc(Marker *markerPtr)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     LineMarker *lmPtr = (LineMarker *)markerPtr;
     GC newGC;
     XGCValues gcValues;
@@ -3490,14 +3634,14 @@ ConfigureLineMarker(markerPtr)
 	if (graphPtr->plotBg == NULL) {
 	    pixel = WhitePixelOfScreen(Tk_Screen(graphPtr->tkwin));
 	} else {
-	    pixel = graphPtr->plotBg->pixel;
+	    pixel = Blt_BackgroundBorderColor(graphPtr->plotBg)->pixel;
 	}
 	if (gcMask & GCBackground) {
 	    gcValues.background ^= pixel;
 	}
 	gcValues.foreground ^= pixel;
 	if (drawable != None) {
-	    DrawLineMarker(markerPtr, drawable);
+	    DrawLineProc(markerPtr, drawable);
 	}
     }
     newGC = Blt_GetPrivateGC(graphPtr->tkwin, gcMask, &gcValues);
@@ -3510,13 +3654,13 @@ ConfigureLineMarker(markerPtr)
     lmPtr->gc = newGC;
     if (lmPtr->xor) {
 	if (drawable != None) {
-	    MapLineMarker(markerPtr);
-	    DrawLineMarker(markerPtr, drawable);
+	    MapLineProc(markerPtr);
+	    DrawLineProc(markerPtr, drawable);
 	}
 	return TCL_OK;
     }
-    lmPtr->flags |= MAP_ITEM;
-    if (lmPtr->drawUnder) {
+    markerPtr->flags |= MAP_ITEM;
+    if (markerPtr->drawUnder) {
 	graphPtr->flags |= REDRAW_BACKING_STORE;
     }
     Blt_EventuallyRedrawGraph(graphPtr);
@@ -3524,56 +3668,52 @@ ConfigureLineMarker(markerPtr)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * LineMarkerToPostScript --
+ * LineToPostscriptProc --
  *
- *	Prints postscript commands to display the connect line.
- *	Dashed lines need to be handled specially, especially if a
- *	background color is designated.
+ *	Prints postscript commands to display the connect line.  Dashed lines
+ *	need to be handled specially, especially if a background color is
+ *	designated.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	PostScript output commands are saved in the interpreter
+  *	PostScript output commands are saved in the interpreter
  *	(infoPtr->interp) result field.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-LineMarkerToPostScript(markerPtr, psToken)
-    Marker *markerPtr;
-    PsToken psToken;
+LineToPostscriptProc(Marker *markerPtr, Blt_Ps ps)
 {
     LineMarker *lmPtr = (LineMarker *)markerPtr;
 
     if (lmPtr->nSegments > 0) {
-	Blt_LineAttributesToPostScript(psToken, lmPtr->outlineColor,
-	    lmPtr->lineWidth, &lmPtr->dashes, lmPtr->capStyle,
-	    lmPtr->joinStyle);
+	Blt_Ps_XSetLineAttributes(ps, lmPtr->outlineColor, 
+		lmPtr->lineWidth, &lmPtr->dashes, lmPtr->capStyle,
+		lmPtr->joinStyle);
 	if ((LineIsDashed(lmPtr->dashes)) && (lmPtr->fillColor != NULL)) {
-	    Blt_AppendToPostScript(psToken, "/DashesProc {\n  gsave\n    ",
-		(char *)NULL);
-	    Blt_BackgroundToPostScript(psToken, lmPtr->fillColor);
-	    Blt_AppendToPostScript(psToken, "    ", (char *)NULL);
-	    Blt_LineDashesToPostScript(psToken, (Blt_Dashes *)NULL);
-	    Blt_AppendToPostScript(psToken,
-		"stroke\n",
-		"  grestore\n",
-		"} def\n", (char *)NULL);
+	    Blt_Ps_Append(ps, "/DashesProc {\n  gsave\n    ");
+	    Blt_Ps_XSetBackground(ps, lmPtr->fillColor);
+	    Blt_Ps_Append(ps, "    ");
+	    Blt_Ps_XSetDashes(ps, (Blt_Dashes *)NULL);
+	    Blt_Ps_VarAppend(ps,
+			     "stroke\n",
+			     "  grestore\n",
+			     "} def\n", (char *)NULL);
 	} else {
-	    Blt_AppendToPostScript(psToken, "/DashesProc {} def\n",
-		(char *)NULL);
+	    Blt_Ps_Append(ps, "/DashesProc {} def\n");
 	}
-	Blt_2DSegmentsToPostScript(psToken, lmPtr->segments, lmPtr->nSegments);
+	Blt_Ps_Draw2DSegments(ps, lmPtr->segments, lmPtr->nSegments);
     }
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * FreeLineMarker --
+ * FreeLineProc --
  *
  *	Destroys the structure and attributes of a line marker.
  *
@@ -3581,17 +3721,16 @@ LineMarkerToPostScript(markerPtr, psToken)
  *	None.
  *
  * Side effects:
- *	Line attributes (GCs, colors, stipple, etc) get released.
- *	Memory is deallocated, X resources are freed.
+ *	Line attributes (GCs, colors, stipple, etc) get released.  Memory is
+ *	deallocated, X resources are freed.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-FreeLineMarker(graphPtr, markerPtr)
-    Graph *graphPtr;
-    Marker *markerPtr;
+FreeLineProc(Marker *markerPtr)
 {
     LineMarker *lmPtr = (LineMarker *)markerPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
 
     if (lmPtr->gc != NULL) {
 	Blt_FreePrivateGC(graphPtr->display, lmPtr->gc);
@@ -3603,9 +3742,9 @@ FreeLineMarker(graphPtr, markerPtr)
 
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * CreateLineMarker --
+ * CreateLineProc --
  *
  *	Allocate memory and initialize methods for a new line marker.
  *
@@ -3615,46 +3754,41 @@ FreeLineMarker(graphPtr, markerPtr)
  * Side effects:
  *	Memory is allocated for the line marker structure.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static Marker *
-CreateLineMarker()
+CreateLineProc(void)
 {
     LineMarker *lmPtr;
 
-    lmPtr = Blt_Calloc(1, sizeof(LineMarker));
-    if (lmPtr != NULL) {
-	lmPtr->classPtr = &lineMarkerClass;
-	lmPtr->xor = FALSE;
-	lmPtr->capStyle = CapButt;
-	lmPtr->joinStyle = JoinMiter;
-    }
+    lmPtr = Blt_AssertCalloc(1, sizeof(LineMarker));
+    lmPtr->classPtr = &lineMarkerClass;
+    lmPtr->xor = FALSE;
+    lmPtr->capStyle = CapButt;
+    lmPtr->joinStyle = JoinMiter;
     return (Marker *)lmPtr;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * MapPolygonMarker --
+ * MapPolygonProc --
  *
  *	Calculate the layout position for a polygon marker.  Positional
- *	information is saved in the polygon in an array of points
- *	(malloc'ed).
+ *	information is saved in the polygon in an array of points (malloc'ed).
  *
  * Results:
  *	None.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-MapPolygonMarker(markerPtr)
-    Marker *markerPtr;
+MapPolygonProc(Marker *markerPtr)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     PolygonMarker *pmPtr = (PolygonMarker *)markerPtr;
-    Point2D *srcPtr, *destPtr, *endPtr;
-    Point2D *screenPts;
-    Extents2D exts;
+    Point2d *screenPts;
+    Region2d extents;
     int nScreenPts;
 
     if (pmPtr->outlinePts != NULL) {
@@ -3671,141 +3805,136 @@ MapPolygonMarker(markerPtr)
 	Blt_Free(pmPtr->screenPts);
 	pmPtr->screenPts = NULL;
     }
-    if (pmPtr->nWorldPts < 3) {
+    if (markerPtr->nWorldPts < 3) {
 	return;			/* Too few points */
     }
 
     /* 
-     * Allocate and fill a temporary array to hold the screen
-     * coordinates of the polygon. 
+     * Allocate and fill a temporary array to hold the screen coordinates of
+     * the polygon.
      */
-    nScreenPts = pmPtr->nWorldPts + 1;
-    screenPts = Blt_Malloc((nScreenPts + 1) * sizeof(Point2D));
-    endPtr = pmPtr->worldPts + pmPtr->nWorldPts;
-    destPtr = screenPts;
-    for (srcPtr = pmPtr->worldPts; srcPtr < endPtr; srcPtr++) {
-	*destPtr = MapPoint(graphPtr, srcPtr, &pmPtr->axes);
-	destPtr->x += pmPtr->xOffset;
-	destPtr->y += pmPtr->yOffset;
-	destPtr++;
-    }
-    *destPtr = screenPts[0];
+    nScreenPts = markerPtr->nWorldPts + 1;
+    screenPts = Blt_AssertMalloc((nScreenPts + 1) * sizeof(Point2d));
+    {
+	Point2d *sp, *dp, *send;
 
-    Blt_GraphExtents(graphPtr, &exts);
-    pmPtr->clipped = TRUE;
+	dp = screenPts;
+	for (sp = markerPtr->worldPts, send = sp + markerPtr->nWorldPts; 
+	     sp < send; sp++) {
+	    *dp = MapPoint(sp, &markerPtr->axes);
+	    dp->x += markerPtr->xOffset;
+	    dp->y += markerPtr->yOffset;
+	    dp++;
+	}
+	*dp = screenPts[0];
+    }
+    Blt_GraphExtents(graphPtr, &extents);
+    markerPtr->clipped = TRUE;
     if (pmPtr->fill.fgColor != NULL) { /* Polygon fill required. */
-	Point2D *fillPts;
+	Point2d *fillPts;
 	int n;
 
-	fillPts = Blt_Malloc(sizeof(Point2D) * nScreenPts * 3);
-	assert(fillPts);
-	n = Blt_PolyRectClip(&exts, screenPts, pmPtr->nWorldPts, fillPts);
+	fillPts = Blt_AssertMalloc(sizeof(Point2d) * nScreenPts * 3);
+	n = Blt_PolyRectClip(&extents, screenPts, markerPtr->nWorldPts,fillPts);
 	if (n < 3) { 
 	    Blt_Free(fillPts);
 	} else {
 	    pmPtr->nFillPts = n;
 	    pmPtr->fillPts = fillPts;
-	    pmPtr->clipped = FALSE;
+	    markerPtr->clipped = FALSE;
 	}
     }
     if ((pmPtr->outline.fgColor != NULL) && (pmPtr->lineWidth > 0)) { 
-	Segment2D *outlinePts;
-	register Segment2D *segPtr;
+	Segment2d *outlinePts;
+	Segment2d *segPtr;
+	Point2d *sp, *send;
+
 	/* 
-	 * Generate line segments representing the polygon outline.
-	 * The resulting outline may or may not be closed from
-	 * viewport clipping.  
+	 * Generate line segments representing the polygon outline.  The
+	 * resulting outline may or may not be closed from viewport clipping.
 	 */
-	outlinePts = Blt_Malloc(nScreenPts * sizeof(Segment2D));
+	outlinePts = Blt_Malloc(nScreenPts * sizeof(Segment2d));
 	if (outlinePts == NULL) {
 	    return;		/* Can't allocate point array */
 	}
 	/* 
-	 * Note that this assumes that the point array contains an
-	 * extra point that closes the polygon. 
+	 * Note that this assumes that the point array contains an extra point
+	 * that closes the polygon.
 	 */
 	segPtr = outlinePts;
-	for (srcPtr = screenPts, endPtr = screenPts + (nScreenPts - 1);
-	     srcPtr < endPtr; srcPtr++) {
-	    segPtr->p = srcPtr[0];
-	    segPtr->q = srcPtr[1];
-	    if (Blt_LineRectClip(&exts, &segPtr->p, &segPtr->q)) {
+	for (sp = screenPts, send = sp + (nScreenPts - 1); sp < send; sp++) {
+	    segPtr->p = sp[0];
+	    segPtr->q = sp[1];
+	    if (Blt_LineRectClip(&extents, &segPtr->p, &segPtr->q)) {
 		segPtr++;
 	    }
 	}
 	pmPtr->nOutlinePts = segPtr - outlinePts;
 	pmPtr->outlinePts = outlinePts;
 	if (pmPtr->nOutlinePts > 0) {
-	    pmPtr->clipped = FALSE;
+	    markerPtr->clipped = FALSE;
 	}
     }
     pmPtr->screenPts = screenPts;
 }
 
 static int
-PointInPolygonMarker(markerPtr, samplePtr)
-    Marker *markerPtr;
-    Point2D *samplePtr;
+PointInPolygonProc(Marker *markerPtr, Point2d *samplePtr)
 {
     PolygonMarker *pmPtr = (PolygonMarker *)markerPtr;
 
-    if (pmPtr->nWorldPts < 2) {
-	return FALSE;
+    if ((markerPtr->nWorldPts >= 3) && (pmPtr->screenPts != NULL)) {
+	return Blt_PointInPolygon(samplePtr, pmPtr->screenPts, 
+		markerPtr->nWorldPts + 1);
     }
-    return Blt_PointInPolygon(samplePtr, pmPtr->screenPts, 
-	pmPtr->nWorldPts + 1);
+    return FALSE;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * RegionInPolygonMarker --
+ * RegionInPolygonProc --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-RegionInPolygonMarker(markerPtr, extsPtr, enclosed)
-    Marker *markerPtr;
-    Extents2D *extsPtr;
-    int enclosed;
+RegionInPolygonProc(Marker *markerPtr, Region2d *extsPtr, int enclosed)
 {
     PolygonMarker *pmPtr = (PolygonMarker *)markerPtr;
     
-    if (pmPtr->nWorldPts >= 3) {
-	return Blt_RegionInPolygon(extsPtr, pmPtr->screenPts, pmPtr->nWorldPts,
-	       enclosed);
+    if ((markerPtr->nWorldPts >= 3) && (pmPtr->screenPts != NULL)) {
+	return Blt_RegionInPolygon(extsPtr, pmPtr->screenPts, 
+		markerPtr->nWorldPts, enclosed);
     }
     return FALSE;
 }
 
 static void
-DrawPolygonMarker(markerPtr, drawable)
-    Marker *markerPtr;
-    Drawable drawable;		/* Pixmap or window to draw into */
+DrawPolygonProc(Marker *markerPtr, Drawable drawable)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     PolygonMarker *pmPtr = (PolygonMarker *)markerPtr;
 
     /* Draw polygon fill region */
     if ((pmPtr->nFillPts > 0) && (pmPtr->fill.fgColor != NULL)) {
-	XPoint *destPtr, *pointArr;
-	Point2D *srcPtr, *endPtr;
+	XPoint *dp, *points;
+	Point2d *sp, *send;
 	
-	pointArr = Blt_Malloc(pmPtr->nFillPts * sizeof(XPoint));
-	if (pointArr == NULL) {
+	points = Blt_Malloc(pmPtr->nFillPts * sizeof(XPoint));
+	if (points == NULL) {
 	    return;
 	}
-	destPtr = pointArr;
-	for (srcPtr = pmPtr->fillPts, 
-		 endPtr = pmPtr->fillPts + pmPtr->nFillPts; srcPtr < endPtr; 
-	     srcPtr++) {
-	    destPtr->x = (short int)srcPtr->x;
-	    destPtr->y = (short int)srcPtr->y;
-	    destPtr++;
+	dp = points;
+	for (sp = pmPtr->fillPts, send = sp + pmPtr->nFillPts; sp < send; 
+	     sp++) {
+	    dp->x = (short int)sp->x;
+	    dp->y = (short int)sp->y;
+	    dp++;
 	}
-	XFillPolygon(graphPtr->display, drawable, pmPtr->fillGC,
-	    pointArr, pmPtr->nFillPts, Complex, CoordModeOrigin);
-	Blt_Free(pointArr);
+
+	XFillPolygon(graphPtr->display, drawable, pmPtr->fillGC, points, 
+		pmPtr->nFillPts, Complex, CoordModeOrigin);
+	Blt_Free(points);
     }
     /* and then the outline */
     if ((pmPtr->nOutlinePts > 0) && (pmPtr->lineWidth > 0) && 
@@ -3817,11 +3946,9 @@ DrawPolygonMarker(markerPtr, drawable)
 
 
 static void
-PolygonMarkerToPostScript(markerPtr, psToken)
-    Marker *markerPtr;
-    PsToken psToken;
+PolygonToPostscriptProc(Marker *markerPtr, Blt_Ps ps)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     PolygonMarker *pmPtr = (PolygonMarker *)markerPtr;
 
     if (pmPtr->fill.fgColor != NULL) {
@@ -3834,22 +3961,23 @@ PolygonMarkerToPostScript(markerPtr, psToken)
 	 */
 
 	/* Create a path to use for both the polygon and its outline. */
-	Blt_PathToPostScript(psToken, pmPtr->fillPts, pmPtr->nFillPts);
-	Blt_AppendToPostScript(psToken, "closepath\n", (char *)NULL);
+	Blt_Ps_Polyline(ps, pmPtr->fillPts, pmPtr->nFillPts);
 
-	/* If the background fill color was specified, draw the
-	 * polygon in a solid fashion with that color.  */
+	/* If the background fill color was specified, draw the polygon in a
+	 * solid fashion with that color.  */
 	if (pmPtr->fill.bgColor != NULL) {
-	    Blt_BackgroundToPostScript(psToken, pmPtr->fill.bgColor);
-	    Blt_AppendToPostScript(psToken, "Fill\n", (char *)NULL);
+	    /* Draw the solid background as the background layer of the opaque
+	     * stipple  */
+	    Blt_Ps_XSetBackground(ps, pmPtr->fill.bgColor);
+	    /* Retain the path. We'll need it for the foreground layer. */
+	    Blt_Ps_Append(ps, "gsave fill grestore\n");
 	}
-	Blt_ForegroundToPostScript(psToken, pmPtr->fill.fgColor);
+	Blt_Ps_XSetForeground(ps, pmPtr->fill.fgColor);
 	if (pmPtr->stipple != None) {
 	    /* Draw the stipple in the foreground color. */
-	    Blt_StippleToPostScript(psToken, graphPtr->display, 
-				    pmPtr->stipple);
+	    Blt_Ps_XSetStipple(ps, graphPtr->display, pmPtr->stipple);
 	} else {
-	    Blt_AppendToPostScript(psToken, "Fill\n", (char *)NULL);
+	    Blt_Ps_Append(ps, "fill\n");
 	}
     }
 
@@ -3857,63 +3985,53 @@ PolygonMarkerToPostScript(markerPtr, psToken)
     if ((pmPtr->lineWidth > 0) && (pmPtr->outline.fgColor != NULL)) {
 
 	/*  Set up the line attributes.  */
-	Blt_LineAttributesToPostScript(psToken, pmPtr->outline.fgColor,
+	Blt_Ps_XSetLineAttributes(ps, pmPtr->outline.fgColor,
 	    pmPtr->lineWidth, &pmPtr->dashes, pmPtr->capStyle,
 	    pmPtr->joinStyle);
 
 	/*  
-	 * Define on-the-fly a PostScript macro "DashesProc" that
-	 * will be executed for each call to the Polygon drawing
-	 * routine.  If the line isn't dashed, simply make this an
-	 * empty definition.  
+	 * Define on-the-fly a PostScript macro "DashesProc" that will be
+	 * executed for each call to the Polygon drawing routine.  If the line
+	 * isn't dashed, simply make this an empty definition.
 	 */
 	if ((pmPtr->outline.bgColor != NULL) && (LineIsDashed(pmPtr->dashes))) {
-	    Blt_AppendToPostScript(psToken,
-		"/DashesProc {\n",
-		"gsave\n    ", (char *)NULL);
-	    Blt_BackgroundToPostScript(psToken, pmPtr->outline.bgColor);
-	    Blt_AppendToPostScript(psToken, "    ", (char *)NULL);
-	    Blt_LineDashesToPostScript(psToken, (Blt_Dashes *)NULL);
-	    Blt_AppendToPostScript(psToken,
-		"stroke\n",
-		"  grestore\n",
-		"} def\n", (char *)NULL);
+	    Blt_Ps_Append(ps, "/DashesProc {\ngsave\n    ");
+	    Blt_Ps_XSetBackground(ps, pmPtr->outline.bgColor);
+	    Blt_Ps_Append(ps, "    ");
+	    Blt_Ps_XSetDashes(ps, (Blt_Dashes *)NULL);
+	    Blt_Ps_Append(ps, "stroke\n  grestore\n} def\n");
 	} else {
-	    Blt_AppendToPostScript(psToken, "/DashesProc {} def\n",
-		(char *)NULL);
+	    Blt_Ps_Append(ps, "/DashesProc {} def\n");
 	}
-	Blt_2DSegmentsToPostScript(psToken, pmPtr->outlinePts, 
-		   pmPtr->nOutlinePts);
+	Blt_Ps_Draw2DSegments(ps, pmPtr->outlinePts, pmPtr->nOutlinePts);
     }
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * ConfigurePolygonMarker --
+ * ConfigurePolygonProc --
  *
- *	This procedure is called to process an argv/argc list, plus
- *	the Tk option database, in order to configure (or reconfigure)
- *	a polygon marker.
+ *	This procedure is called to process an objv/objc list, plus the Tk
+ *	option database, in order to configure (or reconfigure) a polygon
+ *	marker.
  *
  * Results:
- *	A standard Tcl result.  If TCL_ERROR is returned, then
- *	interp->result contains an error message.
+ *	A standard TCL result.  If TCL_ERROR is returned, then interp->result
+ *	contains an error message.
  *
  * Side effects:
- *	Configuration information, such as polygon color, dashes,
- *	fillstyle, etc. get set for markerPtr; old resources get
- *	freed, if there were any.  The marker is eventually
- *	redisplayed.
+ *	Configuration information, such as polygon color, dashes, fillstyle,
+ *	etc. get set for markerPtr; old resources get freed, if there were
+ *	any.  The marker is eventually redisplayed.
  *
- * ---------------------------------------------------------------------- 
+ * -------------------------------------------------------------------------- 
  */
 /*ARGSUSED*/
 static int
-ConfigurePolygonMarker(markerPtr)
-    Marker *markerPtr;
+ConfigurePolygonProc(Marker *markerPtr)
 {
-    Graph *graphPtr = markerPtr->graphPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
     PolygonMarker *pmPtr = (PolygonMarker *)markerPtr;
     GC newGC;
     XGCValues gcValues;
@@ -3949,18 +4067,19 @@ ConfigurePolygonMarker(markerPtr)
 	    /* The graph's color option may not have been set yet */
 	    pixel = WhitePixelOfScreen(Tk_Screen(graphPtr->tkwin));
 	} else {
-	    pixel = graphPtr->plotBg->pixel;
+	    pixel = Blt_BackgroundBorderColor(graphPtr->plotBg)->pixel;
 	}
 	if (gcMask & GCBackground) {
 	    gcValues.background ^= pixel;
 	}
 	gcValues.foreground ^= pixel;
 	if (drawable != None) {
-	    DrawPolygonMarker(markerPtr, drawable);
+	    DrawPolygonProc(markerPtr, drawable);
 	}
     }
     newGC = Blt_GetPrivateGC(graphPtr->tkwin, gcMask, &gcValues);
     if (LineIsDashed(pmPtr->dashes)) {
+	fprintf(stderr, "dashoffset is %d\n", pmPtr->dashes.offset);
 	Blt_SetDashes(graphPtr->display, newGC, &pmPtr->dashes);
     }
     if (pmPtr->outlineGC != NULL) {
@@ -3991,23 +4110,24 @@ ConfigurePolygonMarker(markerPtr)
 
     if ((gcMask == 0) && !(graphPtr->flags & RESET_AXES) && (pmPtr->xor)) {
 	if (drawable != None) {
-	    MapPolygonMarker(markerPtr);
-	    DrawPolygonMarker(markerPtr, drawable);
+	    MapPolygonProc(markerPtr);
+	    DrawPolygonProc(markerPtr, drawable);
 	}
 	return TCL_OK;
     }
-    pmPtr->flags |= MAP_ITEM;
-    if (pmPtr->drawUnder) {
+    markerPtr->flags |= MAP_ITEM;
+    if (markerPtr->drawUnder) {
 	graphPtr->flags |= REDRAW_BACKING_STORE;
     }
+    graphPtr->flags |= RESET_WORLD;
     Blt_EventuallyRedrawGraph(graphPtr);
     return TCL_OK;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * FreePolygonMarker --
+ * FreePolygonProc --
  *
  *	Release memory and resources allocated for the polygon element.
  *
@@ -4017,14 +4137,13 @@ ConfigurePolygonMarker(markerPtr)
  * Side effects:
  *	Everything associated with the polygon element is freed up.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static void
-FreePolygonMarker(graphPtr, markerPtr)
-    Graph *graphPtr;
-    Marker *markerPtr;
+FreePolygonProc(Marker *markerPtr)
 {
     PolygonMarker *pmPtr = (PolygonMarker *)markerPtr;
+    Graph *graphPtr = markerPtr->obj.graphPtr;
 
     if (pmPtr->fillGC != NULL) {
 	Tk_FreeGC(graphPtr->display, pmPtr->fillGC);
@@ -4038,66 +4157,65 @@ FreePolygonMarker(graphPtr, markerPtr)
     if (pmPtr->outlinePts != NULL) {
 	Blt_Free(pmPtr->outlinePts);
     }
-    Blt_FreeColorPair(&pmPtr->outline);
-    Blt_FreeColorPair(&pmPtr->fill);
+    if (pmPtr->screenPts != NULL) {
+	Blt_Free(pmPtr->screenPts);
+    }
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
- * CreatePolygonMarker --
+ * CreatePolygonProc --
  *
- *	Allocate memory and initialize methods for the new polygon
- *	marker.
+ *	Allocate memory and initialize methods for the new polygon marker.
  *
  * Results:
- *	The pointer to the newly allocated marker structure is
- *	returned.
+ *	The pointer to the newly allocated marker structure is returned.
  *
  * Side effects:
  *	Memory is allocated for the polygon marker structure.
  *
- * ---------------------------------------------------------------------- 
+ * -------------------------------------------------------------------------- 
  */
 static Marker *
-CreatePolygonMarker()
+CreatePolygonProc(void)
 {
     PolygonMarker *pmPtr;
 
-    pmPtr = Blt_Calloc(1, sizeof(PolygonMarker));
-    if (pmPtr != NULL) {
-	pmPtr->classPtr = &polygonMarkerClass;
-	pmPtr->capStyle = CapButt;
-	pmPtr->joinStyle = JoinMiter;
-
-    }
+    pmPtr = Blt_AssertCalloc(1, sizeof(PolygonMarker));
+    pmPtr->classPtr = &polygonMarkerClass;
+    pmPtr->capStyle = CapButt;
+    pmPtr->joinStyle = JoinMiter;
     return (Marker *)pmPtr;
 }
 
 static int
-NameToMarker(graphPtr, name, markerPtrPtr)
-    Graph *graphPtr;
-    char *name;
-    Marker **markerPtrPtr;
+GetMarkerFromObj(
+    Tcl_Interp *interp,
+    Graph *graphPtr,
+    Tcl_Obj *objPtr,
+    Marker **markerPtrPtr)
 {
     Blt_HashEntry *hPtr;
-    
-    hPtr = Blt_FindHashEntry(&graphPtr->markers.table, name);
+    const char *string;
+
+    string = Tcl_GetString(objPtr);
+    hPtr = Blt_FindHashEntry(&graphPtr->markers.table, string);
     if (hPtr != NULL) {
-	*markerPtrPtr = (Marker *)Blt_GetHashValue(hPtr);
+	*markerPtrPtr = Blt_GetHashValue(hPtr);
 	return TCL_OK;
     }
-    Tcl_AppendResult(graphPtr->interp, "can't find marker \"", name, 
+    if (interp != NULL) {
+	Tcl_AppendResult(interp, "can't find marker \"", string, 
 	     "\" in \"", Tk_PathName(graphPtr->tkwin), (char *)NULL);
+    }
     return TCL_ERROR;
 }
 
 
 static int
-RenameMarker(graphPtr, markerPtr, oldName, newName)
-    Graph *graphPtr;
-    Marker *markerPtr;
-    char *oldName, *newName;
+RenameMarker(Graph *graphPtr, Marker *markerPtr, const char *oldName, 
+	     const char *newName)
 {
     int isNew;
     Blt_HashEntry *hPtr;
@@ -4109,7 +4227,7 @@ RenameMarker(graphPtr, markerPtr, oldName, newName)
 	    "\" already exists", (char *)NULL);
 	return TCL_ERROR;
     }
-    markerPtr->name = Blt_Strdup(newName);
+    markerPtr->obj.name = Blt_AssertStrdup(newName);
     markerPtr->hashPtr = hPtr;
     Blt_SetHashValue(hPtr, (char *)markerPtr);
 
@@ -4123,114 +4241,125 @@ RenameMarker(graphPtr, markerPtr, oldName, newName)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * NamesOp --
  *
  *	Returns a list of marker identifiers in interp->result;
  *
  * Results:
- *	The return value is a standard Tcl result.
+ *	The return value is a standard TCL result.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-NamesOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+NamesOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
-    Marker *markerPtr;
-    Blt_ChainLink *linkPtr;
-    register int i;
+    Tcl_Obj *listObjPtr;
 
-    Tcl_ResetResult(interp);
-    for (linkPtr = Blt_ChainFirstLink(graphPtr->markers.displayList);
-	linkPtr != NULL; linkPtr = Blt_ChainNextLink(linkPtr)) {
-	markerPtr = Blt_ChainGetValue(linkPtr);
-	if (argc == 3) {
-	    Tcl_AppendElement(interp, markerPtr->name);
-	    continue;
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    if (objc == 3) {
+	Blt_ChainLink link;
+
+	for (link = Blt_Chain_FirstLink(graphPtr->markers.displayList); 
+	     link != NULL; link = Blt_Chain_NextLink(link)) {
+	    Marker *markerPtr;
+
+	    markerPtr = Blt_Chain_GetValue(link);
+	    Tcl_ListObjAppendElement(interp, listObjPtr,
+		Tcl_NewStringObj(markerPtr->obj.name, -1));
 	}
-	for (i = 3; i < argc; i++) {
-	    if (Tcl_StringMatch(markerPtr->name, argv[i])) {
-		Tcl_AppendElement(interp, markerPtr->name);
-		break;
+    } else {
+	Blt_ChainLink link;
+
+	for (link = Blt_Chain_FirstLink(graphPtr->markers.displayList); 
+	     link != NULL; link = Blt_Chain_NextLink(link)) {
+	    Marker *markerPtr;
+	    int i;
+
+	    markerPtr = Blt_Chain_GetValue(link);
+	    for (i = 3; i < objc; i++) {
+		const char *pattern;
+
+		pattern = Tcl_GetString(objv[i]);
+		if (Tcl_StringMatch(markerPtr->obj.name, pattern)) {
+		    Tcl_ListObjAppendElement(interp, listObjPtr,
+			Tcl_NewStringObj(markerPtr->obj.name, -1));
+		    break;
+		}
 	    }
 	}
     }
+    Tcl_SetObjResult(interp, listObjPtr);
     return TCL_OK;
 }
 
-ClientData
-Blt_MakeMarkerTag(graphPtr, tagName)
-    Graph *graphPtr;
-    char *tagName;
-{
-    Blt_HashEntry *hPtr;
-    int isNew;
-
-    hPtr = Blt_CreateHashEntry(&graphPtr->markers.tagTable, tagName, &isNew);
-    assert(hPtr);
-    return Blt_GetHashKey(&graphPtr->markers.tagTable, hPtr);
-}
-
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * BindOp --
  *
  *	.g element bind elemName sequence command
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-BindOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+BindOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
-    if (argc == 3) {
-	Blt_HashEntry *hPtr;
-	Blt_HashSearch cursor;
-	char *tag;
+    if (objc == 3) {
+	Blt_HashEntry *hp;
+	Blt_HashSearch iter;
+	Tcl_Obj *listObjPtr;
 
-	for (hPtr = Blt_FirstHashEntry(&graphPtr->markers.tagTable, &cursor);
-	    hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	    tag = Blt_GetHashKey(&graphPtr->markers.tagTable, hPtr);
-	    Tcl_AppendElement(interp, tag);
+	listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+	for (hp = Blt_FirstHashEntry(&graphPtr->markers.tagTable, &iter);
+	    hp != NULL; hp = Blt_NextHashEntry(&iter)) {
+	    const char *tag;
+	    Tcl_Obj *objPtr;
+
+	    tag = Blt_GetHashKey(&graphPtr->markers.tagTable, hp);
+	    objPtr = Tcl_NewStringObj(tag, -1);
+	    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
 	}
+	Tcl_SetObjResult(interp, listObjPtr);
 	return TCL_OK;
     }
-    return Blt_ConfigureBindings(interp, graphPtr->bindTable,
-	Blt_MakeMarkerTag(graphPtr, argv[3]), argc - 4, argv + 4);
+    return Blt_ConfigureBindingsFromObj(interp, graphPtr->bindTable,
+	Blt_MakeMarkerTag(graphPtr, Tcl_GetString(objv[3])),
+	objc - 4, objv + 4);
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * CgetOp --
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-CgetOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+CgetOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Marker *markerPtr;
 
-    if (NameToMarker(graphPtr, argv[3], &markerPtr) != TCL_OK) {
+    if (GetMarkerFromObj(interp, graphPtr, objv[3], &markerPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    if (Tk_ConfigureValue(interp, graphPtr->tkwin, 
-	markerPtr->classPtr->configSpecs, (char *)markerPtr, argv[4], 0) 
+    if (Blt_ConfigureValueFromObj(interp, graphPtr->tkwin, 
+	markerPtr->classPtr->configSpecs, (char *)markerPtr, objv[4], 0) 
 	!= TCL_OK) {
 	return TCL_ERROR;
     }
@@ -4238,154 +4367,167 @@ CgetOp(graphPtr, interp, argc, argv)
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ConfigureOp --
  *
  * Results:
- *	The return value is a standard Tcl result.
+ *	The return value is a standard TCL result.
  *
  * Side Effects:
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-ConfigureOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+ConfigureOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     Marker *markerPtr;
-    int flags = TK_CONFIG_ARGV_ONLY;
-    char *oldName;
+    Tcl_Obj *const *options;
+    const char *oldName;
+    const char *string;
+    int flags = BLT_CONFIG_OBJV_ONLY;
     int nNames, nOpts;
-    char **options;
-    register int i;
+    int i;
+    int under;
+
+    markerPtr = NULL;		/* Suppress compiler warning. */
 
     /* Figure out where the option value pairs begin */
-    argc -= 3;
-    argv += 3;
-    for (i = 0; i < argc; i++) {
-	if (argv[i][0] == '-') {
+    objc -= 3;
+    objv += 3;
+    for (i = 0; i < objc; i++) {
+	string = Tcl_GetString(objv[i]);
+	if (string[0] == '-') {
 	    break;
 	}
-	if (NameToMarker(graphPtr, argv[i], &markerPtr) != TCL_OK) {
+	if (GetMarkerFromObj(interp, graphPtr, objv[i], &markerPtr) != TCL_OK) {
 	    return TCL_ERROR;
 	}
     }
     nNames = i;			/* Number of element names specified */
-    nOpts = argc - i;		/* Number of options specified */
-    options = argv + nNames;	/* Start of options in argv  */
-
+    nOpts = objc - i;		/* Number of options specified */
+    options = objv + nNames;	/* Start of options in objv  */
+    
     for (i = 0; i < nNames; i++) {
-	NameToMarker(graphPtr, argv[i], &markerPtr);
+	GetMarkerFromObj(interp, graphPtr, objv[i], &markerPtr);
 	if (nOpts == 0) {
-	    return Tk_ConfigureInfo(interp, graphPtr->tkwin, 
+	    return Blt_ConfigureInfoFromObj(interp, graphPtr->tkwin, 
 		markerPtr->classPtr->configSpecs, (char *)markerPtr, 
-		(char *)NULL, flags);
+		(Tcl_Obj *)NULL, flags);
 	} else if (nOpts == 1) {
-	    return Tk_ConfigureInfo(interp, graphPtr->tkwin,
+	    return Blt_ConfigureInfoFromObj(interp, graphPtr->tkwin,
 		markerPtr->classPtr->configSpecs, (char *)markerPtr, 
 		options[0], flags);
 	}
-	/* Save the old marker. */
-	oldName = markerPtr->name;
-	if (Tk_ConfigureWidget(interp, graphPtr->tkwin, 
+	/* Save the old marker name. */
+	oldName = markerPtr->obj.name;
+	under = markerPtr->drawUnder;
+	if (Blt_ConfigureWidgetFromObj(interp, graphPtr->tkwin, 
 		markerPtr->classPtr->configSpecs, nOpts, options, 
 		(char *)markerPtr, flags) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	if (oldName != markerPtr->name) {
-	    if (RenameMarker(graphPtr, markerPtr, oldName, markerPtr->name) 
+	if (oldName != markerPtr->obj.name) {
+	    if (RenameMarker(graphPtr, markerPtr, oldName, markerPtr->obj.name)
 		!= TCL_OK) {
-		markerPtr->name = oldName;
+		markerPtr->obj.name = oldName;
 		return TCL_ERROR;
 	    }
 	}
 	if ((*markerPtr->classPtr->configProc) (markerPtr) != TCL_OK) {
+
 	    return TCL_ERROR;
+	}
+	if (markerPtr->drawUnder != under) {
+	    graphPtr->flags |= REDRAW_BACKING_STORE;
 	}
     }
     return TCL_OK;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * CreateOp --
  *
  *	This procedure creates and initializes a new marker.
  *
  * Results:
- *	The return value is a pointer to a structure describing
- *	the new element.  If an error occurred, then the return
- *	value is NULL and an error message is left in interp->result.
+ *	The return value is a pointer to a structure describing the new
+ *	element.  If an error occurred, then the return value is NULL and an
+ *	error message is left in interp->result.
  *
  * Side effects:
  *	Memory is allocated, etc.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 static int
-CreateOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+CreateOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
     Marker *markerPtr;
     Blt_HashEntry *hPtr;
     int isNew;
-    Blt_Uid classUid;
-    register int i;
-    char *name;
-    char string[200];
-    unsigned int length;
+    ClassId classId;
+    int i;
+    const char *name;
+    char ident[200];
+    const char *string;
     char c;
 
-    c = argv[3][0];
+    string = Tcl_GetString(objv[3]);
+    c = string[0];
     /* Create the new marker based upon the given type */
-    if ((c == 't') && (strcmp(argv[3], "text") == 0)) {
-	classUid = bltTextMarkerUid;
-    } else if ((c == 'l') && (strcmp(argv[3], "line") == 0)) {
-	classUid = bltLineMarkerUid;
-    } else if ((c == 'p') && (strcmp(argv[3], "polygon") == 0)) {
-	classUid = bltPolygonMarkerUid;
-    } else if ((c == 'i') && (strcmp(argv[3], "image") == 0)) {
-	classUid = bltImageMarkerUid;
-    } else if ((c == 'b') && (strcmp(argv[3], "bitmap") == 0)) {
-	classUid = bltBitmapMarkerUid;
-    } else if ((c == 'w') && (strcmp(argv[3], "window") == 0)) {
-	classUid = bltWindowMarkerUid;
+    if ((c == 't') && (strcmp(string, "text") == 0)) {
+	classId = CID_MARKER_TEXT;
+    } else if ((c == 'l') && (strcmp(string, "line") == 0)) {
+	classId = CID_MARKER_LINE;
+    } else if ((c == 'p') && (strcmp(string, "polygon") == 0)) {
+	classId = CID_MARKER_POLYGON;
+    } else if ((c == 'i') && (strcmp(string, "image") == 0)) {
+	classId = CID_MARKER_IMAGE;
+    } else if ((c == 'b') && (strcmp(string, "bitmap") == 0)) {
+	classId = CID_MARKER_BITMAP;
+    } else if ((c == 'w') && (strcmp(string, "window") == 0)) {
+	classId = CID_MARKER_WINDOW;
     } else {
-	Tcl_AppendResult(interp, "unknown marker type \"", argv[3],
+	Tcl_AppendResult(interp, "unknown marker type \"", string,
     "\": should be \"text\", \"line\", \"polygon\", \"bitmap\", \"image\", or \
 \"window\"", (char *)NULL);
 	return TCL_ERROR;
     }
     /* Scan for "-name" option. We need it for the component name */
     name = NULL;
-    for (i = 4; i < argc; i += 2) {
-	length = strlen(argv[i]);
-	if ((length > 1) && (strncmp(argv[i], "-name", length) == 0)) {
-	    name = argv[i + 1];
+    for (i = 4; i < objc; i += 2) {
+	int length;
+
+	string = Tcl_GetStringFromObj(objv[i], &length);
+	if ((length > 1) && (strncmp(string, "-name", length) == 0)) {
+	    name = Tcl_GetString(objv[i + 1]);
 	    break;
 	}
     }
     /* If no name was given for the marker, make up one. */
     if (name == NULL) {
-	sprintf(string, "marker%d", graphPtr->nextMarkerId++);
-	name = string;
+	sprintf_s(ident, 200, "marker%d", graphPtr->nextMarkerId++);
+	name = ident;
     } else if (name[0] == '-') {
 	Tcl_AppendResult(interp, "name of marker \"", name, 
 		"\" can't start with a '-'", (char *)NULL);
 	return TCL_ERROR;
     }
-    markerPtr = CreateMarker(graphPtr, name, classUid);
-    if (Blt_ConfigureWidgetComponent(interp, graphPtr->tkwin, name, 
-	     markerPtr->classUid, markerPtr->classPtr->configSpecs,
-	    argc - 4, argv + 4, (char *)markerPtr, 0) != TCL_OK) {
+    markerPtr = CreateMarker(graphPtr, name, classId);
+    if (Blt_ConfigureComponentFromObj(interp, graphPtr->tkwin, name, 
+		markerPtr->obj.className, markerPtr->classPtr->configSpecs, 
+		objc - 4, objv + 4, (char *)markerPtr, 0) != TCL_OK) {
 	DestroyMarker(markerPtr);
 	return TCL_ERROR;
     }
@@ -4395,162 +4537,162 @@ CreateOp(graphPtr, interp, argc, argv)
     }
     hPtr = Blt_CreateHashEntry(&graphPtr->markers.table, name, &isNew);
     if (!isNew) {
-	Marker *oldMarkerPtr;
+	Marker *oldPtr;
 	/*
-	 * Marker by the same name already exists.  Delete the old
-	 * marker and it's list entry.  But save the hash entry.
+	 * Marker by the same name already exists.  Delete the old marker and
+	 * it's list entry.  But save the hash entry.
 	 */
-	oldMarkerPtr = (Marker *)Blt_GetHashValue(hPtr);
-	oldMarkerPtr->hashPtr = NULL;
-	DestroyMarker(oldMarkerPtr);
+	oldPtr = Blt_GetHashValue(hPtr);
+	oldPtr->hashPtr = NULL;
+	DestroyMarker(oldPtr);
     }
     Blt_SetHashValue(hPtr, markerPtr);
     markerPtr->hashPtr = hPtr;
-    markerPtr->linkPtr = 
-	Blt_ChainAppend(graphPtr->markers.displayList, markerPtr);
+    /* Unlike elements, new markers are drawn on top of old markers. */
+    markerPtr->link = Blt_Chain_Prepend(graphPtr->markers.displayList,markerPtr);
     if (markerPtr->drawUnder) {
 	graphPtr->flags |= REDRAW_BACKING_STORE;
     }
     Blt_EventuallyRedrawGraph(graphPtr);
-    Tcl_SetResult(interp, name, TCL_VOLATILE);
+    Tcl_SetStringObj(Tcl_GetObjResult(interp), name, -1);
     return TCL_OK;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * DeleteOp --
  *
  *	Deletes the marker given by markerId.
  *
  * Results:
- *	The return value is a standard Tcl result.
+ *	The return value is a standard TCL result.
  *
  * Side Effects:
  *	Graph will be redrawn to reflect the new display list.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-DeleteOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;		/* Not used. */
-    int argc;
-    char **argv;
+DeleteOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,		/* Not used. */
+    int objc,
+    Tcl_Obj *const *objv)
 {
-    Marker *markerPtr;
-    register int i;
+    int i;
 
-    for (i = 3; i < argc; i++) {
-	if (NameToMarker(graphPtr, argv[i], &markerPtr) == TCL_OK) {
-	    DestroyMarker(markerPtr);
+    for (i = 3; i < objc; i++) {
+	Marker *markerPtr;
+
+	if (GetMarkerFromObj(NULL, graphPtr, objv[i], &markerPtr) == TCL_OK) {
+	    markerPtr->flags |= DELETE_PENDING;
+	    Tcl_EventuallyFree(markerPtr, FreeMarker);
 	}
     }
-    Tcl_ResetResult(interp);
     Blt_EventuallyRedrawGraph(graphPtr);
     return TCL_OK;
 }
 
 /*
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * GetOp --
  *
- * 	Find the legend entry from the given argument.  The argument
- *	can be either a screen position "@x,y" or the name of an
- *	element.
+ * 	Find the legend entry from the given argument.  The argument can be
+ * 	either a screen position "@x,y" or the name of an element.
  *
- *	I don't know how useful it is to test with the name of an
- *	element.
+ *	I don't know how useful it is to test with the name of an element.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side Effects:
  *	Graph will be redrawn to reflect the new legend attributes.
  *
- *----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-GetOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;
-    int argc;			/* Not used. */
-    char *argv[];
+GetOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
-    register Marker *markerPtr;
+    Marker *markerPtr;
+    const char *string;
 
-    if ((argv[3][0] == 'c') && (strcmp(argv[3], "current") == 0)) {
+    string = Tcl_GetString(objv[3]);
+    if ((string[0] == 'c') && (strcmp(string, "current") == 0)) {
 	markerPtr = (Marker *)Blt_GetCurrentItem(graphPtr->bindTable);
-	/* Report only on markers. */
 	if (markerPtr == NULL) {
-	    return TCL_OK;
+	    return TCL_OK;	/* Report only on markers. */
+
 	}
-	if ((markerPtr->classUid == bltBitmapMarkerUid) ||
-	    (markerPtr->classUid == bltLineMarkerUid) ||
-	    (markerPtr->classUid == bltWindowMarkerUid) ||
-	    (markerPtr->classUid == bltPolygonMarkerUid) ||
-	    (markerPtr->classUid == bltTextMarkerUid) ||
-	    (markerPtr->classUid == bltImageMarkerUid)) {
-	    Tcl_SetResult(interp, markerPtr->name, TCL_VOLATILE);
+	if ((markerPtr->obj.classId >= CID_MARKER_BITMAP) &&
+	    (markerPtr->obj.classId <= CID_MARKER_WINDOW))	    {
+	    Tcl_SetStringObj(Tcl_GetObjResult(interp), 
+		markerPtr->obj.name, -1);
 	}
     }
     return TCL_OK;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * RelinkOp --
  *
- *	Reorders the marker (given by the first name) before/after
- *	the another marker (given by the second name) in the
- *	marker display list.  If no second name is given, the
- *	marker is placed at the beginning/end of the list.
+ *	Reorders the marker (given by the first name) before/after the another
+ *	marker (given by the second name) in the marker display list.  If no
+ *	second name is given, the marker is placed at the beginning/end of the
+ *	list.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side Effects:
  *	Graph will be redrawn to reflect the new display list.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-RelinkOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;		/* Not used. */
-    int argc;
-    char **argv;
+RelinkOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const *objv)
 {
-    Blt_ChainLink *linkPtr, *placePtr;
+    Blt_ChainLink link, place;
     Marker *markerPtr;
+    const char *string;
 
     /* Find the marker to be raised or lowered. */
-    if (NameToMarker(graphPtr, argv[3], &markerPtr) != TCL_OK) {
+    if (GetMarkerFromObj(interp, graphPtr, objv[3], &markerPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    /* Right now it's assumed that all markers are always in the
-       display list. */
-    linkPtr = markerPtr->linkPtr;
-    Blt_ChainUnlinkLink(graphPtr->markers.displayList, markerPtr->linkPtr);
+    /* Right now it's assumed that all markers are always in the display
+       list. */
+    link = markerPtr->link;
+    Blt_Chain_UnlinkLink(graphPtr->markers.displayList, markerPtr->link);
 
-    placePtr = NULL;
-    if (argc == 5) {
-	if (NameToMarker(graphPtr, argv[4], &markerPtr) != TCL_OK) {
+    place = NULL;
+    if (objc == 5) {
+	if (GetMarkerFromObj(interp, graphPtr, objv[4], &markerPtr) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	placePtr = markerPtr->linkPtr;
+	place = markerPtr->link;
     }
 
     /* Link the marker at its new position. */
-    if (argv[2][0] == 'a') {
-	Blt_ChainLinkAfter(graphPtr->markers.displayList, linkPtr, placePtr);
+    string = Tcl_GetString(objv[2]);
+    if (string[0] == 'l') {
+	Blt_Chain_LinkAfter(graphPtr->markers.displayList, link, place);
     } else {
-	Blt_ChainLinkBefore(graphPtr->markers.displayList, linkPtr, placePtr);
+	Blt_Chain_LinkBefore(graphPtr->markers.displayList, link, place);
     }
     if (markerPtr->drawUnder) {
 	graphPtr->flags |= REDRAW_BACKING_STORE;
@@ -4561,229 +4703,220 @@ RelinkOp(graphPtr, interp, argc, argv)
 
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * FindOp --
  *
  *	Returns if marker by a given ID currently exists.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-FindOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+FindOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
-    Blt_ChainLink *linkPtr;
-    Extents2D exts;
-    Marker *markerPtr;
-    int mode;
-    int left, right, top, bottom;
+    Blt_ChainLink link;
+    Region2d extents;
+    const char *string;
     int enclosed;
+    int left, right, top, bottom;
+    int mode;
 
 #define FIND_ENCLOSED	 (1<<0)
 #define FIND_OVERLAPPING (1<<1)
-    if (strcmp(argv[3], "enclosed") == 0) {
+    string = Tcl_GetString(objv[3]);
+    if (strcmp(string, "enclosed") == 0) {
 	mode = FIND_ENCLOSED;
-    } else if (strcmp(argv[3], "overlapping") == 0) {
+    } else if (strcmp(string, "overlapping") == 0) {
 	mode = FIND_OVERLAPPING;
     } else {
-	Tcl_AppendResult(interp, "bad search type \"", argv[3], 
+	Tcl_AppendResult(interp, "bad search type \"", string, 
 		": should be \"enclosed\", or \"overlapping\"", (char *)NULL);
 	return TCL_ERROR;
     }
 
-    if ((Tcl_GetInt(interp, argv[4], &left) != TCL_OK) ||
-	(Tcl_GetInt(interp, argv[5], &top) != TCL_OK) ||
-	(Tcl_GetInt(interp, argv[6], &right) != TCL_OK) ||
-	(Tcl_GetInt(interp, argv[7], &bottom) != TCL_OK)) {
+    if ((Tcl_GetIntFromObj(interp, objv[4], &left) != TCL_OK) ||
+	(Tcl_GetIntFromObj(interp, objv[5], &top) != TCL_OK) ||
+	(Tcl_GetIntFromObj(interp, objv[6], &right) != TCL_OK) ||
+	(Tcl_GetIntFromObj(interp, objv[7], &bottom) != TCL_OK)) {
 	return TCL_ERROR;
     }
     if (left < right) {
-	exts.left = (double)left;
-	exts.right = (double)right;
+	extents.left = (double)left;
+	extents.right = (double)right;
     } else {
-	exts.left = (double)right;
-	exts.right = (double)left;
+	extents.left = (double)right;
+	extents.right = (double)left;
     }
     if (top < bottom) {
-	exts.top = (double)top;
-	exts.bottom = (double)bottom;
+	extents.top = (double)top;
+	extents.bottom = (double)bottom;
     } else {
-	exts.top = (double)bottom;
-	exts.bottom = (double)top;
+	extents.top = (double)bottom;
+	extents.bottom = (double)top;
     }
     enclosed = (mode == FIND_ENCLOSED);
-    for (linkPtr = Blt_ChainFirstLink(graphPtr->markers.displayList);
-	 linkPtr != NULL; linkPtr = Blt_ChainNextLink(linkPtr)) {
-	markerPtr = Blt_ChainGetValue(linkPtr);
-	if (markerPtr->hidden) {
+    for (link = Blt_Chain_FirstLink(graphPtr->markers.displayList);
+	 link != NULL; link = Blt_Chain_NextLink(link)) {
+	Marker *markerPtr;
+
+	markerPtr = Blt_Chain_GetValue(link);
+	if (markerPtr->flags & (HIDE|DELETE_PENDING)) {
 	    continue;
 	}
-	if (markerPtr->elemName != NULL) {
-	    Blt_HashEntry *hPtr;
-	    
-	    hPtr = Blt_FindHashEntry(&graphPtr->elements.table, 
-				     markerPtr->elemName);
-	    if (hPtr != NULL) {
-		Element *elemPtr;
-		
-		elemPtr = (Element *)Blt_GetHashValue(hPtr);
-		if (elemPtr->hidden) {
-		    continue;
-		}
-	    }
+	if ((markerPtr->elemName != NULL) && (IsElementHidden(markerPtr))) {
+	    continue;
 	}
-	if ((*markerPtr->classPtr->regionProc)(markerPtr, &exts, enclosed)) {
-	    Tcl_SetResult(interp, markerPtr->name, TCL_VOLATILE);
+	if ((*markerPtr->classPtr->regionProc)(markerPtr, &extents, enclosed)) {
+	    Tcl_Obj *objPtr;
+
+	    objPtr = Tcl_GetObjResult(interp);
+	    Tcl_SetStringObj(objPtr, markerPtr->obj.name, -1);
 	    return TCL_OK;
 	}
     }
-    Tcl_SetResult(interp, "", TCL_VOLATILE);
+    Tcl_SetStringObj(Tcl_GetObjResult(interp), "", -1);
     return TCL_OK;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * ExistsOp --
  *
  *	Returns if marker by a given ID currently exists.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-ExistsOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+ExistsOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Blt_HashEntry *hPtr;
 
-    hPtr = Blt_FindHashEntry(&graphPtr->markers.table, argv[3]);
-    Blt_SetBooleanResult(interp, (hPtr != NULL));
+    hPtr = Blt_FindHashEntry(&graphPtr->markers.table, Tcl_GetString(objv[3]));
+    Tcl_SetBooleanObj(Tcl_GetObjResult(interp), (hPtr != NULL));
     return TCL_OK;
 }
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * TypeOp --
  *
- *	Returns a symbolic name for the type of the marker whose ID is
- *	given.
+ *	Returns a symbolic name for the type of the marker whose ID is given.
  *
  * Results:
- *	A standard Tcl result. interp->result will contain the symbolic
- *	type of the marker.
+ *	A standard TCL result. interp->result will contain the symbolic type
+ *	of the marker.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-TypeOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;
-    int argc;
-    char **argv;
+TypeOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,
+    int objc,			/* Not used. */
+    Tcl_Obj *const *objv)
 {
     Marker *markerPtr;
 
-    if (NameToMarker(graphPtr, argv[3], &markerPtr) != TCL_OK) {
+    if (GetMarkerFromObj(interp, graphPtr, objv[3], &markerPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    Tcl_SetResult(interp, markerPtr->classUid, TCL_STATIC);
+    Tcl_SetStringObj(Tcl_GetObjResult(interp), markerPtr->obj.className, -1);
     return TCL_OK;
 }
 
 /* Public routines */
 
 /*
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_MarkerOp --
  *
- *	This procedure is invoked to process the Tcl command
- *	that corresponds to a widget managed by this module.
- *	See the user documentation for details on what it does.
+ *	This procedure is invoked to process the TCL command that corresponds
+ *	to a widget managed by this module.  See the user documentation for
+ *	details on what it does.
  *
  * Results:
- *	A standard Tcl result.
+ *	A standard TCL result.
  *
  * Side effects:
  *	See the user documentation.
  *
- * ----------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 
 static Blt_OpSpec markerOps[] =
 {
-    {"after", 1, (Blt_Op)RelinkOp, 4, 5, "marker ?afterMarker?",},
-    {"before", 2, (Blt_Op)RelinkOp, 4, 5, "marker ?beforeMarker?",},
-    {"bind", 2, (Blt_Op)BindOp, 3, 6, "marker sequence command",},
-    {"cget", 2, (Blt_Op)CgetOp, 5, 5, "marker option",},
-    {"configure", 2, (Blt_Op)ConfigureOp, 4, 0,
-	"marker ?marker?... ?option value?...",},
-    {"create", 2, (Blt_Op)CreateOp, 4, 0,
-	"type ?option value?...",},
-    {"delete", 1, (Blt_Op)DeleteOp, 3, 0, "?marker?...",},
-    {"exists", 1, (Blt_Op)ExistsOp, 4, 4, "marker",},
-    {"find", 1, (Blt_Op)FindOp, 8, 8, "enclosed|overlapping x1 y1 x2 y2",},
-    {"get", 1, (Blt_Op)GetOp, 4, 4, "name",},
-    {"names", 1, (Blt_Op)NamesOp, 3, 0, "?pattern?...",},
-    {"type", 1, (Blt_Op)TypeOp, 4, 4, "marker",},
+    {"bind",      1, BindOp,   3, 6, "marker sequence command",},
+    {"cget",      2, CgetOp,   5, 5, "marker option",},
+    {"configure", 2, ConfigureOp, 4, 0,"marker ?marker?... ?option value?...",},
+    {"create",    2, CreateOp, 4, 0, "type ?option value?...",},
+    {"delete",    1, DeleteOp, 3, 0, "?marker?...",},
+    {"exists",    1, ExistsOp, 4, 4, "marker",},
+    {"find",      1, FindOp,   8, 8, "enclosed|overlapping x1 y1 x2 y2",},
+    {"get",       1, GetOp,    4, 4, "name",},
+    {"lower",     1, RelinkOp, 4, 5, "marker ?afterMarker?",},
+    {"names",     1, NamesOp,  3, 0, "?pattern?...",},
+    {"raise",     1, RelinkOp, 4, 5, "marker ?beforeMarker?",},
+    {"type",      1, TypeOp,   4, 4, "marker",},
 };
 static int nMarkerOps = sizeof(markerOps) / sizeof(Blt_OpSpec);
 
 /*ARGSUSED*/
 int
-Blt_MarkerOp(graphPtr, interp, argc, argv)
-    Graph *graphPtr;
-    Tcl_Interp *interp;		/* Not used. */
-    int argc;
-    char **argv;
+Blt_MarkerOp(
+    Graph *graphPtr,
+    Tcl_Interp *interp,		/* Not used. */
+    int objc,
+    Tcl_Obj *const *objv)
 {
-    Blt_Op proc;
+    GraphMarkerProc *proc;
     int result;
 
-    proc = Blt_GetOp(interp, nMarkerOps, markerOps, BLT_OP_ARG2, argc, argv,0);
+    proc = Blt_GetOpFromObj(interp, nMarkerOps, markerOps, BLT_OP_ARG2, 
+	objc, objv,0);
     if (proc == NULL) {
 	return TCL_ERROR;
     }
-    result = (*proc) (graphPtr, interp, argc, argv);
+    result = (*proc) (graphPtr, interp, objc, objv);
     return result;
 }
 
 /*
- * -------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_MarkersToPostScript --
  *
- * -------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
-Blt_MarkersToPostScript(graphPtr, psToken, under)
-    Graph *graphPtr;
-    PsToken psToken;
-    int under;
+Blt_MarkersToPostScript(Graph *graphPtr, Blt_Ps ps, int under)
 {
-    Blt_ChainLink *linkPtr;
-    register Marker *markerPtr;
+    Blt_ChainLink link;
 
-    for (linkPtr = Blt_ChainFirstLink(graphPtr->markers.displayList);
-	linkPtr != NULL; linkPtr = Blt_ChainNextLink(linkPtr)) {
-	markerPtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_LastLink(graphPtr->markers.displayList); 
+	 link != NULL; link = Blt_Chain_PrevLink(link)) {
+	Marker *markerPtr;
+
+	markerPtr = Blt_Chain_GetValue(link);
 	if ((markerPtr->classPtr->postscriptProc == NULL) || 
 	    (markerPtr->nWorldPts == 0)) {
 	    continue;
@@ -4791,41 +4924,30 @@ Blt_MarkersToPostScript(graphPtr, psToken, under)
 	if (markerPtr->drawUnder != under) {
 	    continue;
 	}
-	if (markerPtr->hidden) {
+	if (markerPtr->flags & (HIDE|DELETE_PENDING)) {
 	    continue;
 	}
-	if (markerPtr->elemName != NULL) {
-	    Blt_HashEntry *hPtr;
-
-	    hPtr = Blt_FindHashEntry(&graphPtr->elements.table, 
-			     markerPtr->elemName);
-	    if (hPtr != NULL) {
-		Element *elemPtr;
-
-		elemPtr = (Element *)Blt_GetHashValue(hPtr);
-		if (elemPtr->hidden) {
-		    continue;
-		}
-	    }
+	if ((markerPtr->elemName != NULL) && (IsElementHidden(markerPtr))) {
+	    continue;
 	}
-	Blt_AppendToPostScript(psToken, "\n% Marker \"", markerPtr->name,
-	    "\" is a ", markerPtr->classUid, " marker\n", (char *)NULL);
-	(*markerPtr->classPtr->postscriptProc) (markerPtr, psToken);
+	Blt_Ps_VarAppend(ps, "\n% Marker \"", markerPtr->obj.name, 
+		"\" is a ", markerPtr->obj.className, ".\n", (char *)NULL);
+	(*markerPtr->classPtr->postscriptProc) (markerPtr, ps);
     }
 }
 
 /*
- * -------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  *
  * Blt_DrawMarkers --
  *
- *	Calls the individual drawing routines (based on marker type)
- *	for each marker in the display list.
+ *	Calls the individual drawing routines (based on marker type) for each
+ *	marker in the display list.
  *
  *	A marker will not be drawn if
  *
- *	1) An element linked to the marker (indicated by elemName) 
- *	   is currently hidden.
+ *	1) An element linked to the marker (indicated by elemName) is
+ *	   currently hidden.
  *
  *	2) No coordinates have been specified for the marker.
  *
@@ -4834,8 +4956,7 @@ Blt_MarkersToPostScript(graphPtr, psToken, under)
  *
  *	4) The marker is configured as hidden (-hide option).
  *
- *	5) The marker isn't visible in the current viewport
- *	   (i.e. clipped).
+ *	5) The marker isn't visible in the current viewport (i.e. clipped).
  *
  * Results:
  *	None
@@ -4844,58 +4965,49 @@ Blt_MarkersToPostScript(graphPtr, psToken, under)
  *	Markers are drawn into the drawable (pixmap) which will eventually
  *	be displayed in the graph window.
  *
- * -------------------------------------------------------------------------
+ *---------------------------------------------------------------------------
  */
 void
-Blt_DrawMarkers(graphPtr, drawable, under)
-    Graph *graphPtr;
-    Drawable drawable;		/* Pixmap or window to draw into */
-    int under;
+Blt_DrawMarkers(
+    Graph *graphPtr,
+    Drawable drawable,		/* Pixmap or window to draw into */
+    int under)
 {
-    Blt_ChainLink *linkPtr;
-    Marker *markerPtr;
+    Blt_ChainLink link;
 
-    for (linkPtr = Blt_ChainFirstLink(graphPtr->markers.displayList);
-	linkPtr != NULL; linkPtr = Blt_ChainNextLink(linkPtr)) {
-	markerPtr = Blt_ChainGetValue(linkPtr);
+    for (link = Blt_Chain_LastLink(graphPtr->markers.displayList); 
+	 link != NULL; link = Blt_Chain_PrevLink(link)) {
+	Marker *markerPtr;
+
+	markerPtr = Blt_Chain_GetValue(link);
 
 	if ((markerPtr->nWorldPts == 0) || 
 	    (markerPtr->drawUnder != under) ||
-	    (markerPtr->hidden) || 
-	    (markerPtr->clipped)) {
+	    (markerPtr->clipped) ||
+	    (markerPtr->flags & (DELETE_PENDING|HIDE))) {
 	    continue;
 	}
-	if (markerPtr->elemName != NULL) {
-	    Blt_HashEntry *hPtr;
-
-	    /* Look up the named element and see if it's hidden */
-	    hPtr = Blt_FindHashEntry(&graphPtr->elements.table, 
-				     markerPtr->elemName);
-	    if (hPtr != NULL) {
-		Element *elemPtr;
-
-		elemPtr = (Element *)Blt_GetHashValue(hPtr);
-		if (elemPtr->hidden) {
-		    continue;
-		}
-	    }
+	if ((markerPtr->elemName != NULL) && (IsElementHidden(markerPtr))) {
+	    continue;
 	}
-
 	(*markerPtr->classPtr->drawProc) (markerPtr, drawable);
     }
 }
 
 void
-Blt_MapMarkers(graphPtr)
-    Graph *graphPtr;
+Blt_MapMarkers(Graph *graphPtr)
 {
-    Blt_ChainLink *linkPtr;
-    Marker *markerPtr;
+    Blt_ChainLink link;
 
-    for (linkPtr = Blt_ChainFirstLink(graphPtr->markers.displayList);
-	linkPtr != NULL; linkPtr = Blt_ChainNextLink(linkPtr)) {
-	markerPtr = Blt_ChainGetValue(linkPtr);
-	if ((markerPtr->nWorldPts == 0) || (markerPtr->hidden)) {
+    for (link = Blt_Chain_FirstLink(graphPtr->markers.displayList); 
+	 link != NULL; link = Blt_Chain_NextLink(link)) {
+	Marker *markerPtr;
+
+	markerPtr = Blt_Chain_GetValue(link);
+	if (markerPtr->nWorldPts == 0) {
+	    continue;
+	}
+	if (markerPtr->flags & (HIDE|DELETE_PENDING)) {
 	    continue;
 	}
 	if ((graphPtr->flags & MAP_ALL) || (markerPtr->flags & MAP_ITEM)) {
@@ -4907,45 +5019,57 @@ Blt_MapMarkers(graphPtr)
 
 
 void
-Blt_DestroyMarkers(graphPtr)
-    Graph *graphPtr;
+Blt_DestroyMarkers(Graph *graphPtr)
 {
     Blt_HashEntry *hPtr;
-    Blt_HashSearch cursor;
-    Marker *markerPtr;
+    Blt_HashSearch iter;
 
-    for (hPtr = Blt_FirstHashEntry(&graphPtr->markers.table, &cursor);
-	hPtr != NULL; hPtr = Blt_NextHashEntry(&cursor)) {
-	markerPtr = (Marker *)Blt_GetHashValue(hPtr);
+    for (hPtr = Blt_FirstHashEntry(&graphPtr->markers.table, &iter); 
+	 hPtr != NULL; hPtr = Blt_NextHashEntry(&iter)) {
+	Marker *markerPtr;
+
+	markerPtr = Blt_GetHashValue(hPtr);
 	/*
-	 * Dereferencing the pointer to the hash table prevents the
-	 * hash table entry from being automatically deleted.
+	 * Dereferencing the pointer to the hash table prevents the hash table
+	 * entry from being automatically deleted.
 	 */
 	markerPtr->hashPtr = NULL;
 	DestroyMarker(markerPtr);
     }
     Blt_DeleteHashTable(&graphPtr->markers.table);
     Blt_DeleteHashTable(&graphPtr->markers.tagTable);
-    Blt_ChainDestroy(graphPtr->markers.displayList);
+    Blt_Chain_Destroy(graphPtr->markers.displayList);
 }
 
 Marker *
-Blt_NearestMarker(graphPtr, x, y, under)
-    Graph *graphPtr;
-    int x, y;			/* Screen coordinates */
-    int under;
+Blt_NearestMarker(
+    Graph *graphPtr,
+    int x, int y,			/* Screen coordinates */
+    int under)
 {
-    Blt_ChainLink *linkPtr;
-    Marker *markerPtr;
-    Point2D point;
+    Blt_ChainLink link;
+    Point2d point;
 
     point.x = (double)x;
     point.y = (double)y;
-    for (linkPtr = Blt_ChainLastLink(graphPtr->markers.displayList);
-	linkPtr != NULL; linkPtr = Blt_ChainPrevLink(linkPtr)) {
-	markerPtr = Blt_ChainGetValue(linkPtr);
-	if ((markerPtr->drawUnder == under) && (markerPtr->nWorldPts > 0) && 
-	    (!markerPtr->hidden) && (markerPtr->state == STATE_NORMAL)) {
+    for (link = Blt_Chain_FirstLink(graphPtr->markers.displayList);
+	link != NULL; link = Blt_Chain_NextLink(link)) {
+	Marker *markerPtr;
+
+	markerPtr = Blt_Chain_GetValue(link);
+	if ((markerPtr->nWorldPts == 0) ||
+	    (markerPtr->flags & (HIDE|DELETE_PENDING|MAP_ITEM))) {
+	    continue;	/* Don't consider markers that are pending to be
+			 * mapped. Even if the marker has already been mapped,
+			 * the coordinates could be invalid now.  Better to
+			 * pick no marker than the wrong marker. */
+
+	}
+	if ((markerPtr->elemName != NULL) && (IsElementHidden(markerPtr))) {
+	    continue;
+	}
+	if ((markerPtr->drawUnder == under) && 
+	    (markerPtr->state == STATE_NORMAL)) {
 	    if ((*markerPtr->classPtr->pointProc) (markerPtr, &point)) {
 		return markerPtr;
 	    }
@@ -4953,3 +5077,178 @@ Blt_NearestMarker(graphPtr, x, y, under)
     }
     return NULL;
 }
+
+ClientData
+Blt_MakeMarkerTag(Graph *graphPtr, const char *tagName)
+{
+    Blt_HashEntry *hPtr;
+    int isNew;
+
+    assert(tagName != NULL);
+    hPtr = Blt_CreateHashEntry(&graphPtr->markers.tagTable, tagName, &isNew);
+    return Blt_GetHashKey(&graphPtr->markers.tagTable, hPtr);
+}
+
+
+#ifdef notdef
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ConfigureArrows --
+ *
+ *	If arrowheads have been requested for a line, this procedure makes
+ *	arrangements for the arrowheads.
+ *
+ * Results:
+ *	Always returns TCL_OK.
+ *
+ * Side effects:
+ *	Information in linePtr is set up for one or two arrowheads.  the
+ *	firstArrowPtr and lastArrowPtr polygons are allocated and initialized,
+ *	if need be, and the end points of the line are adjusted so that a
+ *	thick line doesn't stick out past the arrowheads.
+ *
+ *---------------------------------------------------------------------------
+ */
+
+	/* ARGSUSED */
+static int
+ConfigureArrows(canvas, linePtr)
+    Tk_Canvas canvas;			/* Canvas in which arrows will be
+					 * displayed (interp and tkwin fields
+					 * are needed). */
+    LineItem *linePtr;			/* Item to configure for arrows. */
+{
+    double *poly, *coordPtr;
+    double dx, dy, length, sinTheta, cosTheta, temp;
+    double fracHeight;			/* Line width as fraction of arrowhead
+					 * width. */
+    double backup;			/* Distance to backup end points so
+					 * the line ends in the middle of the
+					 * arrowhead. */
+    double vertX, vertY;		/* Position of arrowhead vertex. */
+    double shapeA, shapeB, shapeC;	/* Adjusted coordinates (see
+					 * explanation below). */
+    double width;
+    Tk_State state = linePtr->header.state;
+
+    if (linePtr->numPoints <2) {
+	return TCL_OK;
+    }
+
+    if(state == TK_STATE_NULL) {
+	state = ((TkCanvas *)canvas)->canvas_state;
+    }
+
+    width = linePtr->outline.width;
+    if (((TkCanvas *)canvas)->currentItemPtr == (Tk_Item *)linePtr) {
+	if (linePtr->outline.activeWidth>width) {
+	    width = linePtr->outline.activeWidth;
+	}
+    } else if (state==TK_STATE_DISABLED) {
+	if (linePtr->outline.disabledWidth>0) {
+	    width = linePtr->outline.disabledWidth;
+	}
+    }
+
+    /*
+     * The code below makes a tiny increase in the shape parameters for the
+     * line.  This is a bit of a hack, but it seems to result in displays that
+     * more closely approximate the specified parameters.  Without the
+     * adjustment, the arrows come out smaller than expected.
+     */
+
+    shapeA = linePtr->arrowShapeA + 0.001;
+    shapeB = linePtr->arrowShapeB + 0.001;
+    shapeC = linePtr->arrowShapeC + width/2.0 + 0.001;
+
+    /*
+     * If there's an arrowhead on the first point of the line, compute its
+     * polygon and adjust the first point of the line so that the line doesn't
+     * stick out past the leading edge of the arrowhead.
+     */
+
+    fracHeight = (width/2.0)/shapeC;
+    backup = fracHeight*shapeB + shapeA*(1.0 - fracHeight)/2.0;
+    if (linePtr->arrow != ARROWS_LAST) {
+	poly = linePtr->firstArrowPtr;
+	if (poly == NULL) {
+	    poly = (double *) ckalloc((unsigned)
+		    (2*PTS_IN_ARROW*sizeof(double)));
+	    poly[0] = poly[10] = linePtr->coordPtr[0];
+	    poly[1] = poly[11] = linePtr->coordPtr[1];
+	    linePtr->firstArrowPtr = poly;
+	}
+	dx = poly[0] - linePtr->coordPtr[2];
+	dy = poly[1] - linePtr->coordPtr[3];
+	length = hypot(dx, dy);
+	if (length == 0) {
+	    sinTheta = cosTheta = 0.0;
+	} else {
+	    sinTheta = dy/length;
+	    cosTheta = dx/length;
+	}
+	vertX = poly[0] - shapeA*cosTheta;
+	vertY = poly[1] - shapeA*sinTheta;
+	temp = shapeC*sinTheta;
+	poly[2] = poly[0] - shapeB*cosTheta + temp;
+	poly[8] = poly[2] - 2*temp;
+	temp = shapeC*cosTheta;
+	poly[3] = poly[1] - shapeB*sinTheta - temp;
+	poly[9] = poly[3] + 2*temp;
+	poly[4] = poly[2]*fracHeight + vertX*(1.0-fracHeight);
+	poly[5] = poly[3]*fracHeight + vertY*(1.0-fracHeight);
+	poly[6] = poly[8]*fracHeight + vertX*(1.0-fracHeight);
+	poly[7] = poly[9]*fracHeight + vertY*(1.0-fracHeight);
+
+	/*
+	 * Polygon done.  Now move the first point towards the second so that
+	 * the corners at the end of the line are inside the arrowhead.
+	 */
+
+	linePtr->coordPtr[0] = poly[0] - backup*cosTheta;
+	linePtr->coordPtr[1] = poly[1] - backup*sinTheta;
+    }
+
+    /*
+     * Similar arrowhead calculation for the last point of the line.
+     */
+
+    if (linePtr->arrow != ARROWS_FIRST) {
+	coordPtr = linePtr->coordPtr + 2*(linePtr->numPoints-2);
+	poly = linePtr->lastArrowPtr;
+	if (poly == NULL) {
+	    poly = (double *) ckalloc((unsigned)
+		    (2*PTS_IN_ARROW*sizeof(double)));
+	    poly[0] = poly[10] = coordPtr[2];
+	    poly[1] = poly[11] = coordPtr[3];
+	    linePtr->lastArrowPtr = poly;
+	}
+	dx = poly[0] - coordPtr[0];
+	dy = poly[1] - coordPtr[1];
+	length = hypot(dx, dy);
+	if (length == 0) {
+	    sinTheta = cosTheta = 0.0;
+	} else {
+	    sinTheta = dy/length;
+	    cosTheta = dx/length;
+	}
+	vertX = poly[0] - shapeA*cosTheta;
+	vertY = poly[1] - shapeA*sinTheta;
+	temp = shapeC*sinTheta;
+	poly[2] = poly[0] - shapeB*cosTheta + temp;
+	poly[8] = poly[2] - 2*temp;
+	temp = shapeC*cosTheta;
+	poly[3] = poly[1] - shapeB*sinTheta - temp;
+	poly[9] = poly[3] + 2*temp;
+	poly[4] = poly[2]*fracHeight + vertX*(1.0-fracHeight);
+	poly[5] = poly[3]*fracHeight + vertY*(1.0-fracHeight);
+	poly[6] = poly[8]*fracHeight + vertX*(1.0-fracHeight);
+	poly[7] = poly[9]*fracHeight + vertY*(1.0-fracHeight);
+	coordPtr[2] = poly[0] - backup*cosTheta;
+	coordPtr[3] = poly[1] - backup*sinTheta;
+    }
+
+    return TCL_OK;
+}
+#endif
