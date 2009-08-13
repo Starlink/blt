@@ -42,7 +42,6 @@ miscFiles     = \
 		hierbox.tcl \
 		scrollbar.tcl \
 		scrollset.tcl \
-		tabnotebook.tcl \
 		tabset.tcl \
 		treeview.tcl \
 		tclIndex \
@@ -76,7 +75,7 @@ install: mkdirs pkgIndex
 	for i in $(miscFiles) ; do \
 	    $(INSTALL_DATA) $(srcdir)/$$i $(INSTALL_ROOT)$(pkgdir) ; \
 	done 
-	$(INSTALL_DATA) pkgIndex.tcl $(pkgdir)
+	$(INSTALL_DATA) pkgIndex.tcl $(INSTALL_ROOT)$(pkgdir)
 
 mkdirs:
 	@for i in $(instdirs) ; do \
