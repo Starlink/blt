@@ -988,7 +988,7 @@ ParseModifiers(
 	if (IsNodeId(p)) {
 	    long inode;
 	    
-	    if (Tcl_GetLong(interp, p, &inode) != TCL_OK) {
+	    if (Blt_GetLong(interp, p, &inode) != TCL_OK) {
 		node = NULL;
 	    } else {
 		node = Blt_Tree_GetNode(tree, inode);
@@ -1072,7 +1072,7 @@ GetForeignNode(
 	long inode;
 
 	if (p != NULL) {
-	    if (TclGetLong(interp, string, &inode) != TCL_OK) {
+	    if (Blt_GetLong(interp, string, &inode) != TCL_OK) {
 		goto error;
 	    }
 	} else {
@@ -1135,7 +1135,7 @@ GetNodeFromObj(
 	long inode;
 
 	if (p != NULL) {
-	    if (TclGetLong(interp, string, &inode) != TCL_OK) {
+	    if (Blt_GetLong(interp, string, &inode) != TCL_OK) {
 		goto error;
 	    }
 	} else {

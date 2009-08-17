@@ -314,7 +314,7 @@ CheckLabel(Tcl_Interp *interp, RowColumn *rcPtr, const char *label)
 	return TCL_ERROR;
     }
     if ((isdigit(UCHAR(c))) && 
-	(Tcl_GetLong(NULL, (char *)label, &dummy) == TCL_OK)) {
+	(Blt_GetLong(NULL, (char *)label, &dummy) == TCL_OK)) {
 	if (interp != NULL) {
 	    Tcl_AppendResult(interp, rcPtr->classPtr->name, " label \"", label, 
 		"\" can't be a number.", (char *)NULL);
@@ -2325,7 +2325,7 @@ RestoreHeader(Tcl_Interp *interp, Blt_DataTable table, RestoreData *restorePtr)
 		(char *)NULL);
 	return TCL_ERROR;
     }	
-    if (Tcl_GetLong(interp, restorePtr->argv[1], &lval) != TCL_OK) {
+    if (Blt_GetLong(interp, restorePtr->argv[1], &lval) != TCL_OK) {
 	RestoreError(interp, restorePtr);
 	return TCL_ERROR;
     }
@@ -2336,7 +2336,7 @@ RestoreHeader(Tcl_Interp *interp, Blt_DataTable table, RestoreData *restorePtr)
 	return TCL_ERROR;
     }
     nRows = lval;
-    if (Tcl_GetLong(interp, restorePtr->argv[2], &lval) != TCL_OK) {
+    if (Blt_GetLong(interp, restorePtr->argv[2], &lval) != TCL_OK) {
 	RestoreError(interp, restorePtr);
 	return TCL_ERROR;
     }
@@ -2373,12 +2373,12 @@ RestoreHeader(Tcl_Interp *interp, Blt_DataTable table, RestoreData *restorePtr)
 	    return TCL_ERROR;
 	}
     }
-    if (Tcl_GetLong(interp, restorePtr->argv[3], &lval) != TCL_OK) {
+    if (Blt_GetLong(interp, restorePtr->argv[3], &lval) != TCL_OK) {
 	RestoreError(interp, restorePtr);
 	return TCL_ERROR;
     }
     restorePtr->ctime = (unsigned long)lval;
-    if (Tcl_GetLong(interp, restorePtr->argv[4], &lval) != TCL_OK) {
+    if (Blt_GetLong(interp, restorePtr->argv[4], &lval) != TCL_OK) {
 	RestoreError(interp, restorePtr);
 	return TCL_ERROR;
     }
@@ -2404,7 +2404,7 @@ RestoreColumn(Tcl_Interp *interp, Blt_DataTable table, RestoreData *restorePtr)
 		(char *)NULL);
 	return TCL_ERROR;
     }	
-    if (Tcl_GetLong(interp, restorePtr->argv[1], &lval) != TCL_OK) {
+    if (Blt_GetLong(interp, restorePtr->argv[1], &lval) != TCL_OK) {
 	RestoreError(interp, restorePtr);
 	return TCL_ERROR;
     }
@@ -2479,7 +2479,7 @@ RestoreRow(Tcl_Interp *interp, Blt_DataTable table, RestoreData *restorePtr)
 			 (char *)NULL);
 	return TCL_ERROR;
     }	
-    if (Tcl_GetLong(interp, restorePtr->argv[1], &lval) != TCL_OK) {
+    if (Blt_GetLong(interp, restorePtr->argv[1], &lval) != TCL_OK) {
 	RestoreError(interp, restorePtr);
 	return TCL_ERROR;
     }
@@ -2539,7 +2539,7 @@ RestoreValue(Tcl_Interp *interp, Blt_DataTable table, RestoreData *restorePtr)
 		(char *)NULL);
 	return TCL_ERROR;
     }	
-    if (Tcl_GetLong(interp, restorePtr->argv[1], &lval) != TCL_OK) {
+    if (Blt_GetLong(interp, restorePtr->argv[1], &lval) != TCL_OK) {
 	RestoreError(interp, restorePtr);
 	return TCL_ERROR;
     }
@@ -2551,7 +2551,7 @@ RestoreValue(Tcl_Interp *interp, Blt_DataTable table, RestoreData *restorePtr)
 	return TCL_ERROR;
     }
     row = Blt_GetHashValue(hPtr);
-    if (Tcl_GetLong(interp, restorePtr->argv[2], &lval) != TCL_OK) {
+    if (Blt_GetLong(interp, restorePtr->argv[2], &lval) != TCL_OK) {
 	RestoreError(interp, restorePtr);
 	return TCL_ERROR;
     }
@@ -2735,7 +2735,7 @@ Blt_DataTable_IterateRows(Tcl_Interp *interp, Blt_DataTable table,
 	if (p == tagName) {
 	    result = Tcl_GetLongFromObj((Tcl_Interp *)NULL, objPtr, &lval);
 	} else {
-	    result = Tcl_GetLong((Tcl_Interp *)NULL, (char *)tagName, &lval);
+	    result = Blt_GetLong((Tcl_Interp *)NULL, (char *)tagName, &lval);
 	}
 	if (result != TCL_OK) {
 	    if (interp != NULL) {
@@ -3037,7 +3037,7 @@ Blt_DataTable_IterateColumns(Tcl_Interp *interp, Blt_DataTable table,
 	if (p == tagName) {
 	    result = Tcl_GetLongFromObj((Tcl_Interp *)NULL, objPtr, &lval);
 	} else {
-	    result = Tcl_GetLong((Tcl_Interp *)NULL, (char *)tagName, &lval);
+	    result = Blt_GetLong((Tcl_Interp *)NULL, (char *)tagName, &lval);
 	}
 	if (result != TCL_OK) {
 	    if (interp != NULL) {
@@ -3966,7 +3966,7 @@ Blt_DataTable_SetRowTag(Tcl_Interp *interp, DataTable *tablePtr,
 	}
 	return TCL_ERROR;
     }
-    if (Tcl_GetLong(NULL, (char *)tagName, &dummy) == TCL_OK) {
+    if (Blt_GetLong(NULL, (char *)tagName, &dummy) == TCL_OK) {
 	if (interp != NULL) {
 	    Tcl_AppendResult(interp, "tag \"", tagName, "\" can't be a number.",
 			     (char *)NULL);
@@ -4039,7 +4039,7 @@ Blt_DataTable_SetColumnTag(Tcl_Interp *interp, DataTable *tablePtr,
 	}
 	return TCL_ERROR;
     }
-    if (Tcl_GetLong(NULL, (char *)tagName, &dummy) == TCL_OK) {
+    if (Blt_GetLong(NULL, (char *)tagName, &dummy) == TCL_OK) {
 	if (interp != NULL) {
 	    Tcl_AppendResult(interp, "tag \"", tagName, "\" can't be a number.",
 			     (char *)NULL);

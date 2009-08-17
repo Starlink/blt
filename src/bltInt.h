@@ -575,6 +575,9 @@ BLT_EXTERN int Blt_GetPixels(Tcl_Interp *interp, Tk_Window tkwin,
 BLT_EXTERN int Blt_GetPosition(Tcl_Interp *interp, const char *string, 
 	long *valuePtr);
 
+BLT_EXTERN int Blt_GetLong(Tcl_Interp *interp, const char *string, 
+	long *valuePtr);
+
 BLT_EXTERN int Blt_GetCount(Tcl_Interp *interp, const char *string, int check, 
 	long *valuePtr);
 
@@ -849,12 +852,6 @@ BLT_EXTERN Tcl_AppInitProc Blt_SendEventCmdInitProc;
 BLT_EXTERN Tcl_AppInitProc Blt_DdeCmdInitProc;
 #endif
 
-
-#define Tcl_GetLong(i,s,p)	TclGetLong(i,s,p)
-
-#ifndef USE_TCL_STUBS
-BLT_EXTERN int TclGetLong(Tcl_Interp *interp, const char *s, long *longPtr);
-#endif
 
 #ifndef HAVE_SPRINTF_S
 BLT_EXTERN int sprintf_s(char *s, size_t size, const char *fmt, /*args*/ ...);

@@ -1647,7 +1647,7 @@ SelectOp(
 	    tedPtr->activeRectArr[4].width = grip - 1;
 	    tedPtr->activeRectArr[4].height = grip - 1;
 
-	    interp->result = Tk_PathName(tePtr->tkwin);
+	    Tcl_SetResult(interp, Tk_PathName(tePtr->tkwin), TCL_VOLATILE);
 	    active = 1;
 	    break;
 	}

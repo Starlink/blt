@@ -822,7 +822,7 @@ Blt_GetPosition(
     } else {
 	long position;
 
-	if (Tcl_GetLong(interp, string, &position) != TCL_OK) {
+	if (Blt_GetLong(interp, string, &position) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	if (position < 0) {
@@ -1291,3 +1291,29 @@ Blt_LoadLibrary(
     return TCL_OK;
 }
 #endif
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_GetLong --
+ *
+ *	Convert a string representing a long.
+ *
+ * Results:
+ *	A standard TCL result and the converted value.
+ *
+ * Side effects:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Blt_GetLong( Tcl_Interp *interp, const char *string, long *ptr )
+{
+    Tcl_Obj obj;
+    obj.refCount = 1;
+    obj.bytes = (char *) string;
+    obj.length = strlen(string);
+    obj.typePtr = NULL;
+    return Tcl_GetLongFromObj(interp, &obj, ptr);
+}

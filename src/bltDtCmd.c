@@ -810,7 +810,7 @@ MakeRows(Tcl_Interp *interp, Blt_DataTable table, Tcl_Obj *objPtr)
 	break;
     case DT_SPEC_INDEX:
 	Tcl_ResetResult(interp);
-	if (Tcl_GetLong(interp, string, &n) != TCL_OK) {
+	if (Blt_GetLong(interp, string, &n) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	n -= Blt_DataTable_NumRows(table);
@@ -860,7 +860,7 @@ MakeColumns(Tcl_Interp *interp, Blt_DataTable table, Tcl_Obj *objPtr)
 	break;
     case DT_SPEC_INDEX:
 	Tcl_ResetResult(interp);
-	if (Tcl_GetLong(interp, string, &n) != TCL_OK) {
+	if (Blt_GetLong(interp, string, &n) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	n -= Blt_DataTable_NumColumns(table);

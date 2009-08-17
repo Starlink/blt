@@ -66,9 +66,6 @@ typedef int (Tcl_ResolveCmdProc)(Tcl_Interp *interp, const char *name,
 /*
  * Exported function declarations:
  */
-/* 36 */
-extern int		TclGetLong(Tcl_Interp * interp, char *str, 
-				   long *longPtr);
 /* 69 */
 extern char *		TclpAlloc(unsigned int size);
 /* 74 */
@@ -154,8 +151,6 @@ typedef struct TclIntStubs {
     void *tclGetInterpProc;	/* 33 */
     void *tclGetIntForIndex;	/* 34 */
     void *tclGetIndexedScalar;  /* 35 */
-
-    int (*tclGetLong)(Tcl_Interp *interp, char *string, long *longPtr);	/* 36 */
 
     void *tclGetLoadedPackages; /* 37 */
     void *tclGetNamespaceForQualName;  /* 38 */
@@ -322,10 +317,6 @@ extern TclIntStubs *tclIntStubsPtr;
 /*
  * Inline function declarations:
  */
-#ifndef TclGetLong
-#define TclGetLong \
-	(tclIntStubsPtr->tclGetLong) /* 36 */
-#endif
 
 #ifndef TclpAlloc
 #define TclpAlloc \

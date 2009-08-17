@@ -1728,8 +1728,8 @@ RestoreNode5(
      * its parent.  The parent id of the root node is always -1.
      */
 
-    if ((Tcl_GetLong(interp, argv[0], &pid) != TCL_OK) ||
-	(Tcl_GetLong(interp, argv[1], &id) != TCL_OK)) {
+    if ((Blt_GetLong(interp, argv[0], &pid) != TCL_OK) ||
+	(Blt_GetLong(interp, argv[1], &id) != TCL_OK)) {
 	return TCL_ERROR;
     }
     names = values = tags = attrs = NULL;
