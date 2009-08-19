@@ -253,21 +253,22 @@ AC_EGREP_CPP
 #
 
 # Setup default flags for the compiler.
+env_CFLAGS="$CFLAGS"
 case $target:$blt_have_gcc:$blt_enable_symbols in
   *-solaris2*:no:yes)
-    CFLAGS="-g -xs -O"
+    CFLAGS="$env_CFLAGS -g -xs -O"
     ;;
   *:yes:no)
-    CFLAGS="-O3"
+    CFLAGS="$env_CFLAGS -O3"
     ;;
   *:yes:yes)
-    CFLAGS="-g -O2"
+    CFLAGS="$env_CFLAGS -g -O2"
     ;;
   *:no:no) 
-    CFLAGS="-O"
+    CFLAGS="$env_CFLAGS -O"
     ;;
   *)
-    CFLAGS="-g -O2"
+    CFLAGS="$env_CFLAGS -g -O2"
     ;;
 esac
 
@@ -991,7 +992,7 @@ elif test "${blt_with_tcl_lib_dir}" = "yes" ; then
   do
     if test -r "$libname" ; then
       TCL_LIB_DIR="${TCL_EXEC_PREFIX}/lib"
-      TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION}"
+      TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION} -ltclstub${TCL_LIB_VERSION}"
       break
     fi
   done
@@ -1004,7 +1005,7 @@ else
   do
     if test -r "$libname" ; then
       TCL_LIB_DIR="${blt_with_tcl_lib_dir}"
-      TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION}"
+      TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION} -ltclstub${TCL_LIB_VERSION}"
       break
     fi
   done
@@ -1024,7 +1025,7 @@ elif test "${blt_with_tk_lib_dir}" = "yes" ; then
   do
     if test -r "$libname" ; then
       TK_LIB_DIR="${TK_EXEC_PREFIX}/lib"
-      TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION}"
+      TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION} -ltkstub${TK_LIB_VERSION}"
       break
     fi
   done
@@ -1037,7 +1038,7 @@ else
   do
     if test -r "$libname" ; then
       TK_LIB_DIR="${blt_with_tk_lib_dir}"
-      TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION}"
+      TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION} -ltkstub${TK_LIB_VERSION}"
       break
     fi
   done
@@ -1614,10 +1615,10 @@ if test "${TCL_SHARED_BUILD}" != "1" ; then
 fi
 
 if test "${build_shared}" = "yes" -a "$blt_enable_shared" = "yes"; then
-  AC_SUBST(BLT_SO_CFLAGS, "$SO_CFLAGS")
+  AC_SUBST(BLT_SO_CFLAGS, "$env_CFLAGS $SO_CFLAGS")
   AC_SUBST(BLT_TARGET, "shared")
   AC_SUBST(BLT_SO_LD, "$SO_LD")
-  AC_SUBST(BLT_SO_LDFLAGS, "$SO_LDFLAGS")
+  AC_SUBST(BLT_SO_LDFLAGS, "$env_CFLAGS $SO_LDFLAGS")
   AC_SUBST(BLT_SO_LIBS, "$SO_LIBS")
   AC_SUBST(BLT_SO_EXT, "$SO_EXT")
   AC_SUBST(LD_RUN_PATH)

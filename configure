@@ -3546,21 +3546,22 @@ rm -f conftest*
 #
 
 # Setup default flags for the compiler.
+env_CFLAGS="$CFLAGS"
 case $target:$blt_have_gcc:$blt_enable_symbols in
   *-solaris2*:no:yes)
-    CFLAGS="-g -xs -O"
+    CFLAGS="$env_CFLAGS -g -xs -O"
     ;;
   *:yes:no)
-    CFLAGS="-O3"
+    CFLAGS="$env_CFLAGS -O3"
     ;;
   *:yes:yes)
-    CFLAGS="-g -O2"
+    CFLAGS="$env_CFLAGS -g -O2"
     ;;
   *:no:no)
-    CFLAGS="-O"
+    CFLAGS="$env_CFLAGS -O"
     ;;
   *)
-    CFLAGS="-g -O2"
+    CFLAGS="$env_CFLAGS -g -O2"
     ;;
 esac
 
@@ -9888,7 +9889,7 @@ echo "$as_me: error: can not run test program while cross compiling" >&2;}
    { (exit 1); exit 1; }; }
 else
 cat > conftest.$ac_ext <<EOF
-#line 9891 "configure"
+#line 9892 "configure"
 #include "confdefs.h"
 #ifdef __cplusplus
 extern "C" void exit(int);
@@ -11459,7 +11460,7 @@ elif test "${blt_with_tcl_lib_dir}" = "yes" ; then
   do
     if test -r "$libname" ; then
       TCL_LIB_DIR="${TCL_EXEC_PREFIX}/lib"
-      TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION}"
+      TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION} -ltclstub${TCL_LIB_VERSION}"
       break
     fi
   done
@@ -11472,7 +11473,7 @@ else
   do
     if test -r "$libname" ; then
       TCL_LIB_DIR="${blt_with_tcl_lib_dir}"
-      TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION}"
+      TCL_LIB_SPEC="-L${TCL_LIB_DIR} -ltcl${TCL_LIB_VERSION} -ltclstub${TCL_LIB_VERSION}"
       break
     fi
   done
@@ -11496,7 +11497,7 @@ elif test "${blt_with_tk_lib_dir}" = "yes" ; then
   do
     if test -r "$libname" ; then
       TK_LIB_DIR="${TK_EXEC_PREFIX}/lib"
-      TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION}"
+      TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION} -ltkstub${TK_LIB_VERSION}"
       break
     fi
   done
@@ -11509,7 +11510,7 @@ else
   do
     if test -r "$libname" ; then
       TK_LIB_DIR="${blt_with_tk_lib_dir}"
-      TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION}"
+      TK_LIB_SPEC="-L${TK_LIB_DIR} -ltk${TK_LIB_VERSION} -ltkstub${TK_LIB_VERSION}"
       break
     fi
   done
@@ -15537,13 +15538,13 @@ if test "${TCL_SHARED_BUILD}" != "1" ; then
 fi
 
 if test "${build_shared}" = "yes" -a "$blt_enable_shared" = "yes"; then
-  BLT_SO_CFLAGS="$SO_CFLAGS"
+  BLT_SO_CFLAGS="$env_CFLAGS $SO_CFLAGS"
 
   BLT_TARGET="shared"
 
   BLT_SO_LD="$SO_LD"
 
-  BLT_SO_LDFLAGS="$SO_LDFLAGS"
+  BLT_SO_LDFLAGS="$env_CFLAGS $SO_LDFLAGS"
 
   BLT_SO_LIBS="$SO_LIBS"
 

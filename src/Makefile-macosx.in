@@ -22,7 +22,7 @@ LIB_SUFFIX =		@BLT_LIB_SUFFIX@
 SO_EXT =		@BLT_SO_EXT@
 SO_PREFIX =		@BLT_SO_PREFIX@
 SO_LD =			@BLT_SO_LD@
-SO_LD_FLAGS =		@BLT_SO_LD_FLAGS@ @LD_RUN_PATH@
+SO_LDFLAGS =		@BLT_SO_LDFLAGS@ @LD_RUN_PATH@
 
 EXPAT_INC_SPEC =	@EXPAT_INC_SPEC@
 EXPAT_LIB_SPEC =	@EXPAT_LIB_SPEC@
@@ -292,10 +292,12 @@ BLT_CORE_SO_OBJS =	bltAlloc.o \
 			bltSwitch.o \
 			$(TREE_OBJS) \
 			bltUtil.o \
+			bltVar.o \
 			bltVecCmd.o \
 			bltVecMath.o \
 			bltVector.o \
 			bltWatch.o \
+			bltTri.o \
 			bltUnixPipe.o \
 			bltCoreInit.o 
 
@@ -322,13 +324,14 @@ BLT_X_SO_OBJS =		$(GRAPH_OBJS) \
 			bltDragdrop.o \
 			bltHtext.o \
 			bltImage.o \
+			bltMenubar.o \
 			bltOldConfig.o \
+			bltPaneset.o \
 			bltPs.o \
+			bltScrollset.o \
 			bltTable.o \
-			bltTabnotebook.o \
 			bltTabset.o \
 			bltText.o \
-			bltTile.o \
 			bltUnixBitmap.o \
 			bltUnixDnd.o \
 			bltUnixFont.o \
@@ -336,6 +339,7 @@ BLT_X_SO_OBJS =		$(GRAPH_OBJS) \
 			bltUnixWindow.o \
 			bltWindow.o \
 			bltWinop.o  \
+			bltWinPrnt.o \
 			bltExtInit.o \
 			$(TK_OBJS) $(N_OBJS) 
 
@@ -389,8 +393,8 @@ build_libs: build_@BLT_TARGET@
 
 build_shared: $(blt_core_so) $(blt_x_so) build_core_pkgs build_x_pkgs
 build_static: $(blt_core_a) $(blt_x_a)
-build_core_pkgs: $(blt_core_pkgs_so) 
-build_x_pkgs:  $(blt_x_pkgs_so)
+build_core_pkgs: $(blt_core_so) $(blt_core_pkgs_so) 
+build_x_pkgs:  $(blt_x_so) $(blt_x_pkgs_so)
 
 $(bltwish): $(blt_core_a) $(blt_x_a) $(srcdir)/bltUnixMain.c
 	$(RM) $(bltwish)
@@ -420,88 +424,88 @@ $(blt_x_a):  $(BLT_X_A_OBJS)
 
 $(blt_core_so):  $(BLT_CORE_SO_OBJS)
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ $(BLT_CORE_SO_OBJS) $(BLT_CORE_SO_LIBS)
+	$(SO_LD) $(SO_LDFLAGS) -o $@ $(BLT_CORE_SO_OBJS) $(BLT_CORE_SO_LIBS)
 
 
 $(blt_x_so):  $(BLT_X_SO_OBJS) 
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ $(BLT_X_SO_OBJS) $(BLT_X_SO_LIBS)
+	$(SO_LD) $(SO_LDFLAGS) -o $@ $(BLT_X_SO_OBJS) $(BLT_X_SO_LIBS)
 
 $(blt_dt_mysql_so): bltDtMysql.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltDtMysql.o $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltDtMysql.o $(blt_core_so) \
 		$(tcl_lib_spec) $(MYSQL_LIB_SPEC) 
 
 $(blt_dt_xml_so): bltDtXml.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltDtXml.o $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltDtXml.o $(blt_core_so) \
 		$(tcl_lib_spec) $(EXPAT_LIB_SPEC)
 
 $(blt_dt_csv_so): bltDtCsv.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltDtCsv.o $(blt_core_so) $(tcl_lib_spec)
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltDtCsv.o $(blt_core_so) $(tcl_lib_spec)
 
 $(blt_dt_vec_so): bltDtVec.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltDtVec.o $(blt_core_so) $(tcl_lib_spec)
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltDtVec.o $(blt_core_so) $(tcl_lib_spec)
 
 $(blt_dt_tree_so): bltDtTree.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltDtTree.o $(blt_core_so) $(tcl_lib_spec)
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltDtTree.o $(blt_core_so) $(tcl_lib_spec)
 
 $(blt_pict_bmp_so): bltPictBmp.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictBmp.o $(blt_x_so) $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictBmp.o $(blt_x_so) $(blt_core_so) \
 		$(tk_lib_spec) $(tcl_lib_spec)
 	
 $(blt_pict_gif_so): bltPictGif.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictGif.o $(blt_x_so) $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictGif.o $(blt_x_so) $(blt_core_so) \
 		$(tk_lib_spec) $(tcl_lib_spec)
 
 $(blt_pict_jpg_so): bltPictJpg.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictJpg.o $(blt_x_so) $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictJpg.o $(blt_x_so) $(blt_core_so) \
 		$(tk_lib_spec) $(tcl_lib_spec) $(JPG_LIB_SPEC)
 
 $(blt_pict_png_so): bltPictPng.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictPng.o $(blt_x_so) $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictPng.o $(blt_x_so) $(blt_core_so) \
 		$(tk_lib_spec) $(tcl_lib_spec) $(PNG_LIB_SPEC)
 
 $(blt_pict_pbm_so): bltPictPbm.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictPbm.o $(blt_x_so) $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictPbm.o $(blt_x_so) $(blt_core_so) \
 		$(tk_lib_spec) $(tcl_lib_spec)
 
 $(blt_pict_tif_so): bltPictTif.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictTif.o $(blt_x_so) $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictTif.o $(blt_x_so) $(blt_core_so) \
 		$(tk_lib_spec) $(tcl_lib_spec) $(TIF_LIB_SPEC)
 
 $(blt_pict_xbm_so): bltPictXbm.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictXbm.o $(blt_x_so) $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictXbm.o $(blt_x_so) $(blt_core_so) \
 		$(tk_lib_spec) $(tcl_lib_spec)
 
 $(blt_pict_xpm_so): bltPictXpm.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictXpm.o $(blt_x_so) $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictXpm.o $(blt_x_so) $(blt_core_so) \
 		$(tk_lib_spec) $(tcl_lib_spec) $(X11_LIB_SPEC) $(XPM_LIB_SPEC)
 
 $(blt_pict_ps_so): bltPictPs.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictPs.o $(blt_x_so) $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictPs.o $(blt_x_so) $(blt_core_so) \
 		$(tk_lib_spec) $(tcl_lib_spec)
 
 $(blt_pict_photo_so): bltPictPhoto.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltPictPhoto.o $(blt_x_so) $(blt_core_so)\
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictPhoto.o $(blt_x_so) $(blt_core_so)\
 		$(tk_lib_spec) $(tcl_lib_spec)
 
 $(blt_tree_xml_so): bltTreeXml.o
 	$(RM) $@
-	$(SO_LD) $(SO_LD_FLAGS) -o $@ bltTreeXml.o $(blt_core_so) \
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltTreeXml.o $(blt_core_so) \
 		$(tcl_lib_spec) $(EXPAT_LIB_SPEC)
 
 
