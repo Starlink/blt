@@ -132,12 +132,27 @@ enum FontTypes {
 #define FC_WEIGHT	    "weight"		/* Int */
 #define FC_WIDTH	    "width"		/* Int */
 
+#else
+/*  Missing in old versions of XFT */
+#ifndef FC_DUAL
+#define FC_DUAL			    90
+#endif
+#ifndef FC_EMBEDDED_BITMAP
+#define FC_EMBEDDED_BITMAP  "embeddedbitmap"	/* Bool  */
+#endif
+#ifndef FC_EMBOLDEN
+#define FC_EMBOLDEN	    "embolden"		/* Bool */
+#endif
+#endif
+#ifndef FC_DECORATIVE
+#define FC_DECORATIVE	    "decorative"	/* Bool  */
 #endif
 
 #ifndef FC_WEIGHT_EXTRABLACK
 #define FC_WEIGHT_EXTRABLACK	    215
 #define FC_WEIGHT_ULTRABLACK	    FC_WEIGHT_EXTRABLACK
 #endif
+
 
 typedef struct {
     char *family;

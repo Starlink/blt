@@ -101,7 +101,8 @@ EXTRA_X_LIBS =		$(X11_LIB_SPEC) \
 
 BLT_X_SO_LIBS =		$(XFT_LIB_SPEC) \
 			$(FTCFG_LIB_SPEC) \
-			$(FT2_LIB_SPEC) 
+			$(FT2_LIB_SPEC) \
+			$(EXTRA_X_LIBS)
 
 BLT_X_A_LIBS =		$(BLT_X_SO_LIBS) \
 			$(JPG_LIB_SPEC) \
