@@ -17,3 +17,6 @@ src/libBLT*
 src/shared/bltsh*
 src/shared/bltwish*
 src/shared/libBLT*
+a.out.dSYM/
+src/bltHash.h
+
