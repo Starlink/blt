@@ -12,7 +12,7 @@
 #            gah@lucent.com
 #            http://www.tcltk.com/blt
 #
-#      RCS:  $Id: combotree.tcl,v 1.4 2009/02/23 04:49:19 ghowlett Exp $
+#      RCS:  $Id: combotree.tcl,v 1.5 2010/01/26 04:31:18 ghowlett Exp $
 #
 # ----------------------------------------------------------------------
 # Copyright (c) 1998  Lucent Technologies, Inc.
@@ -37,41 +37,32 @@
 #
 # ======================================================================
 
-namespace eval blt::tv {
-    set afterId ""
-    set scroll 0
-    set column ""
-    set space   off
-    set x 0
-    set y 0
+namespace eval blt::ComboTree {
+    array set _private {
+	afterId -1
+	scroll 0
+	column ""
+	space   off
+	x 0
+	y 0
+    }
 }
 
-image create picture ::blt::normalOpenFolder -data {
+image create picture ::blt::ComboTree::openIcon -data {
     R0lGODlhEAANAMIAAAAAAH9/f///////AL+/vwAA/wAAAAAAACH5BAEAAAUALAAAAAAQAA0A
     AAM8WBrM+rAEQWmIb5KxiWjNInCkV32AJHRlGQBgDA7vdN4vUa8tC78qlrCWmvRKsJTquHkp
     ZTKAsiCtWq0JADs=
 }
-image create picture ::blt::normalCloseFolder -data {
+image create picture ::blt::ComboTree::closeIcon -data {
     R0lGODlhEAANAMIAAAAAAH9/f///////AL+/vwAA/wAAAAAAACH5BAEAAAUALAAAAAAQAA0A
     AAM1WBrM+rAEMigJ8c3Kb3OSII6kGABhp1JnaK1VGwjwKwtvHqNzzd263M3H4n2OH1QBwGw6
     nQkAOw==
 }
 
-image create picture ::blt::activeOpenFolder -data {
-    R0lGODlhEAANAMIAAAAAAH9/f/////+/AL+/vwAA/wAAAAAAACH5BAEAAAUALAAAAAAQAA0A
-    AAM8WBrM+rAEQWmIb5KxiWjNInCkV32AJHRlGQBgDA7vdN4vUa8tC78qlrCWmvRKsJTquHkp
-    ZTKAsiCtWq0JADs=
-}
-
-image create picture ::blt::activeCloseFolder -data {
-    R0lGODlhEAANAMIAAAAAAH9/f/////+/AL+/vwAA/wAAAAAAACH5BAEAAAUALAAAAAAQAA0A
-    AAM1WBrM+rAEMigJ8c3Kb3OSII6kGABhp1JnaK1VGwjwKwtvHqNzzd263M3H4n2OH1QBwGw6
-    nQkAOw==
-}
 
 # ----------------------------------------------------------------------
 #
-# InitComboTree --
+# Initialize --
 #
 #	Invoked by internally by Combotree_Init routine.  Initializes
 #	the default bindings for the combotree widget entries.  These
@@ -79,7 +70,7 @@ image create picture ::blt::activeCloseFolder -data {
 #	widget's class bind tags.
 #
 # ----------------------------------------------------------------------
-proc blt::InitComboTree { w } {
+proc blt::ComboTree::Initialize { w } {
     #
     # Active entry bindings
     #
@@ -98,8 +89,9 @@ proc blt::InitComboTree { w } {
     # Button bindings
     #
     $w button bind all <ButtonRelease-1> {
-	set index [%W nearest %x %y blt::tv::who]
-	if { [%W index current] == $index && $blt::tv::who == "button" } {
+	set index [%W nearest %x %y blt::ComboTree::_private(who)]
+	if { [%W index current] == $index && 
+	     $blt::ComboTree::_private(who) == "button" } {
 	    %W see -anchor nw current
 	    %W toggle current
 	}
@@ -136,15 +128,17 @@ proc blt::InitComboTree { w } {
 	puts stderr "Entry <ButtonRelease> [%W index current]"
 	%W invoke active
 	event generate [grab current] <ButtonRelease-1> 
-	after cancel $blt::tv::afterId
-	set blt::tv::scroll 0
+	after cancel $blt::ComboTree::_private(afterId)
+	set blt::ComboTree::_private(afterId) -1
+	set blt::ComboTree::_private(scroll) 0
     }
     $w bind Entry <ButtonRelease-1> { 
 	puts stderr "Entry <ButtonRelease-1> [%W index current]"
 	%W invoke active
 	event generate [grab current] <ButtonRelease-1> 
-	after cancel $blt::tv::afterId
-	set blt::tv::scroll 0
+	after cancel $blt::ComboTree::_private(afterId)
+	set blt::ComboTree::_private(afterId) -1
+	set blt::ComboTree::_private(scroll) 0
     }
 
     $w bind Entry <Double-ButtonPress-1> {
@@ -167,7 +161,7 @@ proc blt::InitComboTree { w } {
 	    %W selection clearall
 	    %W selection set $index current
 	} else {
-	    blt::tv::SetSelectionAnchor %W current
+	    blt::ComboTree::SetSelectionAnchor %W current
 	}
     }
     $w bind Entry <Shift-Double-ButtonPress-1> {
@@ -177,8 +171,9 @@ proc blt::InitComboTree { w } {
 	# do nothing
     }
     $w bind Entry <Shift-ButtonRelease-1> { 
-	after cancel $blt::tv::afterId
-	set blt::tv::scroll 0
+	after cancel $blt::ComboTree::_private(afterId)
+	set blt::ComboTree::_private(afterId) -1
+	set blt::ComboTree::_private(scroll) 0
     }
 
     #
@@ -192,7 +187,7 @@ proc blt::InitComboTree { w } {
 	    %W selection toggle $index
 	    %W selection anchor $index
 	} else {
-	    blt::tv::SetSelectionAnchor %W current
+	    blt::ComboTree::SetSelectionAnchor %W current
 	}
     }
     $w bind Entry <Control-Double-ButtonPress-1> {
@@ -202,8 +197,9 @@ proc blt::InitComboTree { w } {
 	# do nothing
     }
     $w bind Entry <Control-ButtonRelease-1> { 
-	after cancel $blt::tv::afterId
-	set blt::tv::scroll 0
+	after cancel $blt::ComboTree::_private(afterId)
+	set blt::ComboTree::_private(afterId) -1
+	set blt::ComboTree::_private(scroll) 0
     }
 
     $w bind Entry <Control-Shift-ButtonPress-1> { 
@@ -218,7 +214,7 @@ proc blt::InitComboTree { w } {
 		%W selection set current
 	    }
 	} else {
-	    blt::tv::SetSelectionAnchor %W current
+	    blt::ComboTree::SetSelectionAnchor %W current
 	}
     }
     $w bind Entry <Control-Shift-Double-ButtonPress-1> {
@@ -230,7 +226,7 @@ proc blt::InitComboTree { w } {
 
     $w bind Entry <Shift-ButtonPress-3> { 
 	puts stderr "entry bind buttonpress-3 %W %X %Y"
-	blt::tv::EditColumn %W %X %Y
+	blt::ComboTree::EditColumn %W %X %Y
     }
 }
 
@@ -243,12 +239,14 @@ proc blt::InitComboTree { w } {
 #	Scrolls the view in the direction of the pointer.
 #
 # ----------------------------------------------------------------------
-proc blt::tv::AutoScroll { w } {
+proc blt::ComboTree::AutoScroll { w } {
+    variable _private
+
     if { ![winfo exists $w] } {
 	return
     }
-    set x $blt::tv::x
-    set y $blt::tv::y
+    set x $_private(x)
+    set y $_private(y)
 
     set index [$w nearest $x $y]
 
@@ -261,11 +259,11 @@ proc blt::tv::AutoScroll { w } {
     } else {
 	set neighbor $index
     }
-    blt::tv::SetSelectionAnchor $w $neighbor
-    set ::blt::tv::afterId [after 50 blt::tv::AutoScroll $w]
+    SetSelectionAnchor $w $neighbor
+    set _private(afterId) [after 50 blt::ComboTree::AutoScroll $w]
 }
 
-proc blt::tv::SetSelectionAnchor { w tagOrId } {
+proc blt::ComboTree::SetSelectionAnchor { w tagOrId } {
     set index [$w index $tagOrId]
     # If the anchor hasn't changed, don't do anything
     if { $index != [$w index anchor] } {
@@ -286,7 +284,7 @@ proc blt::tv::SetSelectionAnchor { w tagOrId } {
 #	"prevsibling", "nextsibling", etc.
 #
 # ----------------------------------------------------------------------
-proc blt::tv::MoveFocus { w index } {
+proc blt::ComboTree::MoveFocus { w index } {
     $w activate $index
     $w see active
 }
@@ -300,7 +298,7 @@ proc blt::tv::MoveFocus { w index } {
 #	"bottom".
 #
 # ----------------------------------------------------------------------
-proc blt::tv::MovePage { w where } {
+proc blt::ComboTree::MovePage { w where } {
 
     # If the focus is already at the top/bottom of the window, we want
     # to scroll a page. It's really one page minus an entry because we
@@ -335,7 +333,7 @@ proc blt::tv::MovePage { w where } {
 #	starts with the letter <char> and makes that entry active.
 #
 # ----------------------------------------------------------------------
-proc blt::tv::NextMatch { w key } {
+proc blt::ComboTree::NextMatch { w key } {
     if {[string match {[ -~]} $key]} {
 	set last [$w index focus]
 	set next [$w index next]
@@ -367,7 +365,7 @@ proc blt::tv::NextMatch { w key } {
 #
 
 bind ComboTree <ButtonPress-2> {
-    set blt::tv::cursor [%W cget -cursor]
+    set blt::ComboTree::_private(cursor) [%W cget -cursor]
     %W configure -cursor hand1
     %W scan mark %x %y
 }
@@ -377,17 +375,18 @@ bind ComboTree <B2-Motion> {
 }
 
 bind ComboTree <ButtonRelease-2> {
-    %W configure -cursor $blt::tv::cursor
+    %W configure -cursor $blt::ComboTree::_private(cursor)
 }
 
 bind ComboTree <B1-Leave> {
-    if { $blt::tv::scroll } {
-	blt::tv::AutoScroll %W 
+    if { $blt::ComboTree::_private(scroll) } {
+	blt::ComboTree::AutoScroll %W 
     }
 }
 
 bind ComboTree <B1-Enter> {
-    after cancel $blt::tv::afterId
+    after cancel $blt::ComboTree::_private(afterId)
+    set blt::ComboTree::_private(afterId) -1
 }
 
 # 
@@ -463,7 +462,7 @@ bind ComboTree <KeyPress-Return> {
 }
 
 bind ComboTree <KeyPress> {
-    blt::tv::NextMatch %W %A
+    blt::ComboTree::NextMatch %W %A
 }
 
 bind ComboTree <KeyPress-Home> {
@@ -472,7 +471,7 @@ bind ComboTree <KeyPress-Home> {
 }
 
 bind ComboTree <KeyPress-End> {
-    blt::tv::MoveFocus %W bottom
+    blt::ComboTree::MoveFocus %W bottom
 }
 
 bind ComboTree <KeyPress-F1> {
@@ -496,3 +495,26 @@ if {[string equal "x11" [tk windowingsystem]]} {
     }
 }
 
+
+proc blt::ComboTree::ConfigureScrollbars { menu } {
+    set ys [$menu cget -yscrollbar]
+    if { $ys != "" } {
+	if { [$menu cget -yscrollcommand] == "" } {
+	    $menu configure -yscrollcommand [list $ys set]
+	}
+	if { [$ys cget -command] == "" } {
+	    $ys configure -command [list $menu yview] -orient vertical \
+		-highlightthickness 0
+	}
+    }
+    set xs [$menu cget -xscrollbar]
+    if { $xs != "" } {
+	if { [$menu cget -xscrollcommand] == "" } {
+	    $menu configure -xscrollcommand [list $xs set]
+	}
+	if { [$xs cget -command] == "" } {
+	    $xs configure -command [list $menu xview] -orient horizontal \
+		-highlightthickness 0
+	}
+    }
+}

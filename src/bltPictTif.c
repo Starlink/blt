@@ -130,12 +130,12 @@ static int nCompressNames = sizeof(compressNames) / sizeof(char *);
 /*ARGSUSED*/
 static int
 CompressSwitch(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    const char *switchName,	/* Not used. */
-    Tcl_Obj *objPtr,		/* String representation */
-    char *record,		/* Structure record */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to return results. */
+    const char *switchName,		/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation */
+    char *record,			/* Structure record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     int *compressPtr = (int *)(record + offset);
@@ -608,8 +608,7 @@ PictureToTif(Tcl_Interp *interp, Blt_Picture picture, Blt_DBuffer dbuffer,
 	destBits = (unsigned char *)_TIFFmalloc(destBitsSize);
 
 	if (destBits == NULL) {
-	    TIFFError("tiff", "can't allocate space for TIF buffer", 
-		(char *)NULL);
+	    TIFFError("tiff", "can't allocate space for TIF buffer");
 	    TIFFClose(tifPtr);
 	    return TCL_ERROR;
 	}
@@ -633,7 +632,7 @@ PictureToTif(Tcl_Interp *interp, Blt_Picture picture, Blt_DBuffer dbuffer,
 	    }
 	    break;
 
-	case 3:			/* RGB, 100% opaque image. */
+	case 3:				/* RGB, 100% opaque image. */
 	    for (y = 0; y < srcPtr->height; y++) {
 		Blt_Pixel *sp;
 		int x;
@@ -705,21 +704,16 @@ ReadTif(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer)
 }
 
 static Tcl_Obj *
-WriteTif(Tcl_Interp *interp, Blt_Chain chain)
+WriteTif(Tcl_Interp *interp, Blt_Picture picture)
 {
     Tcl_Obj *objPtr;
     Blt_DBuffer dbuffer;
     TifExportSwitches switches;
-    Blt_Picture picture;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
     dbuffer = Blt_DBuffer_Create();
     objPtr = NULL;
-    picture = Blt_GetNthPicture(chain, 0);
-    if (picture == NULL) {
-	return Blt_EmptyStringObj();
-    }
     if (PictureToTif(interp, picture, dbuffer, &switches) == TCL_OK) {
 	char *bytes;
 
@@ -734,11 +728,8 @@ WriteTif(Tcl_Interp *interp, Blt_Chain chain)
 }
 
 static Blt_Chain
-ImportTif(
-    Tcl_Interp *interp, 
-    int objc,
-    Tcl_Obj *const *objv,
-    const char **fileNamePtr)
+ImportTif(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv, 
+	  const char **fileNamePtr)
 {
     Blt_Chain chain;
     Blt_DBuffer dbuffer;
@@ -764,7 +755,7 @@ ImportTif(
 	int nBytes;
 	
 	bytes = Tcl_GetByteArrayFromObj(switches.dataObjPtr, &nBytes);
-	if (Blt_IsBase64((const char *)bytes, nBytes)) {
+	if (Blt_IsBase64(bytes, nBytes)) {
 	    if (Blt_DBuffer_DecodeBase64(interp, string, nBytes, dbuffer) 
 		!= TCL_OK) {
 		goto error;
@@ -789,7 +780,8 @@ ImportTif(
 }
 
 static int
-ExportTif(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
+ExportTif(Tcl_Interp *interp, unsigned int index, Blt_Chain chain, int objc, 
+	  Tcl_Obj *const *objv)
 {
     Blt_DBuffer dbuffer;
     Blt_Picture picture;
@@ -798,7 +790,7 @@ ExportTif(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
-
+    switches.index = index;
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, 
 	&switches, BLT_SWITCH_DEFAULTS) < 0) {
 	Blt_FreeSwitches(exportSwitches, (char *)&switches, 0);

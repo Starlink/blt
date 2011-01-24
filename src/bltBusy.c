@@ -32,6 +32,10 @@
 #include "bltOp.h"
 #include "bltHash.h"
 #include "tkDisplay.h"
+#include "bltBgStyle.h"
+#include "bltPicture.h"
+#include "bltPainter.h"
+#include "bltImage.h"
 #define BUSYDEBUG 0
 
 #ifndef TK_REPARENTED
@@ -41,63 +45,106 @@
 #define BUSY_THREAD_KEY	"BLT Busy Data"
 
 typedef struct {
-    Display *display;		/* Display of busy window */
-    Tcl_Interp *interp;		/* Interpreter where "busy" command was
-				 * created. It's used to key the searches in the
-				 * window hierarchy. See the "windows"
-				 * command. */
-
-    Tk_Window tkBusy;		/* Busy window: Transparent window used to block
-				 * delivery of events to windows underneath
-				 * it. */
-
-    Tk_Window tkParent;		/* Parent window of the busy window. It may be
-				 * the reference window (if the reference is a
-				 * toplevel) or a mutual ancestor of the
-				 * reference window */
-
-    Tk_Window tkRef;		/* Reference window of the busy window.  It's is
-				 * used to manage the size and position of the
-				 * busy window. */
-
-
-    int x, y;			/* Position of the reference window */
-
-    int width, height;		/* Size of the reference window. Retained to
-				 * know if the reference window has been
-				 * reconfigured to a new size. */
-
-    int isBusy;			/* Indicates whether the transparent window
-				 * should be displayed. This can be different
-				 * from what Tk_IsMapped says because the a
-				 * sibling reference window may be unmapped,
-				 * forcing the busy window to be also hidden. */
-
-    int menuBar;		/* Menu bar flag. */
-    Tk_Cursor cursor;		/* Cursor for the busy window. */
-
-    Blt_HashEntry *hashPtr;	/* Used the delete the busy window entry out of
-				 * the global hash table. */
+    unsigned int flags;
+    Display *display;			/* Display of busy window */
+    Tcl_Interp *interp;			/* Interpreter where "busy" command
+					 * was created. It's used to key the
+					 * searches in the window
+					 * hierarchy. See the "windows"
+					 * command. */
+    Tk_Window tkBusy;			/* Busy window: Transparent window
+					 * used to block delivery of events to
+					 * windows underneath it. */
+    Tk_Window tkParent;			/* Parent window of the busy
+					 * window. It may be the reference
+					 * window (if the reference is a
+					 * toplevel) or a mutual ancestor of
+					 * the reference window */
+    Tk_Window tkRef;			/* Reference window of the busy
+					 * window.  It's is used to manage the
+					 * size and position of the busy
+					 * window. */
+    int x, y;				/* Position of the reference window */
+    int width, height;			/* Size of the reference
+					 * window. Retained to know if the
+					 * reference window has been
+					 * reconfigured to a new size. */
+    int menuBar;			/* Menu bar flag. */
+    Tk_Cursor cursor;			/* Cursor for the busy window. */
+    Blt_HashEntry *hashPtr;		/* Used the delete the busy window
+					 * entry out of the global hash
+					 * table. */
     Blt_HashTable *tablePtr;
+    const char *text;			/* Text to be displayed in the opaque
+					 * window. */
+    Blt_Picture snapshot;		/* Snapshot of reference window
+					 * used as background of opaque
+					 * busy window. */
+    Blt_Background bg;			/* Default background to use if 1)
+					 * busy window is opaque and 2) a
+					 * snapshot of the reference window
+					 * can't be obtained (possibly because
+					 * the reference window was
+					 * obscurred. */
+    GC gc;
+    int darken;
+    Blt_Picture picture;		/* Image to be displayed in the 
+					 * center of the busy window. */
+    Tk_Image tkImage;
 } Busy;
+
+#define REDRAW_PENDING (1<<0)		/* Indicates a DoWhenIdle handler has
+					 * already been queued to redraw this
+					 * window. */
+#define ACTIVE (1<<1)			/* Indicates whether the busy window
+					 * should be displayed. This can be
+					 * different from what Tk_IsMapped
+					 * says because the a sibling
+					 * reference window may be unmapped,
+					 * forcing the busy window to be also
+					 * hidden. */
+#define OPAQUE (1<<2)			/* Indicates whether the busy window
+					 * is opaque. */
+#define IMAGE_PHOTO (1<<3)		/* Indicates that the image was 
+					 * a photo. */
 
 #ifdef WIN32
 #define DEF_BUSY_CURSOR "wait"
 #else
 #define DEF_BUSY_CURSOR "watch"
 #endif
+#define DEF_BUSY_BACKGROUND	STD_NORMAL_BACKGROUND
+#define DEF_BUSY_OPAQUE		"0"
+#define DEF_BUSY_DARKEN		"30"
+
+static Blt_OptionParseProc ObjToPictImageProc;
+static Blt_OptionPrintProc PictImageToObjProc;
+static Blt_OptionFreeProc FreePictImageProc;
+static Blt_CustomOption pictImageOption =
+{
+    ObjToPictImageProc, PictImageToObjProc, FreePictImageProc, (ClientData)0
+};
 
 static Blt_ConfigSpec configSpecs[] =
 {
+    {BLT_CONFIG_BACKGROUND, "-background", "background", "Background",
+	DEF_BUSY_BACKGROUND, Blt_Offset(Busy, bg), 0},
+    {BLT_CONFIG_SYNONYM, "-bg", "background", (char *)NULL, (char *)NULL, 0, 0},
     {BLT_CONFIG_CURSOR, "-cursor", "busyCursor", "BusyCursor",
 	DEF_BUSY_CURSOR, Blt_Offset(Busy, cursor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_INT, "-darken", "darken", "Darken", DEF_BUSY_DARKEN, 
+	Blt_Offset(Busy, darken), 0},
+    {BLT_CONFIG_CUSTOM, "-image", "image", "Image", (char *)NULL, 
+	Blt_Offset(Busy, picture), BLT_CONFIG_NULL_OK, &pictImageOption},
+    {BLT_CONFIG_BITMASK, "-opaque", "opaque", "Opaque", DEF_BUSY_OPAQUE, 
+	Blt_Offset(Busy, flags), 0, (Blt_CustomOption *)OPAQUE},
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
 };
 
 typedef struct {
-    Blt_HashTable busyTable;	/* Hash table of busy window structures keyed
-				 * by the address of the reference Tk
-				 * window */
+    Blt_HashTable busyTable;		/* Hash table of busy window
+					 * structures keyed by the address of
+					 * thereference Tk window */
     Tk_Window tkMain;
     Tcl_Interp *interp;
 } BusyInterpData;
@@ -106,21 +153,221 @@ static Tk_GeomRequestProc BusyGeometryProc;
 static Tk_GeomLostSlaveProc BusyCustodyProc;
 static Tk_GeomMgr busyMgrInfo =
 {
-    (char *)"busy",		/* Name of geometry manager used by winfo */
-    BusyGeometryProc,		/* Procedure to for new geometry requests */
-    BusyCustodyProc,		/* Procedure when window is taken away */
+    (char *)"busy",			/* Name of geometry manager used by
+					 * winfo */
+    BusyGeometryProc,			/* Procedure to for new geometry
+					 * requests */
+    BusyCustodyProc,			/* Procedure when window is taken
+					 * away */
 };
 
 /* Forward declarations */
+static Tcl_IdleProc DisplayBusy;
 static Tcl_FreeProc DestroyBusy;
 static Tk_EventProc BusyEventProc;
 static Tk_EventProc RefWinEventProc;
 static Tcl_ObjCmdProc BusyCmd;
 static Tcl_InterpDeleteProc BusyInterpDeleteProc;
 
+/*
+ *---------------------------------------------------------------------------
+ *
+ * EventuallyRedraw --
+ *
+ *	Tells the Tk dispatcher to call the busy display routine at the next
+ *	idle point.  This request is made only if the window is displayed and
+ *	no other redraw request is pending.
+ *
+ * Results: None.
+ *
+ * Side effects:
+ *	The window is eventually redisplayed.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+EventuallyRedraw(Busy *busyPtr) 
+{
+    if ((busyPtr->tkBusy != NULL) && 
+	((busyPtr->flags & (REDRAW_PENDING|OPAQUE)) == OPAQUE)) {
+	Tcl_DoWhenIdle(DisplayBusy, busyPtr);
+	busyPtr->flags |= REDRAW_PENDING;
+    }
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ImageChangedProc --
+ *
+ * Results:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+/* ARGSUSED */
+static void
+ImageChangedProc(
+    ClientData clientData,
+    int x, int y, int w, int h,		/* Not used. */
+    int imageWidth, int imageHeight)	/* Not used. */
+{
+    Busy *busyPtr = clientData;
+    int isPhoto;
+
+    if ((busyPtr->picture != NULL) && (busyPtr->flags & IMAGE_PHOTO)) {
+	Blt_FreePicture(busyPtr->picture);
+    }
+    busyPtr->picture = NULL;
+    busyPtr->flags &= ~IMAGE_PHOTO;
+    if (Blt_Image_IsDeleted(busyPtr->tkImage)) {
+	Tk_FreeImage(busyPtr->tkImage);
+	busyPtr->tkImage = NULL;
+	return;
+    }
+    busyPtr->picture = Blt_GetPictureFromImage(busyPtr->interp, 
+	busyPtr->tkImage, &isPhoto);
+    if (isPhoto) {
+	busyPtr->flags |= IMAGE_PHOTO;
+    }
+    EventuallyRedraw(busyPtr);
+}
+
+/*ARGSUSED*/
+static void
+FreePictImageProc(
+    ClientData clientData,
+    Display *display,			/* Not used. */
+    char *widgRec,
+    int offset)
+{
+    Busy *busyPtr = (Busy *)widgRec;
+
+    if ((busyPtr->picture != NULL) && (busyPtr->flags & IMAGE_PHOTO)) {
+	Blt_FreePicture(busyPtr->picture);
+    }
+    busyPtr->picture = NULL;
+    if (busyPtr->tkImage != NULL) {
+	Tk_FreeImage(busyPtr->tkImage);
+    }
+    busyPtr->tkImage = NULL;
+    busyPtr->flags &= ~IMAGE_PHOTO;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ObjToPictImageProc --
+ *
+ *	Given an image name, get the Tk image associated with it.
+ *
+ * Results:
+ *	The return value is a standard TCL result.  
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ObjToPictImageProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to return results */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation of value. */
+    char *widgRec,			/* Widget record. */
+    int offset,				/* Offset to field in structure */
+    int flags)	
+{
+    Busy *busyPtr = (Busy *)widgRec;
+    Tk_Image tkImage;
+    const char *name;
+    int isPhoto;
+
+    name = Tcl_GetString(objPtr);
+    tkImage = Tk_GetImage(interp, tkwin, name, ImageChangedProc, busyPtr);
+    if (tkImage == NULL) {
+	return TCL_ERROR;
+    }
+    if (busyPtr->tkImage != NULL) {
+	Tk_FreeImage(busyPtr->tkImage);
+    }
+    busyPtr->flags &= ~IMAGE_PHOTO;
+    if (busyPtr->picture != NULL) {
+	Blt_FreePicture(busyPtr->picture);
+    }
+    busyPtr->tkImage = tkImage;
+    busyPtr->picture = Blt_GetPictureFromImage(busyPtr->interp, tkImage, 
+	&isPhoto);
+    if (isPhoto) {
+	busyPtr->flags |= IMAGE_PHOTO;
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * PictImageToObjProc --
+ *
+ *	Convert the image name into a string Tcl_Obj.
+ *
+ * Results:
+ *	The string representation of the image is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static Tcl_Obj *
+PictImageToObjProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
+    int flags)	
+{
+    Busy *busyPtr = (Busy *)(widgRec);
+    
+    if (busyPtr->tkImage == NULL) {
+	return Tcl_NewStringObj("", -1);
+    }
+    return Tcl_NewStringObj(Blt_Image_Name(busyPtr->tkImage), -1);
+}
+
+
 static void
 ShowBusyWindow(Busy *busyPtr)
 {
+    /* 
+     * If the busy window is opaque, take a snapshot of the reference
+     * window and use that as the contents of the window.
+     */
+    if (busyPtr->flags & OPAQUE) {
+	Tk_Window tkwin;
+	Blt_Picture picture;
+	Blt_Pixel color;
+	int rx, ry;
+	int delta;
+
+	tkwin = Blt_Toplevel(busyPtr->tkRef);
+	Blt_RaiseToplevelWindow(tkwin);
+	Blt_RootCoordinates(busyPtr->tkRef, busyPtr->x, busyPtr->y, &rx, &ry);
+	picture = Blt_DrawableToPicture(busyPtr->tkRef, 
+		Tk_RootWindow(busyPtr->tkRef), rx, ry, 
+		busyPtr->width, busyPtr->height, 1.0);
+	if (picture == NULL) {
+	    fprintf(stderr, "can't grab window (possibly obscured?)\n");
+	    return;
+	}
+	delta = (int)((busyPtr->darken / 100.0) * 255);
+	color.u32 = 0x0;
+	color.Red = color.Blue = color.Green = delta;
+	Blt_ApplyScalarToPicture(picture, &color, PIC_ARITH_SUB);
+	if (busyPtr->snapshot != NULL) {
+	    Blt_FreePicture(busyPtr->snapshot);
+	}
+	busyPtr->snapshot = picture;
+	EventuallyRedraw(busyPtr);
+    }
     if (busyPtr->tkBusy != NULL) {
 	Tk_MapWindow(busyPtr->tkBusy);
 	/* 
@@ -145,8 +392,9 @@ ShowBusyWindow(Busy *busyPtr)
 	GetCursorPos(&point);
 	SetCursorPos(point.x, point.y);
     }
-#endif /* WIN32 */
+#else
     XFlush(busyPtr->display);
+#endif /* WIN32 */
 }
 
 static void
@@ -170,8 +418,9 @@ HideBusyWindow(Busy *busyPtr)
 	GetCursorPos(&point);
 	SetCursorPos(point.x, point.y);
     }
-#endif /* WIN32 */
+#else
     XFlush(busyPtr->display);
+#endif /* WIN32 */
 }
 
 /*
@@ -202,9 +451,18 @@ BusyEventProc(
 {
     Busy *busyPtr = clientData;
 
-    if (eventPtr->type == DestroyNotify) {
+    if (eventPtr->type == Expose) {
+	if (eventPtr->xexpose.count == 0) {
+	    EventuallyRedraw(busyPtr);
+	}
+    } else if (eventPtr->type == DestroyNotify) {
 	busyPtr->tkBusy = NULL;
+	if (busyPtr->flags & REDRAW_PENDING) {
+	    Tcl_CancelIdleCall(DisplayBusy, busyPtr);
+	}
 	Tcl_EventuallyFree(busyPtr, DestroyBusy);
+    } else if (eventPtr->type == ConfigureNotify) {
+	EventuallyRedraw(busyPtr);
     }
 }
 
@@ -354,12 +612,12 @@ RefWinEventProc(
 	    if (busyPtr->tkBusy != NULL) {
 #if BUSYDEBUG
 		fprintf(stderr, "busy window %s is at %d,%d %dx%d\n", 
-			Tk_PathName(busyPtr->tkBusy),
-			x, y, busyPtr->width, busyPtr->height);
+			Tk_PathName(busyPtr->tkBusy), x, y, 
+			busyPtr->width, busyPtr->height);
 #endif
 		Tk_MoveResizeWindow(busyPtr->tkBusy, x, y, busyPtr->width,
 		    busyPtr->height);
-		if (busyPtr->isBusy) {
+		if (busyPtr->flags & ACTIVE) {
 		    ShowBusyWindow(busyPtr);
 		}
 	    }
@@ -367,7 +625,8 @@ RefWinEventProc(
 	break;
 
     case MapNotify:
-	if ((busyPtr->tkParent != busyPtr->tkRef) && (busyPtr->isBusy)) {
+	if ((busyPtr->tkParent != busyPtr->tkRef) && 
+	    (busyPtr->flags & ACTIVE)) {
 	    ShowBusyWindow(busyPtr);
 	}
 	break;
@@ -449,19 +708,19 @@ ConfigureBusy(
  *---------------------------------------------------------------------------
  */
 static Busy *
-CreateBusy(
+CreateBusy2(
     Tcl_Interp *interp,			/* Interpreter to report error to */
     Tk_Window tkRef)			/* Window hosting the busy window */
 {
     Busy *busyPtr;
-    int length;
-    const char *fmt;
-    char *name;
-    Tk_Window tkBusy;
-    Window parent;
-    Tk_Window tkChild, tkParent;
     Tk_FakeWin *winPtr;
+    Tk_Window tkBusy, tkParent;
+    Window parent;
+    char *name;
+    const char *fmt;
+    int length;
     int x, y;
+    unsigned int mask;
 
     busyPtr = Blt_AssertCalloc(1, sizeof(Busy));
     x = y = 0;
@@ -484,9 +743,13 @@ CreateBusy(
 	    y += Tk_Y(tkwin) + Tk_Changes(tkwin)->border_width;
 	}
     }
-    for (tkChild = Blt_FirstChild(tkParent); tkChild != NULL; 
-	 tkChild = Blt_NextChild(tkChild)) {
-	Tk_MakeWindowExist(tkChild);
+    {
+	Tk_Window tkwin;
+
+	for (tkwin = Blt_FirstChild(tkParent); tkwin != NULL; 
+	     tkwin = Blt_NextChild(tkwin)) {
+	    Tk_MakeWindowExist(tkwin);
+	}
     }
     sprintf_s(name, length + 6, fmt, Tk_Name(tkRef));
     tkBusy = Tk_CreateWindow(interp, tkParent, name, (char *)NULL);
@@ -506,11 +769,11 @@ CreateBusy(
     busyPtr->x = Tk_X(tkRef);
     busyPtr->y = Tk_Y(tkRef);
     busyPtr->cursor = None;
-    busyPtr->isBusy = FALSE;
+    busyPtr->flags = 0;
     Tk_SetClass(tkBusy, "Busy");
     Blt_SetWindowInstanceData(tkBusy, busyPtr);
 
-    winPtr = (Tk_FakeWin *) tkRef;
+    winPtr = (Tk_FakeWin *)tkRef;
     if (winPtr->flags & TK_REPARENTED) {
 	/*
 	 * This works around a bug in the implementation of menubars for
@@ -545,7 +808,13 @@ CreateBusy(
 	parent = (Window) Tk_GetHWND(parent);
 #endif
     }
-    Blt_MakeTransparentWindowExist(tkBusy, parent, TRUE);
+
+    mask = StructureNotifyMask;
+    if (busyPtr->flags & OPAQUE) {
+	mask |= ExposureMask;
+    } else {
+	Blt_MakeTransparentWindowExist(tkBusy, parent, TRUE);
+    }
 
 #if BUSYDEBUG
     PurifyPrintf("menubar1: width=%d, height=%d\n", busyPtr->width, 
@@ -568,6 +837,204 @@ CreateBusy(
     /* Track the reference window to see if it is resized or destroyed.  */
     Tk_CreateEventHandler(tkRef, StructureNotifyMask, RefWinEventProc, busyPtr);
     return busyPtr;
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * NewBusy --
+ *
+ *	Creates a child transparent window that obscures its parent window
+ *	thereby effectively blocking device events.  The size and position of
+ *	the busy window is exactly that of the reference window.
+ *
+ *	We want to create sibling to the window to be blocked.  If the busy
+ *	window is a child of the window to be blocked, Enter/Leave events can
+ *	sneak through.  Futhermore under WIN32, messages of transparent
+ *	windows are sent directly to the parent.  The only exception to this
+ *	are toplevels, since we can't make a sibling.  Fortunately, toplevel
+ *	windows rarely receive events that need blocking.
+ *
+ * Results:
+ *	Returns a pointer to the new busy window structure.
+ *
+ * Side effects:
+ *	When the busy window is eventually displayed, it will screen device
+ *	events (in the area of the reference window) from reaching its parent
+ *	window and its children.  User feed back can be achieved by changing
+ *	the cursor.
+ *
+ *---------------------------------------------------------------------------
+ */
+static Busy *
+NewBusy(
+    Tcl_Interp *interp,			/* Interpreter to report error to */
+    Tk_Window tkRef)			/* Window hosting the busy window */
+{
+    Busy *busyPtr;
+    Tk_Window tkBusy;
+    Tk_Window tkParent;
+    char *name;
+    const char *fmt;
+    int length;
+    int x, y;
+
+    busyPtr = Blt_AssertCalloc(1, sizeof(Busy));
+    x = y = 0;
+    if (Tk_IsTopLevel(tkRef)) {
+	fmt = "_Busy";		/* Child */
+	tkParent = tkRef;
+    } else {
+	Tk_Window tkwin;
+
+	fmt = "%s_Busy";	/* Sibling */
+	tkParent = Tk_Parent(tkRef);
+	for (tkwin = tkRef; (tkwin != NULL) && (!Tk_IsTopLevel(tkwin)); 
+	     tkwin = Tk_Parent(tkwin)) {
+	    if (tkwin == tkParent) {
+		break;
+	    }
+	    x += Tk_X(tkwin) + Tk_Changes(tkwin)->border_width;
+	    y += Tk_Y(tkwin) + Tk_Changes(tkwin)->border_width;
+	}
+    }
+    {
+	Tk_Window tkwin;
+
+	for (tkwin = Blt_FirstChild(tkParent); tkwin != NULL; 
+	     tkwin = Blt_NextChild(tkwin)) {
+	    Tk_MakeWindowExist(tkwin);
+	}
+    }
+    length = strlen(Tk_Name(tkRef));
+    name = Blt_AssertMalloc(length + 6);
+    sprintf_s(name, length + 6, fmt, Tk_Name(tkRef));
+    tkBusy = Tk_CreateWindow(interp, tkParent, name, (char *)NULL);
+    Blt_Free(name);
+
+    if (tkBusy == NULL) {
+	return NULL;
+    }
+    Tk_MakeWindowExist(tkRef);
+    busyPtr->display = Tk_Display(tkRef);
+    busyPtr->interp = interp;
+    busyPtr->tkRef = tkRef;
+    busyPtr->tkParent = tkParent;
+    busyPtr->tkBusy = tkBusy;
+    busyPtr->width = Tk_Width(tkRef);
+    busyPtr->height = Tk_Height(tkRef);
+    busyPtr->x = Tk_X(tkRef);
+    busyPtr->y = Tk_Y(tkRef);
+    busyPtr->cursor = None;
+    busyPtr->darken = 30;
+    busyPtr->flags = 0;
+    Tk_SetClass(tkBusy, "Busy");
+    Blt_SetWindowInstanceData(tkBusy, busyPtr);
+    return busyPtr;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * CreateBusy --
+ *
+ *	Creates a child transparent window that obscures its parent window
+ *	thereby effectively blocking device events.  The size and position of
+ *	the busy window is exactly that of the reference window.
+ *
+ *	We want to create sibling to the window to be blocked.  If the busy
+ *	window is a child of the window to be blocked, Enter/Leave events can
+ *	sneak through.  Futhermore under WIN32, messages of transparent
+ *	windows are sent directly to the parent.  The only exception to this
+ *	are toplevels, since we can't make a sibling.  Fortunately, toplevel
+ *	windows rarely receive events that need blocking.
+ *
+ * Results:
+ *	Returns a pointer to the new busy window structure.
+ *
+ * Side effects:
+ *	When the busy window is eventually displayed, it will screen device
+ *	events (in the area of the reference window) from reaching its parent
+ *	window and its children.  User feed back can be achieved by changing
+ *	the cursor.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+InitializeBusy(Busy *busyPtr)
+{
+    Tk_FakeWin *winPtr;
+    Window parent;
+    unsigned int mask;
+
+    winPtr = (Tk_FakeWin *) busyPtr->tkRef;
+    if (winPtr->flags & TK_REPARENTED) {
+	/*
+	 * This works around a bug in the implementation of menubars for
+	 * non-MacIntosh window systems (Win32 and X11).  Tk doesn't reset the
+	 * pointers to the parent window when the menu is reparented
+	 * (winPtr->parentPtr points to the wrong window). We get around this
+	 * by determining the parent via the native API calls.
+	 */
+#ifdef WIN32
+	{
+	    HWND hWnd;
+	    RECT rect;
+
+	    hWnd = Tk_GetHWND(Tk_WindowId(busyPtr->tkRef));
+	    hWnd = GetParent(hWnd);
+	    parent = (Window) hWnd;
+	    if (GetWindowRect(hWnd, &rect)) {
+		busyPtr->width = rect.right - rect.left;
+		busyPtr->height = rect.bottom - rect.top;
+#if BUSYDEBUG
+		PurifyPrintf("menubar: width=%d, height=%d\n",
+		    busyPtr->width, busyPtr->height);
+#endif
+	    }
+	}
+#else
+	parent = Blt_GetParentWindow(busyPtr->display, 
+		Tk_WindowId(busyPtr->tkRef));
+#endif
+    } else {
+	parent = Tk_WindowId(busyPtr->tkParent);
+#ifdef WIN32
+	parent = (Window) Tk_GetHWND(parent);
+#endif
+    }
+    mask = StructureNotifyMask;
+    if (busyPtr->flags & OPAQUE) {
+	Tk_MakeWindowExist(busyPtr->tkBusy);
+	mask |= ExposureMask;
+    } else {
+	Blt_MakeTransparentWindowExist(busyPtr->tkBusy, parent, TRUE);
+    }
+
+#if BUSYDEBUG
+    PurifyPrintf("menubar1: width=%d, height=%d\n", busyPtr->width, 
+	busyPtr->height);
+    fprintf(stderr, "busy window %s is at %d,%d %dx%d\n", 
+	Tk_PathName(busyPtr->tkBusy), busyPtr->x, busyPtr->y, busyPtr->width, 
+	busyPtr->height);
+#endif
+    Tk_MoveResizeWindow(busyPtr->tkBusy, busyPtr->x, busyPtr->y, 
+	busyPtr->width, busyPtr->height);
+
+    /* Only worry if the busy window is destroyed.  */
+    Tk_CreateEventHandler(busyPtr->tkBusy, mask, BusyEventProc, busyPtr);
+    /*
+     * Indicate that the busy window's geometry is being managed.  This will
+     * also notify us if the busy window is ever packed.
+     */
+    Tk_ManageGeometry(busyPtr->tkBusy, &busyMgrInfo, busyPtr);
+    if (busyPtr->cursor != None) {
+	Tk_DefineCursor(busyPtr->tkBusy, busyPtr->cursor);
+    }
+    /* Track the reference window to see if it is resized or destroyed.  */
+    Tk_CreateEventHandler(busyPtr->tkRef, StructureNotifyMask, RefWinEventProc,
+	busyPtr);
 }
 
 /*
@@ -596,8 +1063,14 @@ DestroyBusy(DestroyData data)		/* Busy window structure record */
     if (busyPtr->hashPtr != NULL) {
 	Blt_DeleteHashEntry(busyPtr->tablePtr, busyPtr->hashPtr);
     }
+    if (busyPtr->flags & REDRAW_PENDING) {
+	Tcl_CancelIdleCall(DisplayBusy, busyPtr);
+    }
     Tk_DeleteEventHandler(busyPtr->tkRef, StructureNotifyMask, 
 	RefWinEventProc, busyPtr);
+    if (busyPtr->snapshot != NULL) {
+	Blt_FreePicture(busyPtr->snapshot);
+    }
     if (busyPtr->tkBusy != NULL) {
 	Tk_DeleteEventHandler(busyPtr->tkBusy, StructureNotifyMask,
 	    BusyEventProc, busyPtr);
@@ -694,18 +1167,19 @@ HoldBusy(
     }
     hPtr = Blt_CreateHashEntry(&dataPtr->busyTable, (char *)tkwin, &isNew);
     if (isNew) {
-	busyPtr = (Busy *)CreateBusy(interp, tkwin);
+	busyPtr = NewBusy(interp, tkwin);
 	if (busyPtr == NULL) {
 	    return TCL_ERROR;
 	}
-	Blt_SetHashValue(hPtr, (char *)busyPtr);
+	Blt_SetHashValue(hPtr, busyPtr);
 	busyPtr->hashPtr = hPtr;
+	busyPtr->tablePtr = &dataPtr->busyTable;
+	result = ConfigureBusy(interp, busyPtr, objc - 1, objv + 1);
+	InitializeBusy(busyPtr);
     } else {
 	busyPtr = Blt_GetHashValue(hPtr);
+	result = ConfigureBusy(interp, busyPtr, objc - 1, objv + 1);
     }
-    busyPtr->tablePtr = &dataPtr->busyTable;
-    result = ConfigureBusy(interp, busyPtr, objc - 1, objv + 1);
-
     /* 
      * Don't map the busy window unless the reference window is also currently
      * displayed.
@@ -715,7 +1189,7 @@ HoldBusy(
     } else {
 	HideBusyWindow(busyPtr);
     }
-    busyPtr->isBusy = TRUE;
+    busyPtr->flags |= ACTIVE;
     return result;
 }
 
@@ -749,7 +1223,7 @@ StatusOp(
     if (GetBusy(dataPtr, interp, objv[2], &busyPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
-    Tcl_SetBooleanObj(Tcl_GetObjResult(interp), busyPtr->isBusy);
+    Tcl_SetBooleanObj(Tcl_GetObjResult(interp), busyPtr->flags & ACTIVE);
     return TCL_OK;
 }
 
@@ -830,7 +1304,7 @@ ReleaseOp(
     for (i = 2; i < objc; i++) {
 	if (GetBusy(dataPtr, (Tcl_Interp *)NULL, objv[i], &busyPtr) == TCL_OK) {
 	    HideBusyWindow(busyPtr);
-	    busyPtr->isBusy = FALSE;
+	    busyPtr->flags &= ~ACTIVE;
 	}
     }
     return TCL_OK;
@@ -917,7 +1391,7 @@ BusyOp(
 	Busy *busyPtr;
 
 	busyPtr = Blt_GetHashValue(hPtr);
-	if (!busyPtr->isBusy) {
+	if ((busyPtr->flags & ACTIVE) == 0) {
 	    continue;
 	}
 	if ((pattern == NULL) || 
@@ -967,7 +1441,7 @@ CheckOp(
 
 	    /* Found a busy window, is it on? */
 	    busyPtr = Blt_GetHashValue(hPtr);
-	    if (busyPtr->isBusy) {
+	    if (busyPtr->flags & ACTIVE) {
 		Tcl_SetBooleanObj(Tcl_GetObjResult(interp), 1);
 		return TCL_OK;
 	    }
@@ -1245,5 +1719,97 @@ Blt_BusyCmdInitProc(Tcl_Interp *interp)
     cmdSpec.clientData = GetBusyInterpData(interp);
     return Blt_InitCmd(interp, "::blt", &cmdSpec);
 }
+
+
+static void
+DisplayBusy(ClientData clientData)
+{
+    Busy *busyPtr = clientData;
+    Pixmap drawable;
+    Tk_Window tkwin;
+    Blt_Painter painter;
+	
+    busyPtr->flags &= ~REDRAW_PENDING;
+    if (busyPtr->tkBusy == NULL) {
+	return;				/* Window has been destroyed (we
+					 * should not get here) */
+    }
+    tkwin = busyPtr->tkBusy;
+#ifndef notdef
+    fprintf(stderr, "Calling DisplayBusy(%s)\n", Tk_PathName(tkwin));
+#endif
+    if ((Tk_Width(tkwin) <= 1) || (Tk_Height(tkwin) <= 1)) {
+	/* Don't bother computing the layout until the size of the window is
+	 * something reasonable. */
+	return;
+    }
+    busyPtr->width = Tk_Width(tkwin);
+    busyPtr->height = Tk_Height(tkwin);
+
+    if (!Tk_IsMapped(tkwin)) {
+	/* The busy window isn't displayed, so don't bother drawing
+	 * anything.  By getting this far, we've at least computed the
+	 * coordinates of the graph's new layout.  */
+	return;
+    }
+    /* Create a pixmap the size of the window for double buffering. */
+    drawable = Tk_GetPixmap(busyPtr->display, Tk_WindowId(tkwin), 
+	busyPtr->width, busyPtr->height, Tk_Depth(tkwin));
+#ifdef WIN32
+    assert(drawable != None);
+#endif
+    painter = Blt_GetPainter(busyPtr->tkBusy, 1.0);
+    if (busyPtr->snapshot == NULL) {
+	Blt_FillBackgroundRectangle(busyPtr->tkBusy, drawable, busyPtr->bg, 
+		busyPtr->x, busyPtr->y, busyPtr->width, busyPtr->height, 
+		0, TK_RELIEF_FLAT);
+	if (busyPtr->picture != NULL) {
+	    int x, y;
+
+	    x = (busyPtr->width - Blt_PictureWidth(busyPtr->picture)) / 2;
+	    y = (busyPtr->height - Blt_PictureHeight(busyPtr->picture)) / 2;
+	    Blt_PaintPicture(painter, drawable, busyPtr->picture, 0, 0,
+		busyPtr->width, busyPtr->height, x, y, 0);
+	}
+    } else {
+	Blt_Picture copy;
+	    
+	copy = busyPtr->snapshot;
+	if (busyPtr->picture != NULL) {
+	    int x, y, w, h;
+
+	    w = Blt_PictureWidth(busyPtr->picture);
+	    h = Blt_PictureHeight(busyPtr->picture);
+	    x = (busyPtr->width - w) / 2;
+	    y = (busyPtr->height - h) / 2;
+	    fprintf(stderr, "Drawing picture at %d %d w=%d h=%d\n", 
+		    x, y, w, h);
+	    copy = Blt_ClonePicture(busyPtr->snapshot);
+	    Blt_BlendPictures(copy, busyPtr->picture, 0, 0, w, h, x, y);
+	}
+	Blt_PaintPicture(painter, drawable, copy, 0, 0, busyPtr->width, 
+		busyPtr->height, busyPtr->x, busyPtr->y, 0);
+	if (copy != busyPtr->snapshot) {
+	    Blt_FreePicture(copy);
+	}
+    }
+#ifdef notdef
+    if (busyPtr->text != NULL) {
+	Blt_DrawText(drawable);
+    }
+    if (busyPtr->picture != NULL) {
+	int x, y;
+	
+	Blt_BlendPicture(painter, drawable, busyPtr->picture, 0, 0,
+		busyPtr->width, busyPtr->height, busyPtr->x, busyPtr->y, 0);
+	Tk_RedrawImage(drawable, busyPtr->text);
+    }
+#endif
+    XCopyArea(busyPtr->display, drawable, Tk_WindowId(tkwin),
+	      DefaultGC(busyPtr->display, Tk_ScreenNumber(tkwin)),
+	      0, 0, busyPtr->width, busyPtr->height, 0, 0);
+    Tk_FreePixmap(busyPtr->display, drawable);
+}
+
 #endif /* NO_BUSY */
 

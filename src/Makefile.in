@@ -49,6 +49,7 @@ XFT_LIB_SPEC =		@XFT_LIB_SPEC@
 XPM_INC_SPEC =		@XPM_INC_SPEC@
 XPM_LIB_SPEC =		@XPM_LIB_SPEC@
 XAU_LIB_SPEC =		@XAU_LIB_SPEC@
+XRANDR_LIB_SPEC =	@XRANDR_LIB_SPEC@
 XRENDER_LIB_SPEC =	@XRENDER_LIB_SPEC@
 FTCFG_LIB_SPEC =	@FTCFG_LIB_SPEC@
 XDMCP_LIB_SPEC =	@XDMCP_LIB_SPEC@
@@ -96,11 +97,13 @@ EXTRA_CORE_LIBS =	@LIBS@ @EXTRA_LIBS@
 EXTRA_X_LIBS =		$(X11_LIB_SPEC) \
 			$(XAU_LIB_SPEC) \
 			$(XDMCP_LIB_SPEC) \
+			$(XRANDR_LIB_SPEC) \
 			$(XRENDER_LIB_SPEC) \
 			$(EXTRA_CORE_LIBS) 
 
 BLT_X_SO_LIBS =		$(XFT_LIB_SPEC) \
 			$(FTCFG_LIB_SPEC) \
+			$(XRANDR_LIB_SPEC) \
 			$(FT2_LIB_SPEC) 
 
 BLT_X_A_LIBS =		$(BLT_X_SO_LIBS) \
@@ -124,11 +127,11 @@ blt_core_a =		lib$(blt_core_name).a
 blt_x_so =		lib$(blt_x_name)$(SO_EXT)
 blt_x_a =		lib$(blt_x_name).a
 
-blt_dt_csv_name =       DataTableCsv$(version)$(LIB_SUFFIX)
-blt_dt_mysql_name =     DataTableMysql$(version)$(LIB_SUFFIX)
-blt_dt_tree_name =      DataTableTree$(version)$(LIB_SUFFIX)
-blt_dt_vec_name =       DataTableVector$(version)$(LIB_SUFFIX)
-blt_dt_xml_name =       DataTableXml$(version)$(LIB_SUFFIX)
+blt_dt_csv_name =       TableCsv$(version)$(LIB_SUFFIX)
+blt_dt_mysql_name =     TableMysql$(version)$(LIB_SUFFIX)
+blt_dt_tree_name =      TableTree$(version)$(LIB_SUFFIX)
+blt_dt_vec_name =       TableVector$(version)$(LIB_SUFFIX)
+blt_dt_xml_name =       TableXml$(version)$(LIB_SUFFIX)
 
 blt_dt_csv_so =		$(blt_dt_csv_name)$(SO_EXT)
 blt_dt_mysql_so =       $(blt_dt_mysql_name)$(SO_EXT)
@@ -140,6 +143,7 @@ blt_pict_bmp_name =     PictureBmp$(version)$(LIB_SUFFIX)
 blt_pict_gif_name =     PictureGif$(version)$(LIB_SUFFIX)
 blt_pict_jpg_name =     PictureJpg$(version)$(LIB_SUFFIX)
 blt_pict_pbm_name =     PicturePbm$(version)$(LIB_SUFFIX)
+blt_pict_pdf_name =     PicturePdf$(version)$(LIB_SUFFIX)
 blt_pict_photo_name =   PicturePhoto$(version)$(LIB_SUFFIX)
 blt_pict_png_name =     PicturePng$(version)$(LIB_SUFFIX)
 blt_pict_ps_name =      PicturePs$(version)$(LIB_SUFFIX)
@@ -151,6 +155,7 @@ blt_pict_bmp_so =	$(blt_pict_bmp_name)$(SO_EXT)
 blt_pict_gif_so =	$(blt_pict_gif_name)$(SO_EXT)
 blt_pict_jpg_so =	$(blt_pict_jpg_name)$(SO_EXT)
 blt_pict_pbm_so =	$(blt_pict_pbm_name)$(SO_EXT)
+blt_pict_pdf_so =	$(blt_pict_pdf_name)$(SO_EXT)
 blt_pict_photo_so =     $(blt_pict_photo_name)$(SO_EXT)
 blt_pict_png_so =	$(blt_pict_png_name)$(SO_EXT)
 blt_pict_ps_so =	$(blt_pict_ps_name)$(SO_EXT)
@@ -176,6 +181,7 @@ blt_x_pkgs_so =		$(blt_pict_gif_so) \
 			$(blt_pict_xbm_so) \
 			$(blt_pict_bmp_so) \
 			$(blt_pict_pbm_so) \
+			$(blt_pict_pdf_so) \
 			$(blt_pict_ps_so) \
 			$(blt_pict_photo_so)
 ifneq ("$(JPG_LIB_SPEC)", "")
@@ -243,13 +249,13 @@ PICTURE_PKG_OBJS =	bltPictBmp.o \
 			bltPictGif.o \
 			bltPictJpg.o \
 			bltPictPbm.o \
+			bltPictPdf.o \
 			bltPictPhoto.o \
 			bltPictPng.o \
 			bltPictPs.o \
 			bltPictTif.o \
 			bltPictXbm.o \
 			bltPictXpm.o 
-
 
 TREE_OBJS =		bltTree.o \
 			bltTreeCmd.o \
@@ -291,6 +297,7 @@ BLT_CORE_SO_OBJS =	bltAlloc.o \
 			bltVector.o \
 			bltWatch.o \
 			bltTri.o \
+			bltUnixBgexec.o \
 			bltUnixPipe.o \
 			bltCoreInit.o 
 
@@ -317,10 +324,12 @@ BLT_X_SO_OBJS =		$(GRAPH_OBJS) \
 			bltDragdrop.o \
 			bltHtext.o \
 			bltImage.o \
+			bltListView.o \
 			bltMenubar.o \
 			bltOldConfig.o \
 			bltPaneset.o \
 			bltPs.o \
+			bltPsAfm.o \
 			bltScrollset.o \
 			bltTable.o \
 			bltTabset.o \
@@ -477,6 +486,10 @@ $(blt_pict_xpm_so): bltPictXpm.o
 	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictXpm.o \
 		$(X11_LIB_SPEC) $(XPM_LIB_SPEC)
 
+$(blt_pict_pdf_so): bltPictPdf.o
+	$(RM) $@
+	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictPdf.o 
+
 $(blt_pict_ps_so): bltPictPs.o
 	$(RM) $@
 	$(SO_LD) $(SO_LDFLAGS) -o $@ bltPictPs.o 
@@ -495,40 +508,40 @@ install: mkdirs install-demos install-libs install-headers
 install-libs: install-@BLT_TARGET@ 
 
 install-demos: $(bltwish) $(bltsh)
-	$(INSTALL) -m 0755 $(bltwish) $(INSTALL_ROOT)$(bindir)
-	$(INSTALL) -m 0755 $(bltsh) $(INSTALL_ROOT)$(bindir)
+	$(INSTALL) -m 0755 $(bltwish) $(DESTDIR)$(bindir)
+	$(INSTALL) -m 0755 $(bltsh) $(DESTDIR)$(bindir)
 
 install-shared: $(blt_core_so) $(blt_x_so) install-pkgs install-static 
-	$(INSTALL) -m 0755 $(blt_core_so) $(INSTALL_ROOT)$(libdir)
-	$(INSTALL) -m 0755 $(blt_x_so) $(INSTALL_ROOT)$(libdir)
+	$(INSTALL) -m 0755 $(blt_core_so) $(DESTDIR)$(libdir)
+	$(INSTALL) -m 0755 $(blt_x_so) $(DESTDIR)$(libdir)
 
 install-static: $(blt_core_a) $(blt_x_a) 
-	$(INSTALL_DATA) $(blt_core_a) $(INSTALL_ROOT)$(libdir)
-	$(RANLIB) $(INSTALL_ROOT)$(libdir)/$(blt_core_a)
-	$(INSTALL_DATA) $(blt_x_a) $(INSTALL_ROOT)$(libdir)
-	$(RANLIB) $(INSTALL_ROOT)$(libdir)/$(blt_x_a)
+	$(INSTALL_DATA) $(blt_core_a) $(DESTDIR)$(libdir)
+	$(RANLIB) $(DESTDIR)$(libdir)/$(blt_core_a)
+	$(INSTALL_DATA) $(blt_x_a) $(DESTDIR)$(libdir)
+	$(RANLIB) $(DESTDIR)$(libdir)/$(blt_x_a)
 
 install-pkgs: $(blt_core_pkgs_so) $(blt_x_pkgs_so)
 	for i in $(blt_core_pkgs_so) $(blt_x_pkgs_so) ; do \
-	  echo $(RM) $(INSTALL_ROOT)$(libdir)/$$i ; \
-	  $(RM) $(INSTALL_ROOT)$(libdir)/$$i ; \
-	  echo $(INSTALL) -m 0755 $$i $(INSTALL_ROOT)$(pkgdir) ; \
-	  $(INSTALL) -m 0755 $$i $(INSTALL_ROOT)$(pkgdir) ; \
+	  echo $(RM) $(DESTDIR)$(libdir)/$$i ; \
+	  $(RM) $(DESTDIR)$(libdir)/$$i ; \
+	  echo $(INSTALL) -m 0755 $$i $(DESTDIR)$(pkgdir) ; \
+	  $(INSTALL) -m 0755 $$i $(DESTDIR)$(pkgdir) ; \
         done
 
 install-headers:
 	@for i in $(headers) ; do \
 	    echo "installing $$i..." ; \
-	    $(INSTALL_DATA) -m 0444 $$i $(INSTALL_ROOT)$(incdir) ; \
+	    $(INSTALL_DATA) -m 0444 $$i $(DESTDIR)$(incdir) ; \
 	done
 
 mkdirs:
 	@for i in $(instdirs) ; do \
-          if test -d $(INSTALL_ROOT)$$i ; then \
+          if test -d $(DESTDIR)$$i ; then \
             : ; \
           else \
-            echo " mkdir $(INSTALL_ROOT)$$i" ; \
-            $(INSTALL) -d $(INSTALL_ROOT)$$i ; \
+            echo " mkdir $(DESTDIR)$$i" ; \
+            $(INSTALL) -d $(DESTDIR)$$i ; \
           fi ; \
         done
 

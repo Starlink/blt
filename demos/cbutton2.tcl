@@ -23,7 +23,7 @@ blt::combobutton .b \
     -image $image \
     -textvariable myText1 \
     -iconvariable myIcon1 \
-    -indicatoron yes \
+    -arrowon yes \
     -menu .b.m \
     -menuanchor se \
     -command "puts {button pressed}"
@@ -37,20 +37,15 @@ blt::combomenu .b.m  \
     -iconvariable myIcon1 \
     -font { Arial 9 bold } \
     -acceleratorfont { Arial 8 } \
-    -indicatorforeground black \
     -disabledforeground grey35  \
     -disabledbackground grey85  \
     -disabledacceleratorforeground grey35  \
-    -xscrollcommand { .b.m.xbar set } \
-    -yscrollcommand { .b.m.ybar set } \
     -yscrollbar .b.m.ybar \
     -xscrollbar .b.m.xbar
 
-blt::tk::scrollbar .b.m.xbar -orient horizontal -command { .b.m xview } \
-    -width 17
+blt::tk::scrollbar .b.m.xbar
 # -elementborderwidth 2 -borderwidth 0
-blt::tk::scrollbar .b.m.ybar -orient vertical -command { .b.m yview } \
-    -highlightthickness 0 -width 17 
+blt::tk::scrollbar .b.m.ybar
 #-elementborderwidth 2 -borderwidth 0
 
 set onOff 0
@@ -87,23 +82,16 @@ blt::combomenu .b.m.m  \
     -iconvariable myIcon1 \
     -font { Arial 9 bold } \
     -acceleratorfont { Arial 8 } \
-    -indicatorforeground black \
     -disabledforeground grey45  \
     -disabledbackground grey85  \
     -disabledacceleratorforeground grey45  \
-    -width -400 \
-    -height -500 \
-    -xscrollcommand { .b.m.m.xbar set } \
-    -yscrollcommand { .b.m.m.ybar set } \
+    -width { 0 400 } \
+    -height { 0 500 } \
     -yscrollbar .b.m.m.ybar \
     -xscrollbar .b.m.m.xbar
 
-blt::tk::scrollbar .b.m.m.xbar -orient horizontal -command { .b.m.m xview } \
-    -width 17
-# -elementborderwidth 2 -borderwidth 0
-blt::tk::scrollbar .b.m.m.ybar -orient vertical -command { .b.m.m yview } \
-    -highlightthickness 0 -width 17 
-#-elementborderwidth 2 -borderwidth 0
+blt::tk::scrollbar .b.m.m.xbar 
+blt::tk::scrollbar .b.m.m.ybar 
 
 set onOff 0
 foreach item { Undo X1 Y1 Redo Cut Copy X2 Y2 Paste "Select All" X3 Y3 
@@ -225,29 +213,19 @@ blt::combomenu .b.m.m.m \
     -iconvariable myIcon1 \
     -font { Arial 9 bold } \
     -acceleratorfont { Arial 8 } \
-    -indicatorforeground black \
     -disabledforeground grey45  \
     -disabledbackground grey85  \
     -disabledacceleratorforeground grey45  \
-    -width -400 \
-    -height -500 \
-    -xscrollcommand { .b.m.m.m.xbar set } \
-    -yscrollcommand { .b.m.m.m.ybar set } \
+    -width { 0 400 } \
+    -height { 0 500 } \
     -yscrollbar .b.m.m.m.ybar \
     -xscrollbar .b.m.m.m.xbar
 
 .b.m.m.m listadd $labels \
     -icon $icon 
 
-blt::tk::scrollbar .b.m.m.m.xbar  \
-    -orient horizontal \
-    -command { .b.m.m.m xview } \
-    -width 17
-
-blt::tk::scrollbar .b.m.m.m.ybar \
-    -orient vertical \
-    -command { .b.m.m.m yview } \
-    -highlightthickness 0 -width 17 
+blt::tk::scrollbar .b.m.m.m.xbar  
+blt::tk::scrollbar .b.m.m.m.ybar 
 
 blt::tk::scrollbar .s -orient vertical -command { .b xview } 
 

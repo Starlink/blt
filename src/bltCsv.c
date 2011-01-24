@@ -400,8 +400,8 @@ CsvCmd(ClientData clientData, Tcl_Interp *interp, int objc,
 	    return  ParseCsvData(interp, objv[2]);
 	} 
     }
-    Tcl_AppendResult(interp, "wrong # args: should be \"", Tcl_GetString(objv[0]),
-	 " ?fileName? ?-data dataString?", (char *)NULL);
+    Tcl_AppendResult(interp, "wrong # args: should be \"", 
+		     Tcl_GetString(objv[0]), " ?fileName? ?-data dataString?", (char *)NULL);
     return TCL_ERROR;
 }
     

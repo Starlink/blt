@@ -76,9 +76,9 @@ proc Find { tree parent dir } {
 	} else {
 	    if 0 {
 	    if { $info(type) == "file" } {
-		set info(type) [list @blt::tv::normalOpenFolder $name]
+		set info(type) [list @blt::TreeView::openIcon $name]
 	    } else {
-		set info(type) "@blt::tv::normalOpenFolder "
+		set info(type) "@blt::TreeView::openIcon "
 	    }
 	    }
 	    set info(mtime) [clock format $info(mtime) -format "%b %d, %Y"]
@@ -112,23 +112,6 @@ proc GetAbsolutePath { dir } {
     return $path
 }
 
-option add *TreeView.focusOutSelectForeground white
-option add *TreeView.focusOutSelectBackground grey80
-#option add *TreeView.Button.activeBackground pink
-option add *TreeView.Button.activeBackground grey90
-#option add *TreeView.Button.background grey95
-option add *TreeView.Column.background grey90
-option add *TreeView.CheckBoxStyle.activeBackground white
-if 0 {
-    option add *TreeView.Column.titleFont { Arial 10 }
-    option add *TreeView.text.font { Monotype.com 10 Bold } 
-    option add *TreeView.CheckBoxStyle.font Courier-10
-    option add *TreeView.ComboBoxStyle.font Helvetica-10
-    option add *TreeView.TextBoxStyle.font Times-8
-}
-option add *TreeView.Column.titleFont { Arial 10 }
-
-button .b -font { Helvetica 10 bold }
 set top [GetAbsolutePath .]
 set trim "$top"
 
@@ -136,38 +119,46 @@ set tree [blt::tree create]
 scrollbar .vs -orient vertical -command { .t yview }
 scrollbar .hs -orient horizontal -command { .t xview }
 
+proc OpenNode  { tree node parent top } {
+    if { [file type $parent] == "directory" } {
+	blt::busy hold .t
+	Find $tree $node $top/$parent
+	update
+	blt::busy release .t
+    }
+}
+
+proc CloseNode  { tree node } {
+    eval $tree delete [$tree children $nodex]
+}
+
+
 blt::treeview .t \
     -width 0 \
     -yscrollcommand { .vs set } \
     -xscrollcommand { .hs set } \
     -selectmode multiple \
     -separator / \
-    -font { "Times New Roman" 12 } \
     -tree $tree \
-    -opencommand {
-	if { [file type %P] == "directory" } {
-	    blt::busy hold .t
-	    update
-	    Find $tree %# $top/%P
-	    update
-	    blt::busy release .t
-	}
-    } \
-    -closecommand {
-	eval $tree delete [$tree children %#]
-    }
+    -opencommand [list OpenNode $tree %\# %P $top]  \
+    -closecommand [list CloseNode $tree %\#]
 
-
+set img [image create picture -data {
+    R0lGODlhEAANAMIAAAAAAH9/f///////AL+/vwAA/wAAAAAAACH5BAEAAAUALAAAAAAQAA0A
+    AAM1WBrM+rAEMigJ8c3Kb3OSII6kGABhp1JnaK1VGwjwKwtvHqNzzd263M3H4n2OH1QBwGw6
+    nQkAOw==
+}]
+	 
+update
 .t column configure treeView -text "" 
 #file
 .t column insert 0 mtime atime ctime 
 .t column insert end nlink mode type owner group ino size dev
-.t column configure owner -background \#eaeaff -relief raised 
-.t column configure mtime -hide no -bg \#ffeaea -relief raised
+.t column configure owner 
+.t column configure mtime -hide no
 .t column configure size group nlink owner ino dev -justify left -edit yes
 .t column configure size type -justify left -edit yes
-.t column configure treeView -hide no -edit no \
-	-icon blt::tv::normalOpenFolder
+.t column configure treeView -hide no -edit no -icon $img
 focus .t
 
 
@@ -210,8 +201,7 @@ pack .top.sbar -side right -fill y
     -onvalue 30 -offvalue "50" \
     -showvalue yes 
 
-.t style combobox combo  \
-	-icon blt::tv::normalOpenFolder
+.t style combobox combo -icon $img
 
 #.t column configure owner -style combo 
 #.t column configure group -style check

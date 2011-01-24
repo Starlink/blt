@@ -35,31 +35,33 @@ set graph [blt::graph .g]
 blt::table . \
     0,0 $graph -fill both 
 
-
 source scripts/graph2.tcl
 
 $graph postscript configure \
-    -maxpect yes \
     -landscape yes 
+
 $graph configure \
-    -width 10i \
-    -height 8i \
+    -width 6i \
+    -height 4i \
     -title "Graph" \
     -plotpady 0 -plotpadx 0 -plotborderwidth 0
 
 $graph axis configure y \
+    -titlefont "arial 10" \
     -title "Y Axis" 
 
 if 1 {
-    $graph element configure line1 \
-	-areapattern solid -areaforeground green
+    set bg [blt::bgpattern create gradient -low grey40 -high grey95 \
+	-jitter yes -log no -opacity 80]
+    $graph element configure line1 
+#	-areapattern solid -areaforeground green
 #	-areatile $image 
     $graph element configure line3 \
-	-areapattern @bitmaps/sharky.xbm \
 	-areaforeground red \
-	-areabackground "" -areapattern solid
+	-areabackground $bg 
 }
 
+if 0 {
 set fileName testImg.jpg
 if { [file exists $fileName] } {
     set image [image create picture -file $fileName]
@@ -73,7 +75,7 @@ if { [file exists $fileName] } {
 	}]
     }
 } 
-
+}
 
 bind $graph <Control-ButtonPress-3> { MakeSnapshot }
 bind $graph <Shift-ButtonPress-3> { 

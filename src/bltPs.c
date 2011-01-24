@@ -38,12 +38,14 @@
 #include "tkDisplay.h"
 #include "tkFont.h"
 
-#define PS_MAXPATH	1500	/* Maximum number of components in a PostScript
-				 * (level 1) path. */
+#define PS_MAXPATH	1500		/* Maximum number of components in a
+					 * PostScript (level 1) path. */
 
 #define PICA_MM		2.83464566929
 #define PICA_INCH	72.0
 #define PICA_CM		28.3464566929
+
+static Tcl_Interp *psInterp = NULL;
 
 /*
  *---------------------------------------------------------------------------
@@ -66,9 +68,10 @@
  */
 int
 Blt_Ps_GetPicaFromObj(
-    Tcl_Interp *interp,		/* Use this for error reporting. */
-    Tcl_Obj *objPtr,		/* String describing a number of pixels. */
-    int *picaPtr)		/* Place to store converted result. */
+    Tcl_Interp *interp,			/* Use this for error reporting. */
+    Tcl_Obj *objPtr,			/* String describing a number of
+					 * pixels. */
+    int *picaPtr)			/* Place to store converted result. */
 {
     char *p;
     double pica;
@@ -86,25 +89,12 @@ Blt_Ps_GetPicaFromObj(
 	p++;
     }
     switch (*p) {
-	case '\0':
-	    break;
-	case 'c':
-	    pica *= PICA_CM;
-	    p++;
-	    break;
-	case 'i':
-	    pica *= PICA_INCH;
-	    p++;
-	    break;
-	case 'm':
-	    pica *= PICA_MM;
-	    p++;
-	    break;
-	case 'p':
-	    p++;
-	    break;
-	default:
-	    goto error;
+	case '\0':			     break;
+	case 'c': pica *= PICA_CM;   p++;    break;
+	case 'i': pica *= PICA_INCH; p++;    break;
+	case 'm': pica *= PICA_MM;   p++;    break;
+	case 'p': p++;                       break;
+	default:  goto error;
     }
     while ((*p != '\0') && isspace(UCHAR(*p))) {
 	p++;
@@ -121,8 +111,9 @@ Blt_Ps_GetPicaFromObj(
 
 int
 Blt_Ps_GetPadFromObj(
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tcl_Obj *objPtr,		/* Pixel value string */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tcl_Obj *objPtr,			/* Pixel value string */
     Blt_Pad *padPtr)
 {
     int side1, side2;
@@ -175,7 +166,7 @@ Blt_Ps_GetPadFromObj(
  *---------------------------------------------------------------------------
  */
 int
-Blt_Ps_ComputeBoundingBox(PageSetup *setupPtr, int *widthPtr, int *heightPtr)
+Blt_Ps_ComputeBoundingBox(PageSetup *setupPtr, int width, int height)
 {
     int paperWidth, paperHeight;
     int x, y, hSize, vSize, hBorder, vBorder;
@@ -187,18 +178,12 @@ Blt_Ps_ComputeBoundingBox(PageSetup *setupPtr, int *widthPtr, int *heightPtr)
     hBorder = PADDING(setupPtr->xPad);
     vBorder = PADDING(setupPtr->yPad);
 
-    if (setupPtr->reqWidth > 0) {
-	*widthPtr = setupPtr->reqWidth;
-    }
-    if (setupPtr->reqHeight > 0) {
-	*heightPtr = setupPtr->reqHeight;
-    }
     if (setupPtr->flags & PS_LANDSCAPE) {
-	hSize = *heightPtr;
-	vSize = *widthPtr;
+	hSize = height;
+	vSize = width;
     } else {
-	hSize = *widthPtr;
-	vSize = *heightPtr;
+	hSize = width;
+	vSize = height;
     }
     /*
      * If the paper size wasn't specified, set it to the graph size plus the
@@ -250,8 +235,21 @@ Blt_Ps_Create(Tcl_Interp *interp, PageSetup *setupPtr)
 
     psPtr = Blt_AssertMalloc(sizeof(PostScript));
     psPtr->setupPtr = setupPtr;
+    psPtr->interp = interp;
     Tcl_DStringInit(&psPtr->dString);
     return psPtr;
+}
+
+void 
+Blt_Ps_SetPrinting(PostScript *psPtr, int state)
+{
+    psInterp = ((state) && (psPtr != NULL)) ? psPtr->interp : NULL;
+}
+
+int
+Blt_Ps_IsPrinting(void)
+{
+    return (psInterp != NULL);
 }
 
 void
@@ -296,7 +294,7 @@ int
 Blt_Ps_SaveFile(Tcl_Interp *interp, PostScript *psPtr, const char *fileName)
 {
     Tcl_Channel channel;
-    size_t nWritten, nBytes;
+    int nWritten, nBytes;
     char *bytes;
 
     channel = Tcl_OpenFileChannel(interp, fileName, "w", 0660);
@@ -687,42 +685,51 @@ Blt_Ps_XSetBitmapData(Blt_Ps ps, Display *display, Pixmap bitmap, int w, int h)
 typedef struct {
     const char *alias;
     const char *fontName;
-} FontMap;
+} FamilyMap;
 
-static FontMap psFontMap[] =
+static FamilyMap familyMap[] =
 {
-    {"Arial", "Helvetica",},
-    {"AvantGarde", "AvantGarde",},
-    {"Courier New", "Courier",},
-    {"Courier", "Courier",},
-    {"Geneva", "Helvetica",},
-    {"Helvetica", "Helvetica",},
-    {"Monaco", "Courier",},
-    {"New Century Schoolbook", "NewCenturySchlbk",},
-    {"New York", "Times",},
-    {"Palatino", "Palatino",},
-    {"Symbol", "Symbol",},
-    {"Times New Roman", "Times",},
-    {"Times Roman", "Times",},
-    {"Times", "Times",},
-    {"Utopia", "Utopia",},
-    {"ZapfChancery", "ZapfChancery",},
-    {"ZapfDingbats", "ZapfDingbats",},
+    { "Arial",		        "Helvetica"	   },
+    { "AvantGarde",             "AvantGarde"       },
+    { "Bookman",                "Bookman"          },
+    { "Courier New",            "Courier"          },
+    { "Courier",                "Courier"          },
+    { "Geneva",                 "Helvetica"        },
+    { "Helvetica",              "Helvetica"        },
+    { "Mathematica1",		"Helvetica"	   },
+    { "Monaco",                 "Courier"          },
+    { "New Century Schoolbook", "NewCenturySchlbk" },
+    { "New York",               "Times"            },
+    { "Nimbus Roman No9 L"	"Times"		   },
+    { "Nimbus Sans L Condensed","Helvetica"        },
+    { "Nimbus Sans L",		"Helvetica"        },
+    { "Palatino",               "Palatino"         },
+    { "Standard Symbols L",	"Symbol"           },
+    { "Swiss 721",              "Helvetica"        },
+    { "Symbol",                 "Symbol"           },
+    { "Times New Roman",        "Times"            },
+    { "Times Roman",            "Times"            },
+    { "Times",                  "Times"            },
+    { "ZapfChancery",           "ZapfChancery"     },
+    { "ZapfDingbats",           "ZapfDingbats"     }
 };
 
-static int nFontNames = (sizeof(psFontMap) / sizeof(FontMap));
+static int nFamilyNames = (sizeof(familyMap) / sizeof(FamilyMap));
 
-static int
-IsPostScriptFont(const char *family) 
+static const char *
+FamilyToPsFamily(const char *family) 
 {
-    FontMap *fp, *fend;
+    FamilyMap *fp, *fend;
 
-    for (fp = psFontMap, fend = fp + nFontNames; fp < fend; fp++) {
-	if (strncasecmp(fp->alias, family, strlen(fp->alias)) == 0) {
-	    return TRUE;
+    if (strncasecmp(family, "itc ", 4) == 0) {
+	family += 4;
+    }
+    for (fp = familyMap, fend = fp + nFamilyNames; fp < fend; fp++) {
+	if (strcasecmp(fp->alias, family) == 0) {
+	    return fp->fontName;
 	}
     }
-    return FALSE;
+    return NULL;
 }
 
 /*
@@ -1329,6 +1336,7 @@ void
 Blt_Ps_XSetFont(PostScript *psPtr, Blt_Font font) 
 {
     Tcl_Interp *interp = psPtr->interp;
+    const char *family;
 
     /* Use the font variable information if it exists. */
     if ((psPtr->setupPtr != NULL) && (psPtr->setupPtr->fontVarName != NULL)) {
@@ -1366,7 +1374,8 @@ Blt_Ps_XSetFont(PostScript *psPtr, Blt_Font font)
      * generates a bogus PostScript font name, so we have to check to see if
      * this is really a PostScript font first before we call it.
      */
-    if (IsPostScriptFont(Blt_FamilyOfFont(font))) {
+    family = FamilyToPsFamily(Blt_FamilyOfFont(font));
+    if (family != NULL) {
 	Tcl_DString dString;
 	double pointSize;
 	
@@ -1578,8 +1587,111 @@ Blt_Ps_Draw2DSegments(Blt_Ps ps, Segment2d *segments, int nSegments)
 
     Blt_Ps_Append(ps, "newpath\n");
     for (sp = segments, send = sp + nSegments; sp < send; sp++) {
-	Blt_Ps_Format(ps, "  %g %g moveto %g %g lineto\n", sp->p.x, sp->p.y, 
-		      sp->q.x, sp->q.y);
+	Blt_Ps_Format(ps, "  %g %g moveto %g %g lineto\n", 
+		sp->p.x, sp->p.y, sp->q.x, sp->q.y);
 	Blt_Ps_Append(ps, "DashesProc stroke\n");
+    }
+}
+
+void
+Blt_Ps_FontName(const char *family, int flags, Tcl_DString *resultPtr)
+{
+    const char *familyName, *weightName, *slantName;
+    int len;
+
+    len = Tcl_DStringLength(resultPtr);
+
+    familyName = FamilyToPsFamily(family);
+    if (familyName == NULL) {
+	Tcl_UniChar ch;
+	char *src, *dest;
+	int upper;
+
+	/*
+	 * Inline, capitalize the first letter of each word, lowercase the
+	 * rest of the letters in each word, and then take out the spaces
+	 * between the words.  This may make the DString shorter, which is
+	 * safe to do.
+	 */
+	Tcl_DStringAppend(resultPtr, family, -1);
+	src = dest = Tcl_DStringValue(resultPtr) + len;
+	upper = TRUE;
+	while (*src != '\0') {
+	    while (isspace(*src)) { /* INTL: ISO space */
+		src++;
+		upper = TRUE;
+	    }
+	    src += Tcl_UtfToUniChar(src, &ch);
+	    if (upper) {
+		ch = Tcl_UniCharToUpper(ch);
+		upper = FALSE;
+	    } else {
+	        ch = Tcl_UniCharToLower(ch);
+	    }
+	    dest += Tcl_UniCharToUtf(ch, dest);
+	}
+	*dest = '\0';
+	Tcl_DStringSetLength(resultPtr, dest - Tcl_DStringValue(resultPtr));
+	familyName = Tcl_DStringValue(resultPtr) + len;
+    }
+    if (familyName != Tcl_DStringValue(resultPtr) + len) {
+	Tcl_DStringAppend(resultPtr, familyName, -1);
+	familyName = Tcl_DStringValue(resultPtr) + len;
+    }
+    if (strcasecmp(familyName, "NewCenturySchoolbook") == 0) {
+	Tcl_DStringSetLength(resultPtr, len);
+	Tcl_DStringAppend(resultPtr, "NewCenturySchlbk", -1);
+	familyName = Tcl_DStringValue(resultPtr) + len;
+    }
+
+    /* Get the string to use for the weight. */
+    weightName = NULL;
+    if (flags & FONT_BOLD) {
+	if ((strcmp(familyName, "Bookman") == 0) || 
+	    (strcmp(familyName, "AvantGarde") == 0)) {
+	    weightName = "Demi";
+	} else {
+	    weightName = "Bold";
+	}
+    } else {
+	if (strcmp(familyName, "Bookman") == 0) {
+	    weightName = "Light";
+	} else if (strcmp(familyName, "AvantGarde") == 0) {
+	    weightName = "Book";
+	} else if (strcmp(familyName, "ZapfChancery") == 0) {
+	    weightName = "Medium";
+	}
+    }
+
+    /* Get the string to use for the slant. */
+    slantName = NULL;
+    if (flags & FONT_ITALIC) {
+	if ((strcmp(familyName, "Helvetica") == 0) || 
+	    (strcmp(familyName, "Courier") == 0) || 
+	    (strcmp(familyName, "AvantGarde") == 0)) {
+	    slantName = "Oblique";
+	} else {
+	    slantName = "Italic";
+	}
+    }
+
+    /*
+     * The string "Roman" needs to be added to some fonts that are not bold
+     * and not italic.
+     */
+    if ((slantName == NULL) && (weightName == NULL)) {
+	if ((strcmp(familyName, "Times") == 0) || 
+	    (strcmp(familyName, "NewCenturySchlbk") == 0) || 
+	    (strcmp(familyName, "Palatino") == 0)) {
+	    Tcl_DStringAppend(resultPtr, "-Roman", -1);
+	}
+    } else {
+	Tcl_DStringAppend(resultPtr, "-", -1);
+	if (weightName != NULL) {
+	    Tcl_DStringAppend(resultPtr, weightName, -1);
+	}
+	if (slantName != NULL) {
+	    Tcl_DStringAppend(resultPtr, slantName, -1);
+	}
     }
 }

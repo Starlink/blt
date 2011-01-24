@@ -99,13 +99,6 @@ static Blt_CustomOption limitsOption =
     ObjToLimits, LimitsToObj, NULL, (ClientData)0
 };
 
-static Blt_OptionParseProc ObjToResize;
-static Blt_OptionPrintProc ResizeToObj;
-static Blt_CustomOption resizeOption =
-{
-    ObjToResize, ResizeToObj, NULL, (ClientData)0
-};
-
 static Blt_OptionParseProc ObjToControl;
 static Blt_OptionPrintProc ControlToObj;
 static Blt_CustomOption controlOption =
@@ -119,9 +112,8 @@ static Blt_ConfigSpec rowConfigSpecs[] =
 	Blt_Offset(RowColumn, reqSize), 0, &limitsOption},
     {BLT_CONFIG_PAD, "-pady", (char *)NULL, (char *)NULL, DEF_TABLE_PAD, 
 	Blt_Offset(RowColumn, pad), BLT_CONFIG_DONT_SET_DEFAULT, },
-    {BLT_CONFIG_CUSTOM, "-resize", (char *)NULL, (char *)NULL, DEF_TABLE_RESIZE,
-	Blt_Offset(RowColumn, resize), BLT_CONFIG_DONT_SET_DEFAULT, 
-	&resizeOption},
+    {BLT_CONFIG_RESIZE, "-resize", (char *)NULL, (char *)NULL, DEF_TABLE_RESIZE,
+	Blt_Offset(RowColumn, resize), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_FLOAT, "-weight", (char *)NULL, (char *)NULL, DEF_TABLE_WEIGHT,
 	Blt_Offset(RowColumn, weight), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
@@ -131,9 +123,8 @@ static Blt_ConfigSpec columnConfigSpecs[] =
 {
     {BLT_CONFIG_PAD, "-padx", (char *)NULL, (char *)NULL, DEF_TABLE_PAD, 
 	Blt_Offset(RowColumn, pad), BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_CUSTOM, "-resize", (char *)NULL, (char *)NULL, DEF_TABLE_RESIZE,
-	Blt_Offset(RowColumn, resize), BLT_CONFIG_DONT_SET_DEFAULT, 
-	&resizeOption},
+    {BLT_CONFIG_RESIZE, "-resize", (char *)NULL, (char *)NULL, DEF_TABLE_RESIZE,
+	Blt_Offset(RowColumn, resize), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_FLOAT, "-weight", (char *)NULL, (char *)NULL, DEF_TABLE_WEIGHT,
 	Blt_Offset(RowColumn, weight), BLT_CONFIG_DONT_SET_DEFAULT, 
 	&limitsOption},
@@ -605,107 +596,6 @@ LimitsToObj(
 /*
  *---------------------------------------------------------------------------
  *
- * ObjToResize --
- *
- *	Converts the resize mode into its numeric representation.  Valid mode
- *	strings are "none", "expand", "shrink", or "both".
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static int
-ObjToResize(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* Resize style string */
-    char *widgRec,		/* Entry structure record */
-    int offset,			/* Offset to field in structure */
-    int flags)	
-{
-    const char *string;
-    char c;
-    int *resizePtr = (int *)(widgRec + offset);
-    int length;
-
-    string = Tcl_GetStringFromObj(objPtr, &length);
-    c = string[0];
-    if ((c == 'n') && (strncmp(string, "none", length) == 0)) {
-	*resizePtr = RESIZE_NONE;
-    } else if ((c == 'b') && (strncmp(string, "both", length) == 0)) {
-	*resizePtr = RESIZE_BOTH;
-    } else if ((c == 'e') && (strncmp(string, "expand", length) == 0)) {
-	*resizePtr = RESIZE_EXPAND;
-    } else if ((c == 's') && (strncmp(string, "shrink", length) == 0)) {
-	*resizePtr = RESIZE_SHRINK;
-    } else {
-	Tcl_AppendResult(interp, "bad resize argument \"", string,
-	    "\": should be \"none\", \"expand\", \"shrink\", or \"both\"",
-	    (char *)NULL);
-	return TCL_ERROR;
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * NameOfResize --
- *
- *	Converts the resize value into its string representation.
- *
- * Results:
- *	Returns a pointer to the static name string.
- *
- *---------------------------------------------------------------------------
- */
-static const char *
-NameOfResize(int resize)
-{
-    switch (resize & RESIZE_BOTH) {
-    case RESIZE_NONE:
-	return "none";
-    case RESIZE_EXPAND:
-	return "expand";
-    case RESIZE_SHRINK:
-	return "shrink";
-    case RESIZE_BOTH:
-	return "both";
-    default:
-	return "unknown resize value";
-    }
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * ResizeToObj --
- *
- *	Returns resize mode string based upon the resize flags.
- *
- * Results:
- *	The resize mode string is returned.
- *
- *---------------------------------------------------------------------------
- */
-/*ARGSUSED*/
-static Tcl_Obj *
-ResizeToObj(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Not used. */
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Row/column structure record */
-    int offset,			/* Offset to field in structure */
-    int flags)	
-{
-    int resize = *(int *)(widgRec + offset);
-
-    return Tcl_NewStringObj(NameOfResize(resize), -1);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
  * ObjToControl --
  *
  *	Converts the control string into its numeric representation.  Valid
@@ -820,8 +710,7 @@ ControlToObj(
  *
  * ObjToPosition --
  *
- *	Converts the resize mode into its numeric representation.  Valid mode
- *	strings are "none", "expand", "shrink", or "both".
+ *	Converts the position mode into its numeric representation.  
  *
  *---------------------------------------------------------------------------
  */
@@ -1652,7 +1541,7 @@ PrintRowColumn(
     }
     if (rcPtr->resize != ROWCOL_DEF_RESIZE) {
 	Tcl_DStringAppend(resultPtr, " -resize ", -1);
-	Tcl_DStringAppend(resultPtr, NameOfResize(rcPtr->resize), -1);
+	Tcl_DStringAppend(resultPtr, Blt_NameOfResize(rcPtr->resize), -1);
     }
     if ((rcPtr->pad.side1 != ROWCOL_DEF_PAD) ||
 	(rcPtr->pad.side2 != ROWCOL_DEF_PAD)) {
@@ -2637,7 +2526,13 @@ GetSpan(PartitionInfo *piPtr, TableEntry *tePtr)
      * Subtract off the padding on either side of the span, since the
      * widget can't grow into it.
      */
+    rcPtr->pad.side2 = 0;
     spaceUsed -= (startPtr->pad.side1 + rcPtr->pad.side2 + piPtr->ePad);
+#ifdef notdef
+    if (strcmp(Tk_Name(tePtr->tkwin), "ss") == 0) {
+	fprintf(stderr, "index=%d spaceUsed=%d\n", rcPtr->index, spaceUsed);
+    }
+#endif
     return spaceUsed;
 }
 
@@ -2689,6 +2584,7 @@ GetSpan(PartitionInfo *piPtr, TableEntry *tePtr)
  */
 static void
 GrowSpan(
+    Table *tablePtr, 
     PartitionInfo *piPtr,
     TableEntry *tePtr,
     int growth)			/* The amount of extra space needed to grow
@@ -2700,6 +2596,12 @@ GrowSpan(
     RowColumn *startPtr;	/* Starting (column/row) partition  */
     int span;			/* Number of partitions in the span */
 
+#ifdef notdef
+    if (strcmp(Tk_Name(tablePtr->tkwin), "fs") == 0) {
+	fprintf(stderr, "GrowSpan %s %s growth=%d\n", 
+		Tk_Name(tablePtr->tkwin), Tk_Name(tePtr->tkwin), growth);
+    }
+#endif
     if (piPtr->type == rowUid) {
 	startPtr = tePtr->row.rcPtr;
 	span = tePtr->row.span;
@@ -2752,6 +2654,12 @@ GrowSpan(
 		rcPtr->minSpan = span;
 		rcPtr->control = tePtr;
 	    }
+#ifdef notdef
+    if (strcmp(Tk_Name(tablePtr->tkwin), "fs") == 0) {
+	fprintf(stderr, "GrowSpan pass1 %s %s size=%d\n", 
+		Tk_Name(tablePtr->tkwin), Tk_Name(tePtr->tkwin), rcPtr->size);
+    }
+#endif
 	    link = Blt_Chain_NextLink(link);
 	}
     }
@@ -2796,6 +2704,12 @@ GrowSpan(
 		}
 		rcPtr->control = tePtr;
 	    }
+#ifdef notdef
+    if (strcmp(Tk_Name(tablePtr->tkwin), "fs") == 0) {
+	fprintf(stderr, "GrowSpan pass2 %s %s size=%d\n", 
+		Tk_Name(tablePtr->tkwin), Tk_Name(tePtr->tkwin), rcPtr->size);
+    }
+#endif
 	    link = Blt_Chain_NextLink(link);
 	}
     }
@@ -2848,6 +2762,12 @@ GrowSpan(
 		rcPtr->nom = rcPtr->size;
 		rcPtr->control = tePtr;
 	    }
+#ifdef notdef
+    if (strcmp(Tk_Name(tablePtr->tkwin), "fs") == 0) {
+	fprintf(stderr, "GrowSpan pass3 %s %s size=%d\n", 
+		Tk_Name(tablePtr->tkwin), Tk_Name(tePtr->tkwin), rcPtr->size);
+    }
+#endif
 	}
     }
 }
@@ -3306,7 +3226,13 @@ SetNominalSizes(Table *tablePtr, PartitionInfo *piPtr)
 	    }
 	    rcPtr->nom = size;
 	}
-	total += rcPtr->nom;
+#ifdef notdef
+	if (strcmp(Tk_Name(tablePtr->tkwin), "fs") == 0) {
+	    fprintf(stderr, "SetNominalSizes %s: %s %d min=%d max=%d nom=%d, size=%d total=%d\n",
+		    Tk_Name(tablePtr->tkwin), piPtr->type, rcPtr->index, rcPtr->min, rcPtr->max, rcPtr->nom, rcPtr->size, total);
+	}
+#endif
+ 	total += rcPtr->nom;
     }
     return total;
 }
@@ -3394,7 +3320,7 @@ LayoutPartitions(Table *tablePtr)
 	    }
 	    used = GetSpan(piPtr, tePtr);
 	    if (needed > used) {
-		GrowSpan(piPtr, tePtr, needed - used);
+		GrowSpan(tablePtr, piPtr, tePtr, needed - used);
 	    }
 	}
     }
@@ -3426,7 +3352,7 @@ LayoutPartitions(Table *tablePtr)
 	    }
 	    used = GetSpan(piPtr, tePtr);
 	    if (needed > used) {
-		GrowSpan(piPtr, tePtr, needed - used);
+		GrowSpan(tablePtr, piPtr, tePtr, needed - used);
 	    }
 	}
     }
@@ -3462,11 +3388,16 @@ LayoutPartitions(Table *tablePtr)
 	    }
 	    used = GetSpan(piPtr, tePtr);
 	    if (needed > used) {
-		GrowSpan(piPtr, tePtr, needed - used);
+		GrowSpan(tablePtr, piPtr, tePtr, needed - used);
 	    }
+#ifdef notdef
+    if (strcmp(Tk_Name(tePtr->tkwin), "ss") == 0) {
+	fprintf(stderr, "pass1 %s used=%d needed=%d\n", Tk_Name(tePtr->tkwin),
+		used, needed);
+    }
+#endif
 	}
     }
-
     LockPartitions(&tablePtr->rows);
 
     for (node = Blt_List_FirstNode(piPtr->list); node != NULL;
@@ -3491,14 +3422,30 @@ LayoutPartitions(Table *tablePtr)
 	    }
 	    used = GetSpan(piPtr, tePtr);
 	    if (needed > used) {
-		GrowSpan(piPtr, tePtr, needed - used);
+		GrowSpan(tablePtr, piPtr, tePtr, needed - used);
 	    }
+#ifdef notdef
+    if (strcmp(Tk_Name(tePtr->tkwin), "ss") == 0) {
+	fprintf(stderr, "pass2 %s used=%d needed=%d\n", Tk_Name(tePtr->tkwin),
+		used, needed);
+    }
+#endif
 	}
     }
     total = SetNominalSizes(tablePtr, piPtr);
     tablePtr->normal.height = GetBoundedHeight(total, &tablePtr->reqHeight) +
 	PADDING(tablePtr->yPad) +
 	2 * (tablePtr->eTablePad + Tk_InternalBorderWidth(tablePtr->tkwin));
+
+#ifdef notdef
+    if (strcmp(Tk_Name(tablePtr->tkwin), "fs") == 0) {
+    fprintf(stderr, "%s normal height=%d\n",
+	Tk_PathName(tablePtr->tkwin), tablePtr->normal.height);
+    fprintf(stderr, "total=%d boundedheight=%d reqHeight=%d normal=%d\n",
+	    total, GetBoundedHeight(total, &tablePtr->reqHeight),
+	    tablePtr->reqHeight.nom, tablePtr->normal.height);
+    }
+#endif
 }
 
 /*
@@ -3604,6 +3551,7 @@ ArrangeEntries(Table *tablePtr)		/* Table widget structure */
 		winHeight = tePtr->reqHeight.max;
 	    }
 	}
+
 	dx = dy = 0;
 	if (spanWidth > winWidth) {
 	    dx = (spanWidth - winWidth);
@@ -3644,6 +3592,13 @@ ArrangeEntries(Table *tablePtr)		/* Table widget structure */
 	tePtr->x = x;
 	tePtr->y = y;
 
+#ifdef notdef
+		if (strcmp(Tk_Name(tePtr->tkwin), "fs") == 0) {
+		fprintf(stderr, "ArrangeEntries: %s rw=%d rh=%d w=%d h=%d\n",
+			Tk_PathName(tePtr->tkwin), Tk_ReqWidth(tePtr->tkwin),
+			Tk_ReqHeight(tePtr->tkwin), winWidth, winHeight);
+		}
+#endif
 	if (tablePtr->tkwin != Tk_Parent(tePtr->tkwin)) {
 	    Tk_MaintainGeometry(tePtr->tkwin, tablePtr->tkwin, x, y,
 		winWidth, winHeight);
@@ -3651,6 +3606,13 @@ ArrangeEntries(Table *tablePtr)		/* Table widget structure */
 	    if ((x != Tk_X(tePtr->tkwin)) || (y != Tk_Y(tePtr->tkwin)) ||
 		(winWidth != Tk_Width(tePtr->tkwin)) ||
 		(winHeight != Tk_Height(tePtr->tkwin))) {
+#ifdef notdef
+		if (strcmp(Tk_Name(tePtr->tkwin), "fs") == 0) {
+		fprintf(stderr, "ArrangeEntries: %s rw=%d rh=%d w=%d h=%d\n",
+			Tk_PathName(tePtr->tkwin), Tk_ReqWidth(tePtr->tkwin),
+			Tk_ReqHeight(tePtr->tkwin), winWidth, winHeight);
+		}
+#endif
 		Tk_MoveResizeWindow(tePtr->tkwin, x, y, winWidth, winHeight);
 	    }
 	    if (!Tk_IsMapped(tePtr->tkwin)) {
@@ -3729,7 +3691,7 @@ ArrangeTable(ClientData clientData)
      * Save the width and height of the container so we know when its size has
      * changed during ConfigureNotify events.
      */
-    tablePtr->container.width = Tk_Width(tablePtr->tkwin);
+    tablePtr->container.width  = Tk_Width(tablePtr->tkwin);
     tablePtr->container.height = Tk_Height(tablePtr->tkwin);
     outerPad = 2 * (Tk_InternalBorderWidth(tablePtr->tkwin) +
 	tablePtr->eTablePad);
@@ -3756,8 +3718,22 @@ ArrangeTable(ClientData clientData)
     delta = tablePtr->container.height - height;
     if (delta != 0) {
 	if (delta > 0) {
+#ifdef notdef
+    if (strcmp(Tk_Name(tablePtr->tkwin), "fs") == 0) {
+	fprintf(stderr, "GrowPartiions %s delta=%d container=%d rh=%d h=%d\n", 
+		Tk_Name(tablePtr->tkwin), delta, tablePtr->container.height, 
+		Tk_ReqHeight(tablePtr->tkwin), height);
+    }
+#endif
 	    GrowPartitions(&tablePtr->rows, delta);
 	} else {
+#ifdef notdef
+    if (strcmp(Tk_Name(tablePtr->tkwin), "fs") == 0) {
+	fprintf(stderr, "ShrinkPartiions %s delta=%d container=%d rh=%d h=%d\n", 
+		Tk_Name(tablePtr->tkwin), delta, tablePtr->container.height, 
+		Tk_ReqHeight(tablePtr->tkwin), height);
+    }
+#endif
 	    ShrinkPartitions(&tablePtr->rows, delta);
 	}
 	height = GetTotalSpan(&tablePtr->rows) + yPad;
@@ -5137,7 +5113,7 @@ GetTableInterpData(Tcl_Interp *interp)
 /*
  *---------------------------------------------------------------------------
  *
- * Blt_TableCmdInitProc --
+ * Blt_TableMgrCmdInitProc --
  *
  *	This procedure is invoked to initialize the TCL command that
  *	corresponds to the table geometry manager.
@@ -5151,9 +5127,9 @@ GetTableInterpData(Tcl_Interp *interp)
  *---------------------------------------------------------------------------
  */
 int
-Blt_TableCmdInitProc(Tcl_Interp *interp)
+Blt_TableMgrCmdInitProc(Tcl_Interp *interp)
 {
-    static Blt_InitCmdSpec cmdSpec = {"table", TableCmd, };
+    static Blt_InitCmdSpec cmdSpec = { "table", TableCmd, };
 
     cmdSpec.clientData = GetTableInterpData(interp);
     rowUid = (Blt_Uid)Tk_GetUid("row");

@@ -165,7 +165,7 @@ TurnOnHairs(Graph *graphPtr, Crosshairs *chPtr)
  *---------------------------------------------------------------------------
  */
 void
-Blt_Graph_ConfigureCrosshairs(Graph *graphPtr)
+Blt_ConfigureCrosshairs(Graph *graphPtr)
 {
     XGCValues gcValues;
     unsigned long gcMask;
@@ -221,7 +221,7 @@ Blt_Graph_ConfigureCrosshairs(Graph *graphPtr)
 }
 
 void
-Blt_Graph_EnableCrosshairs(Graph *graphPtr)
+Blt_EnableCrosshairs(Graph *graphPtr)
 {
     if (!graphPtr->crosshairs->hidden) {
 	TurnOnHairs(graphPtr, graphPtr->crosshairs);
@@ -229,7 +229,7 @@ Blt_Graph_EnableCrosshairs(Graph *graphPtr)
 }
 
 void
-Blt_Graph_DisableCrosshairs(Graph *graphPtr)
+Blt_DisableCrosshairs(Graph *graphPtr)
 {
     if (!graphPtr->crosshairs->hidden) {
 	TurnOffHairs(graphPtr->tkwin, graphPtr->crosshairs);
@@ -249,7 +249,7 @@ Blt_Graph_DisableCrosshairs(Graph *graphPtr)
  *---------------------------------------------------------------------------
  */
 void
-Blt_Graph_UpdateCrosshairs(Graph *graphPtr)
+Blt_UpdateCrosshairs(Graph *graphPtr)
 {
     Crosshairs *chPtr = graphPtr->crosshairs;
 
@@ -262,7 +262,7 @@ Blt_Graph_UpdateCrosshairs(Graph *graphPtr)
 /*
  *---------------------------------------------------------------------------
  *
- * Blt_Graph_DestroyCrosshairs --
+ * Blt_DestroyCrosshairs --
  *
  * Results:
  *	None
@@ -273,7 +273,7 @@ Blt_Graph_UpdateCrosshairs(Graph *graphPtr)
  *---------------------------------------------------------------------------
  */
 void
-Blt_Graph_DestroyCrosshairs(Graph *graphPtr)
+Blt_DestroyCrosshairs(Graph *graphPtr)
 {
     if (graphPtr->crosshairs != NULL) {
 	Crosshairs *chPtr = graphPtr->crosshairs;
@@ -289,7 +289,7 @@ Blt_Graph_DestroyCrosshairs(Graph *graphPtr)
 /*
  *---------------------------------------------------------------------------
  *
- * Blt_Graph_CreateCrosshairs --
+ * Blt_CreateCrosshairs --
  *
  *	Creates and initializes a new crosshair structure.
  *
@@ -303,7 +303,7 @@ Blt_Graph_DestroyCrosshairs(Graph *graphPtr)
  *---------------------------------------------------------------------------
  */
 int
-Blt_Graph_CreateCrosshairs(Graph *graphPtr)
+Blt_CreateCrosshairs(Graph *graphPtr)
 {
     Crosshairs *chPtr;
 
@@ -383,7 +383,7 @@ ConfigureOp(
 	objc - 3, objv + 3, (char *)chPtr, BLT_CONFIG_OBJV_ONLY) != TCL_OK) {
 	return TCL_ERROR;
     }
-    Blt_Graph_ConfigureCrosshairs(graphPtr);
+    Blt_ConfigureCrosshairs(graphPtr);
     return TCL_OK;
 }
 

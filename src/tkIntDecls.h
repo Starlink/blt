@@ -84,6 +84,23 @@ extern void TkSetWindowMenuBar(Tcl_Interp *interp, Tk_Window tkwin,
 extern void TkWmRestackToplevel(Tk_Window tkwin, int aboveBelow, 
 	Tk_Window otherPtr);
 
+#if defined (WIN32) || defined(MAC_TCL) || defined(MAC_OSX_TCL)
+/* 114 */
+extern TkRegion TkCreateRegion(void);
+/* 115 */
+extern void TkDestroyRegion (TkRegion rgn);
+/* 116 */
+extern void TkIntersectRegion (TkRegion sra, TkRegion srcb, TkRegion dr_return);
+/* 117 */
+extern int TkRectInRegion(TkRegion rgn, int x, int y, unsigned int width, 
+			  unsigned int height);
+/* 118 */
+extern void TkSetRegion(Display* display, GC gc, TkRegion rgn);
+/* 119 */
+extern void TkUnionRectWithRegion(XRectangle* rect, TkRegion src, 
+	TkRegion dr_return);
+#endif
+
 typedef struct TkIntStubs {
     int magic;
     struct TkIntStubHooks *hooks;
@@ -313,6 +330,37 @@ extern TkIntStubs *tkIntStubsPtr;
 #endif
 
 #endif
+
+#if defined(WIN32) || defined(MAC_TCL) || defined(MAC_OSX_TCL)
+#ifndef TkClipBox
+#define TkClipBox \
+        (tkIntStubsPtr->tkClipBox)	/* 113 */
+#endif
+#ifndef TkCreateRegion
+#define TkCreateRegion \
+        (tkIntStubsPtr->tkCreateRegion) /* 114 */
+#endif
+#ifndef TkDestroyRegion
+#define TkDestroyRegion \
+        (tkIntStubsPtr->tkDestroyRegion) /* 115 */
+#endif
+#ifndef TkIntersectRegion
+#define TkIntersectRegion \
+        (tkIntStubsPtr->tkIntersectRegion) /* 116 */
+#endif
+#ifndef TkRectInRegion
+#define TkRectInRegion \
+        (tkIntStubsPtr->tkRectInRegion) /* 117 */
+#endif
+#ifndef TkSetRegion
+#define TkSetRegion \
+        (tkIntStubsPtr->tkSetRegion)	/* 118 */
+#endif
+#ifndef TkUnionRectWithRegion
+#define TkUnionRectWithRegion \
+        (tkIntStubsPtr->tkUnionRectWithRegion)	/* 119 */
+#endif
+#endif	/* WIN32 */
 
 #undef TCL_STORAGE_CLASS
 #define TCL_STORAGE_CLASS DLLIMPORT

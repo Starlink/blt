@@ -252,6 +252,27 @@ ChangesOp(Tk_Window tkMain, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 
 /* ARGSUSED */
 static int
+GeometryOp(Tk_Window tkMain, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+{
+    Window d;
+    int x, y, w, h;
+    Tcl_Obj *listObjPtr;
+
+    if (GetWindowFromObj(interp, objv[2], &d) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    Blt_GetWindowRegion(Tk_Display(tkMain), d, &x, &y, &w, &h);
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(x));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(y));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(w));
+    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewIntObj(h));
+    Tcl_SetObjResult(interp, listObjPtr);
+    return TCL_OK;
+}
+
+/* ARGSUSED */
+static int
 QueryOp(Tk_Window tkMain, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     int rootX, rootY, childX, childY;
@@ -276,7 +297,7 @@ static int
 TreeOp(Tk_Window tkMain, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     Window *ancestors, window, root, parent;
-    size_t nAncestors;
+    unsigned int nAncestors;
 
     if (GetWindowFromObj(interp, objv[2], &window) != TCL_OK) {
 	return TCL_ERROR;
@@ -346,6 +367,7 @@ WarpToOp(Tk_Window tkMain, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 static Blt_OpSpec winOps[] =
 {
     {"changes", 1, ChangesOp, 3, 3, "window",},
+    {"geometry",1, GeometryOp, 3, 3, "window",},
     {"lower",   1, LowerOp,   2, 0, "window ?window?...",},
     {"map",     2, MapOp,     2, 0, "window ?window?...",},
     {"move",    2, MoveOp,    5, 5, "window x y",},

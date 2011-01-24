@@ -44,7 +44,6 @@
 #include "bltInt.h"
 #include <fcntl.h>
 #include <signal.h>
-
 #include "bltWait.h"
 
 typedef int Tcl_File;
@@ -88,12 +87,10 @@ OpenFile(
     fd = open(fname, mode, 0666);
     if (fd != -1) {
 	fcntl(fd, F_SETFD, FD_CLOEXEC);
-
 	/*
-	 * If the file is being opened for writing, seek to the end
-	 * so we can append to any data already in the file.
+	 * If the file is being opened for writing, seek to the end so we can
+	 * append to any data already in the file.
 	 */
-
 	if (mode & O_WRONLY) {
 	    lseek(fd, 0, SEEK_END);
 	}
@@ -162,23 +159,27 @@ CreateTempFile(char *contents)	/* String to write into temp file, or NULL. */
  *
  *---------------------------------------------------------------------------
  */
-
 static int
 CreatePipe(
-    int *inFilePtr,		/* (out) Descriptor for read side of pipe. */
-    int *outFilePtr)		/* (out) Descriptor for write side of pipe. */
+    Tcl_Interp *interp, 
+    int *inPtr,				/* (out) Descriptor for read side of
+					 * pipe. */
+    int *outPtr)			/* (out) Descriptor for write side of
+					 * pipe. */
 {
-    int pipeDes[2];
+    int fd[2];
 
-    if (pipe(pipeDes) != 0) {
-	return 0;
+    if (pipe(fd) < 0) {
+	Tcl_AppendResult(interp, "can't create pipe for command: ",
+		    Tcl_PosixError(interp), (char *)NULL);
+	return TCL_ERROR;
     }
-    fcntl(pipeDes[0], F_SETFD, FD_CLOEXEC);
-    fcntl(pipeDes[1], F_SETFD, FD_CLOEXEC);
+    fcntl(fd[0], F_SETFD, FD_CLOEXEC);
+    fcntl(fd[1], F_SETFD, FD_CLOEXEC);
 
-    *inFilePtr = pipeDes[0];
-    *outFilePtr = pipeDes[1];
-    return 1;
+    *inPtr = fd[0];
+    *outPtr = fd[1];
+    return TCL_OK;
 }
 
 /*
@@ -196,12 +197,12 @@ CreatePipe(
  *
  *---------------------------------------------------------------------------
  */
-
 static int
-CloseFile(int fd)		/* File descriptor to be closed. */
+CloseFile(int fd)			/* File descriptor to be closed. */
 {
     if ((fd == 0) || (fd == 1) || (fd == 2)) {
-	return 0;		/* Don't close stdin, stdout or stderr. */
+	return 0;			/* Don't close stdin, stdout or
+					 * stderr. */
     }
     Tcl_DeleteFileHandler(fd);
     return close(fd);
@@ -224,7 +225,6 @@ CloseFile(int fd)		/* File descriptor to be closed. */
  *
  *---------------------------------------------------------------------------
  */
-
 static void
 RestoreSignals(void)
 {
@@ -299,16 +299,16 @@ RestoreSignals(void)
  *
  *---------------------------------------------------------------------------
  */
-
 static int
 SetupStdFile(
-    int fd,			/* File descriptor to dup, or -1. */
-    int type)			/* One of TCL_STDIN, TCL_STDOUT, TCL_STDERR */
+    int fd,				/* File descriptor to dup, or -1. */
+    int type)				/* One of TCL_STDIN, TCL_STDOUT,
+					 * TCL_STDERR */
 {
-    int targetFd = 0;		/* Initializations here needed only to */
-    int direction = 0;		/* prevent warnings about using uninitialized
-				 * variables. */
-
+    int targetFd = 0;			/* Initializations here needed only
+					 * to */
+    int direction = 0;			/* Prevent warnings about using
+					 * uninitialized variables. */
     switch (type) {
     case TCL_STDIN:
 	targetFd = 0;
@@ -378,7 +378,6 @@ SetupStdFile(
  *
  *---------------------------------------------------------------------------
  */
-
 /* ARGSUSED */
 static int
 CreateProcess(
@@ -438,9 +437,7 @@ CreateProcess(
      * Create a pipe that the child can use to return error information if
      * anything goes wrong.
      */
-    if (CreatePipe(&errPipeIn, &errPipeOut) == 0) {
-	Tcl_AppendResult(interp, "can't create pipe: ",
-	    Tcl_PosixError(interp), (char *)NULL);
+    if (CreatePipe(interp, &errPipeIn, &errPipeOut) != TCL_OK) {
 	goto error;
     }
     joinThisError = (stderrFd == stdoutFd);
@@ -453,7 +450,6 @@ CreateProcess(
 	/*
 	 * Set up stdio file handles for the child process.
 	 */
-
 	if (!SetupStdFile(stdinFd, TCL_STDIN) ||
 	    !SetupStdFile(stdoutFd, TCL_STDOUT) ||
 	    (!joinThisError && !SetupStdFile(stderrFd, TCL_STDERR)) ||
@@ -468,10 +464,9 @@ CreateProcess(
 	 * Close the input side of the error pipe.
 	 */
 	RestoreSignals();
-	fprintf(stderr, "pid=%d, getpgrp=%d\n", getpid(), getpgrp());
 	execvp(argv[0], &argv[0]);
 	sprintf_s(errSpace, 200, "%dcan't execute \"%.150s\": ", errno, argv[0]);
- 	nWritten = write(fd, errSpace, (size_t) strlen(errSpace));
+ 	nWritten = write(fd, errSpace, (size_t)strlen(errSpace));
 	_exit(1);
     }
     if (pid == -1) {
@@ -721,30 +716,19 @@ Blt_CreatePipeline(
 				 * containing input data (specified via <<) to
 				 * be piped to the first process in the
 				 * pipeline. */
-    int stdinFd;		/* If != NULL, gives file to use as input for
-				 * first process in pipeline (specified via <
-				 * or <@). */
-    int stdoutFd;		/* Writable file for output from last command
-				 * in pipeline (could be file or pipe).  NULL
-				 * means use stdout. */
-    int stderrFd;		/* Writable file for error output from all
-				 * commands in pipeline.  NULL means use
-				 * stderr. */
-    int stdinIsOpen;		/* If non-zero, then stdinFd should be closed
-    				 * when cleaning up. */
-    int stdoutIsOpen;		/* If non-zero, then stdoutFd should be closed
-    				 * when cleaning up. */
-    int stderrIsOpen;		/* If non-zero, then stderrFd should be closed
-    				 * when cleaning up. */
     char *p;
     int skip, lastBar, lastArg, i, j, atOK, flags, errorToOutput;
     Tcl_DString execBuffer;
     int pipeIn;
-    int stdinCurrFd, stdoutCurrFd, stderrCurrFd;
+    int isOpen[3];
+    int curFd[3];		/* If non-zero, then fd should be closed
+    				 * when cleaning up. */
+    int fd[3];
+    
     char **argv;
 
-    stdinFd = stdoutFd = stderrFd = -1;
-    stdinIsOpen = stdoutIsOpen = stderrIsOpen = FALSE;
+    fd[0] = fd[1] = fd[2] = -1;
+    isOpen[0] = isOpen[1] = isOpen[2] = FALSE;
     if (stdinPipePtr != NULL) {
 	*stdinPipePtr = -1;
     }
@@ -756,7 +740,7 @@ Blt_CreatePipeline(
     }
     Tcl_DStringInit(&execBuffer);
 
-    pipeIn = stdinCurrFd = stdoutCurrFd = -1;
+    pipeIn = curFd[0] = curFd[1] = -1;
     nPids = 0;
 
     /*
@@ -806,12 +790,12 @@ Blt_CreatePipeline(
 	    break;
 
 	case '<':
-	    if (stdinIsOpen != 0) {
-		stdinIsOpen = FALSE;
-		CloseFile(stdinFd);
+	    if (isOpen[0] != 0) {
+		isOpen[0] = FALSE;
+		CloseFile(fd[0]);
 	    }
 	    if (*p == '<') {
-		stdinFd = -1;
+		fd[0] = -1;
 		inputLiteral = p + 1;
 		skip = 1;
 		if (*inputLiteral == '\0') {
@@ -825,9 +809,9 @@ Blt_CreatePipeline(
 		}
 	    } else {
 		inputLiteral = NULL;
-		stdinFd = FileForRedirect(interp, p, argv[i], TRUE, argv[i + 1],
-			O_RDONLY, &skip, &stdinIsOpen);
-		if (stdinFd < 0) {
+		fd[0] = FileForRedirect(interp, p, argv[i], TRUE, argv[i + 1],
+			O_RDONLY, &skip, &isOpen[0]);
+		if (fd[0] < 0) {
 		    goto error;
 		}
 	    }
@@ -843,25 +827,25 @@ Blt_CreatePipeline(
 		flags = O_WRONLY | O_CREAT;
 	    }
 	    if (*p == '&') {
-		if (stderrIsOpen != 0) {
-		    stderrIsOpen = FALSE;
-		    CloseFile(stderrFd);
+		if (isOpen[2] != 0) {
+		    isOpen[2] = FALSE;
+		    CloseFile(fd[2]);
 		}
 		errorToOutput = TRUE;
 		p++;
 	    }
-	    if (stdoutIsOpen != 0) {
-		stdoutIsOpen = FALSE;
-		CloseFile(stdoutFd);
+	    if (isOpen[1] != 0) {
+		isOpen[1] = FALSE;
+		CloseFile(fd[1]);
 	    }
-	    stdoutFd = FileForRedirect(interp, p, argv[i], atOK, argv[i + 1], 
-		flags, &skip, &stdoutIsOpen);
-	    if (stdoutFd < 0) {
+	    fd[1] = FileForRedirect(interp, p, argv[i], atOK, argv[i + 1], 
+		flags, &skip, &isOpen[1]);
+	    if (fd[1] < 0) {
 		goto error;
 	    }
 	    if (errorToOutput) {
-		stderrIsOpen = FALSE;
-		stderrFd = stdoutFd;
+		isOpen[2] = FALSE;
+		fd[2] = fd[1];
 	    }
 	    break;
 
@@ -877,13 +861,13 @@ Blt_CreatePipeline(
 		atOK = FALSE;
 		flags = O_WRONLY | O_CREAT;
 	    }
-	    if (stderrIsOpen != 0) {
-		stderrIsOpen = FALSE;
-		CloseFile(stderrFd);
+	    if (isOpen[2] != 0) {
+		isOpen[2] = FALSE;
+		CloseFile(fd[2]);
 	    }
-	    stderrFd = FileForRedirect(interp, p, argv[i], atOK, argv[i + 1], 
-		flags, &skip, &stderrIsOpen);
-	    if (stderrFd < 0) {
+	    fd[2] = FileForRedirect(interp, p, argv[i], atOK, argv[i + 1], 
+		flags, &skip, &isOpen[2]);
+	    if (fd[2] < 0) {
 		goto error;
 	    }
 	    break;
@@ -898,80 +882,69 @@ Blt_CreatePipeline(
 	}
     }
 
-    if (stdinFd == -1) {
+    if (fd[0] == -1) {
 	if (inputLiteral != NULL) {
 	    /*
 	     * The input for the first process is immediate data coming from
 	     * Tcl.  Create a temporary file for it and put the data into the
 	     * file.
 	     */
-	    stdinFd = CreateTempFile(inputLiteral);
-	    if (stdinFd < 0) {
+	    fd[0] = CreateTempFile(inputLiteral);
+	    if (fd[0] < 0) {
 		Tcl_AppendResult(interp,
 		    "can't create input file for command: ",
 		    Tcl_PosixError(interp), (char *)NULL);
 		goto error;
 	    }
-	    stdinIsOpen = TRUE;
+	    isOpen[0] = TRUE;
 	} else if (stdinPipePtr != NULL) {
 	    /*
 	     * The input for the first process in the pipeline is to come from
 	     * a pipe that can be written from by the caller.
 	     */
-
-	    if (CreatePipe(&stdinFd, stdinPipePtr) == 0) {
-		Tcl_AppendResult(interp,
-		    "can't create input pipe for command: ",
-		    Tcl_PosixError(interp), (char *)NULL);
+	    if (CreatePipe(interp, &fd[0], stdinPipePtr) != TCL_OK) {
 		goto error;
 	    }
-	    stdinIsOpen = TRUE;
+	    isOpen[0] = TRUE;
 	} else {
 	    /*
 	     * The input for the first process comes from stdin.
 	     */
-	    stdinFd = 0;
+	    fd[0] = 0;
 	}
     }
-    if (stdoutFd == -1) {
+    if (fd[1] == -1) {
 	if (stdoutPipePtr != NULL) {
 	    /*
 	     * Output from the last process in the pipeline is to go to a pipe
 	     * that can be read by the caller.
 	     */
-
-	    if (CreatePipe(stdoutPipePtr, &stdoutFd) == 0) {
-		Tcl_AppendResult(interp,
-		    "can't create output pipe for command: ",
-		    Tcl_PosixError(interp), (char *)NULL);
+	    if (CreatePipe(interp, stdoutPipePtr, &fd[1]) != TCL_OK) {
 		goto error;
 	    }
-	    stdoutIsOpen = TRUE;
+	    isOpen[1] = TRUE;
 	} else {
 	    /*
 	     * The output for the last process goes to stdout.
 	     */
-	    stdoutFd = 1;
+	    fd[1] = 1;
 	}
     }
-    if (stderrFd == -1) {
+    if (fd[2] == -1) {
 	if (stderrPipePtr != NULL) {
 	    /*
 	     * Stderr from the last process in the pipeline is to go to a pipe
 	     * that can be read by the caller.
 	     */
-	    if (CreatePipe(stderrPipePtr, &stderrFd) == 0) {
-		Tcl_AppendResult(interp,
-		    "can't create error pipe for command: ",
-		    Tcl_PosixError(interp), (char *)NULL);
+	    if (CreatePipe(interp, stderrPipePtr, &fd[2]) != TCL_OK) {
 		goto error;
 	    }
-	    stderrIsOpen = TRUE;
+	    isOpen[2] = TRUE;
 	} else {
 	    /*
 	     * Errors from the pipeline go to stderr.
 	     */
-	    stderrFd = 2;
+	    fd[2] = 2;
 	}
     }
     /*
@@ -981,7 +954,7 @@ Blt_CreatePipeline(
 
     Tcl_ReapDetachedProcs();
     pids = Blt_AssertMalloc(cmdCount * sizeof(int));
-    stdinCurrFd = stdinFd;
+    curFd[0] = fd[0];
 
     lastArg = 0;		/* Suppress compiler warning */
     for (i = 0; i < objc; i = lastArg + 1) {
@@ -997,7 +970,7 @@ Blt_CreatePipeline(
 	    goto error;
 	}
 	/*
-	 * Find the end of the current segment of the pipeline.
+	 * Find the end of the curent segment of the pipeline.
 	 */
 	joinThisError = 0;
 	for (lastArg = i + 1; lastArg < objc; lastArg++) {
@@ -1014,29 +987,26 @@ Blt_CreatePipeline(
 	argv[lastArg] = NULL;
 
 	/*
-	 * If this is the last segment, use the specified stdoutFd.  Otherwise
+	 * If this is the last segment, use the specified fd[1].  Otherwise
 	 * create an intermediate pipe.  pipeIn will become the curInFile for
 	 * the next segment of the pipe.
 	 */
-
 	if (lastArg == objc) {
-	    stdoutCurrFd = stdoutFd;
+	    curFd[1] = fd[1];
 	} else {
-	    if (CreatePipe(&pipeIn, &stdoutCurrFd) == 0) {
-		Tcl_AppendResult(interp, "can't create pipe: ",
-		    Tcl_PosixError(interp), (char *)NULL);
+	    if (CreatePipe(interp, &pipeIn, &curFd[1]) != TCL_OK) {
 		goto error;
 	    }
 	}
 
 	if (joinThisError != 0) {
-	    stderrCurrFd = stdoutCurrFd;
+	    curFd[2] = curFd[1];
 	} else {
-	    stderrCurrFd = stderrFd;
+	    curFd[2] = fd[2];
 	}
 
-	if (CreateProcess(interp, lastArg - i, argv + i, stdinCurrFd, 
-		stdoutCurrFd, stderrCurrFd, &pid) != TCL_OK) {
+	if (CreateProcess(interp, lastArg - i, argv + i, curFd[0], curFd[1], 
+		curFd[2], &pid) != TCL_OK) {
 	    goto error;
 	}
 	Tcl_DStringFree(&execBuffer);
@@ -1044,22 +1014,20 @@ Blt_CreatePipeline(
 	pids[nPids] = pid;
 	nPids++;
 
-
 	/*
 	 * Close off our copies of file descriptors that were set up for this
 	 * child, then set up the input for the next child.
 	 */
-
-	if ((stdinCurrFd >= 0) && (stdinCurrFd != stdinFd)) {
-	    CloseFile(stdinCurrFd);
+	if ((curFd[0] >= 0) && (curFd[0] != fd[0])) {
+	    CloseFile(curFd[0]);
 	}
-	stdinCurrFd = pipeIn;
+	curFd[0] = pipeIn;
 	pipeIn = -1;
 
-	if ((stdoutCurrFd >= 0) && (stdoutCurrFd != stdoutFd)) {
-	    CloseFile(stdoutCurrFd);
+	if ((curFd[1] >= 0) && (curFd[1] != fd[1])) {
+	    CloseFile(curFd[1]);
 	}
-	stdoutCurrFd = -1;
+	curFd[1] = -1;
     }
 
     *pidArrayPtr = pids;
@@ -1071,14 +1039,10 @@ Blt_CreatePipeline(
   cleanup:
     Tcl_DStringFree(&execBuffer);
 
-    if (stdinIsOpen) {
-	CloseFile(stdinFd);
-    }
-    if (stdoutIsOpen) {
-	CloseFile(stdoutFd);
-    }
-    if (stderrIsOpen) {
-	CloseFile(stderrFd);
+    for (i = 0; i < 3; i++) {
+	if (isOpen[i]) {
+	    CloseFile(fd[i]);
+	}
     }
     if (argv != NULL) {
 	Blt_Free(argv);
@@ -1086,7 +1050,7 @@ Blt_CreatePipeline(
     return nPids;
 
     /*
-     * An error occurred.  There could have been extra files open, such as
+     * An error occured.  There could have been extra files open, such as
      * pipes between children.  Clean them all up.  Detach any child processes
      * that have been created.
      */
@@ -1095,11 +1059,14 @@ Blt_CreatePipeline(
     if (pipeIn >= 0) {
 	CloseFile(pipeIn);
     }
-    if ((stdoutCurrFd >= 0) && (stdoutCurrFd != stdoutFd)) {
-	CloseFile(stdoutCurrFd);
+    if ((curFd[2] >= 0) && (curFd[2] != fd[2])) {
+	CloseFile(curFd[2]);
     }
-    if ((stdinCurrFd >= 0) && (stdinCurrFd != stdinFd)) {
-	CloseFile(stdinCurrFd);
+    if ((curFd[1] >= 0) && (curFd[1] != fd[1])) {
+	CloseFile(curFd[1]);
+    }
+    if ((curFd[0] >= 0) && (curFd[0] != fd[0])) {
+	CloseFile(curFd[0]);
     }
     if ((stdinPipePtr != NULL) && (*stdinPipePtr >= 0)) {
 	CloseFile(*stdinPipePtr);

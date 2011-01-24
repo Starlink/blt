@@ -78,7 +78,7 @@ typedef struct {
 } ListDataSource;
 
 typedef struct {
-    Blt_DataTable table;
+    Blt_Table table;
     int refCount;
 } TableClient;
 
@@ -87,10 +87,10 @@ typedef struct {
     DataSourceChangedProc *proc;
     ClientData clientData;
 
-    Blt_DataTable table;	/* Data table. */ 
-    Blt_DataTableColumn column;	/* Column of data used. */
-    Blt_DataTableNotifier notifier; /* Notifier used for column (destroy). */
-    Blt_DataTableTrace trace;	/* Trace used for column (set/get/unset). */
+    Blt_Table table;	/* Data table. */ 
+    Blt_TableColumn column;	/* Column of data used. */
+    Blt_TableNotifier notifier; /* Notifier used for column (destroy). */
+    Blt_TableTrace trace;	/* Trace used for column (set/get/unset). */
     Blt_HashEntry *hashPtr;	/* Pointer to entry of source in graph's hash
 				 * table of datatables. One graph may use
 				 * multiple columns from the same data
@@ -542,10 +542,10 @@ TableDataSourceDestroyProc(DataSource *dataSrcPtr)
     TableDataSource *srcPtr = (TableDataSource *)dataSrcPtr;
 
     if (srcPtr->trace != NULL) {
-	Blt_DataTable_DeleteTrace(srcPtr->trace);
+	Blt_Table_DeleteTrace(srcPtr->trace);
     }
     if (srcPtr->notifier != NULL) {
-	Blt_DataTable_DeleteNotifier(srcPtr->notifier);
+	Blt_Table_DeleteNotifier(srcPtr->notifier);
     }
     if (srcPtr->hashPtr != NULL) {
 	TableClient *clientPtr;
@@ -554,7 +554,7 @@ TableDataSourceDestroyProc(DataSource *dataSrcPtr)
 	clientPtr->refCount--;
 	if (clientPtr->refCount == 0) {
 	    if (srcPtr->table != NULL) {
-		Blt_DataTable_Close(srcPtr->table);
+		Blt_Table_Close(srcPtr->table);
 	    }
 	    Blt_Free(clientPtr);
 	    Blt_DeleteHashEntry(&graphPtr->dataTables, srcPtr->hashPtr);
@@ -578,11 +578,11 @@ TableDataSourceDestroyProc(DataSource *dataSrcPtr)
  *---------------------------------------------------------------------------
  */
 static int
-TableNotifyProc(ClientData clientData, Blt_DataTableNotifyEvent *eventPtr)
+TableNotifyProc(ClientData clientData, Blt_TableNotifyEvent *eventPtr)
 {
     TableDataSource *srcPtr = clientData;
 
-    if (eventPtr->type == DT_NOTIFY_COLUMN_DELETED) {
+    if (eventPtr->type == TABLE_NOTIFY_COLUMN_DELETED) {
 	(*srcPtr->classPtr->destroyProc)(srcPtr);
 	srcPtr->classPtr = NULL;
 	return TCL_ERROR;
@@ -606,7 +606,7 @@ TableNotifyProc(ClientData clientData, Blt_DataTableNotifyEvent *eventPtr)
  *---------------------------------------------------------------------------
  */
 static int
-TableTraceProc(ClientData clientData, Blt_DataTableTraceEvent *eventPtr)
+TableTraceProc(ClientData clientData, Blt_TableTraceEvent *eventPtr)
 {
     TableDataSource *srcPtr = clientData;
 
@@ -629,7 +629,7 @@ CreateTableDataSource(Tcl_Interp *interp, const char *name, Tcl_Obj *colObjPtr)
     /* See if the graph is already using this table. */
     srcPtr->hashPtr = Blt_CreateHashEntry(&graphPtr->dataTables, name, &isNew);
     if (isNew) {
-	if (Blt_DataTable_Open(interp, name, &srcPtr->table) != TCL_OK) {
+	if (Blt_Table_Open(interp, name, &srcPtr->table) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	clientPtr = Blt_AssertMalloc(sizeof(TableClient));
@@ -641,17 +641,17 @@ CreateTableDataSource(Tcl_Interp *interp, const char *name, Tcl_Obj *colObjPtr)
 	srcPtr->table = clientPtr->table;
 	clientPtr->refCount++;
     }
-    srcPtr->column = Blt_DataTable_FindColumn(interp, srcPtr->table, colObjPtr);
+    srcPtr->column = Blt_Table_FindColumn(interp, srcPtr->table, colObjPtr);
     if (srcPtr->column == NULL) {
 	goto error;
     }
-    srcPtr->notifier = Blt_DataTable_CreateColumnNotifier(interp, srcPtr->table,
-	srcPtr->column, DT_NOTIFY_COLUMN_CHANGED, TableNotifyProc, 
-	(Blt_DataTableNotifierDeleteProc *)NULL, srcPtr);
-    srcPtr->trace = Blt_DataTable_CreateColumnTrace(srcPtr->table, 
+    srcPtr->notifier = Blt_Table_CreateColumnNotifier(interp, srcPtr->table,
+	srcPtr->column, TABLE_NOTIFY_COLUMN_CHANGED, TableNotifyProc, 
+	(Blt_TableNotifierDeleteProc *)NULL, srcPtr);
+    srcPtr->trace = Blt_Table_CreateColumnTrace(srcPtr->table, 
 	srcPtr->column, 
-	(DT_TRACE_WRITES | DT_TRACE_UNSETS | DT_TRACE_CREATES), TableTraceProc,
-	(Blt_DataTableTraceDeleteProc *)NULL, srcPtr);
+	(TABLE_TRACE_WRITES | TABLE_TRACE_UNSETS | TABLE_TRACE_CREATES), TableTraceProc,
+	(Blt_TableTraceDeleteProc *)NULL, srcPtr);
     return (DataSource *)srcPtr;
  error:
     DestroyDataSource(srcPtr);
@@ -667,10 +667,10 @@ TableDataSourcePrintProc(DataSource *dataSrcPtr)
     long index;
     
     listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
-    name = Blt_DataTable_TableName(srcPtr->table);
+    name = Blt_Table_TableName(srcPtr->table);
     Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewStringObj(name, -1));
     
-    index = Blt_DataTable_ColumnIndex(srcPtr->column);
+    index = Blt_Table_ColumnIndex(srcPtr->column);
     Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewLongObj(index));
     return listObjPtr;
 }
@@ -679,26 +679,26 @@ static int
 TableDataSourceGetProc(Tcl_Interp *interp, SourceData *dataSrcPtr, 
 		       DataSourceResult *resultPtr)
 {
-    Blt_DataTable table;
+    Blt_Table table;
     float *values;
     float min, max, logMin;
     long i, j;
 
     table = srcPtr->table;
-    values = Blt_Malloc(sizeof(float) * Blt_DataTable_NumRows(table));
+    values = Blt_Malloc(sizeof(float) * Blt_Table_NumRows(table));
     if (values == NULL) {
 	return TCL_ERROR;
     }
     logMin = min = FLT_MAX, max = -FLT_MAX;
-    for (j = 0, i = 1; i < Blt_DataTable_NumRows(table); i++) {
-	Blt_DataTableRow row;
+    for (j = 0, i = 1; i <= Blt_Table_NumRows(table); i++) {
+	Blt_TableRow row;
 	Tcl_Obj *objPtr;
 	double value;
 
-	row = Blt_DataTable_GetRowByIndex(table, i);
-	objPtr  = Blt_DataTable_GetValue(table, row, col);
+	row = Blt_Table_GetRowByIndex(table, i);
+	objPtr  = Blt_Table_GetObj(table, row, col);
 	if (objPtr == NULL) {
-	    continue;
+	    continue;			/* Ignore empty values. */
 	}
 	if (Tcl_GetDoubleFromObj(interp, objPtr, &value) != TCL_OK) {
 	    return TCL_ERROR;
@@ -793,7 +793,7 @@ ObjToDataSourceProc(
     string = Tcl_GetString(objv[0]);
     if ((objc == 1) && (Blt_VectorExists2(interp, string))) {
 	srcPtr = CreateVectorDataSource(interp, string);
-    } else if ((objc == 2) && (Blt_DataTable_TableExists(interp, string))) {
+    } else if ((objc == 2) && (Blt_Table_TableExists(interp, string))) {
 	srcPtr = CreateTableDataSource(interp, string, objv[1]);
     } else {
 	srcPtr = CreateListDataSource(interp, objc, objv);

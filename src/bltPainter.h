@@ -69,12 +69,13 @@ BLT_EXTERN int Blt_PaintPictureWithBlend(Blt_Painter painter, Drawable drawable,
 	int destX, int destY, unsigned int flags, double falpha);
 
 BLT_EXTERN Blt_Picture Blt_PaintCheckbox(int width, int height, 
-	unsigned int fillColor, unsigned int outlineColor, 
-	unsigned int checkColor, int isOn);
+	XColor *fillColor, XColor *outlineColor, XColor *checkColor, int isOn);
 
 BLT_EXTERN Blt_Picture Blt_PaintRadioButton(int width, int height, 
-	unsigned int fillColor, unsigned int outlineColor, 
-	unsigned int checkColor, int isOn);
+	XColor *fillColor, XColor *outlineColor, XColor *checkColor, int isOn);
+
+BLT_EXTERN Blt_Picture Blt_PaintDelete(int width, int height, 
+	XColor *bgColor, XColor *fgColor);
 
 BLT_EXTERN void Blt_PaintRectangle(Blt_Picture picture, int x, int y, int w, 
 	int h, int dx, int dy, Blt_Pixel *colorPtr);

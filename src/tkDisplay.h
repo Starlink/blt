@@ -62,7 +62,9 @@ typedef struct _TkStressedCmap TkStressedCmap;
 typedef struct _TkWmInfo TkWmInfo;
 
 typedef struct _TkBindInfo *TkBindInfo;
+#ifdef notdef
 typedef struct _TkRegion *TkRegion;
+#endif
 typedef struct _TkpCursor *TkpCursor;
 
 #ifdef XNQueryInputStyle
@@ -866,7 +868,7 @@ struct _TkWindow {
     Tk_GeomMgr *geomMgrPtr;
     ClientData geomData;
     int reqWidth, reqHeight;
-    int internalBorderWidth;
+    int internalBW;
     TkWinInfo *wmInfoPtr;
     TkClassProcs *classProcsPtr;
     ClientData instanceData;

@@ -66,8 +66,8 @@
 
 #define SEARCH_Y		1
 
-#define CT_ARROW_WIDTH 17
-#define CT_ARROW_HEIGHT 17
+#define ARROW_WIDTH 17
+#define ARROW_HEIGHT 17
 
 typedef const char *UID;
 
@@ -108,74 +108,54 @@ typedef const char *UID;
  *
  *  Internal combotree widget flags:
  *
- *	CT_LAYOUT	The layout of the hierarchy needs to be recomputed.
+ *	LAYOUT_PENDING	The layout of the hierarchy needs to be recomputed.
  *
- *	CT_REDRAW	A redraw request is pending for the widget.
+ *	REDRAW_PENDING	A redraw request is pending for the widget.
  *
- *	CT_XSCROLL	X-scroll request is pending.
+ *	XSCROLL		X-scroll request is pending.
  *
- *	CT_YSCROLL	Y-scroll request is pending.
+ *	SCROLLY		Y-scroll request is pending.
  *
- *	CT_SCROLL	Both X-scroll and  Y-scroll requests are pending.
+ *	SCROLL_PENDING	Both X-scroll and  Y-scroll requests are pending.
  *
- *	CT_FOCUS	The widget is receiving keyboard events.
+ *	FOCUS		The widget is receiving keyboard events.
  *			Draw the focus highlight border around the widget.
  *
- *	CT_DIRTY	The hierarchy has changed. It may invalidate
+ *	DIRTY		The hierarchy has changed. It may invalidate
  *			the locations and pointers to entries.  The widget 
  *			will need to recompute its layout.
  *
- *	CT_RESORT	The tree has changed such that the view needs to
- *			be resorted.  This can happen when an entry is
- *			open or closed, it's label changes, a column value
- *			changes, etc.
- *
- *	CT_BORDERS      The borders of the widget (highlight ring and
- *			3-D border) need to be redrawn.
- *
- *	CT_VIEWPORT     Indicates that the viewport has changed in some
+ *	VIEWPORT	Indicates that the viewport has changed in some
  *			way: the size of the viewport, the location of 
  *			the viewport, or the contents of the viewport.
  *
  */
 
-#define CT_LAYOUT	(1<<0)
-#define CT_REDRAW	(1<<1)
-#define CT_XSCROLL	(1<<2)
-#define CT_YSCROLL	(1<<3)
-#define CT_SCROLL	(CT_XSCROLL | CT_YSCROLL)
-#define CT_FOCUS	(1<<4)
-#define CT_DIRTY	(1<<5)
-#define CT_UPDATE	(1<<6)
-#define CT_RESORT	(1<<7)
-#define CT_SORTED	(1<<8)
-#define CT_SORT_PENDING (1<<9)
-#define CT_BORDERS	(1<<10)
-#define CT_VIEWPORT	(1<<11)
-#define CT_SETUP	(1<<16)
-#define CT_INSTALL_SCROLLBAR_X	(1<<13)
-#define CT_INSTALL_SCROLLBAR_Y	(1<<14)
+#define LAYOUT_PENDING	(1<<0)
+#define REDRAW_PENDING	(1<<1)
+#define UPDATE_PENDING  (1<<2)
+#define SCROLLX		(1<<3)
+#define SCROLLY		(1<<4)
+#define SCROLL_PENDING	(SCROLLX | SCROLLY)
+#define FOCUS		(1<<5)
+#define DIRTY		(1<<6)
+#define VIEWPORT	(1<<7)
+#define REPOPULATE	(1<<8)
+#define INSTALL_SCROLLBAR_X	(1<<9)
+#define INSTALL_SCROLLBAR_Y	(1<<10)
 
 /*
  *  Miscellaneous flags:
  *
- *	CT_ALLOW_DUPLICATES	When inserting new entries, create 
- *			        duplicate entries.
+ *	HIDE_ROOT		Don't display the root entry.
  *
- *	CT_FILL_ANCESTORS	Automatically create ancestor entries 
- *				as needed when inserting a new entry.
+ *	HIDE_LEAVES		Don't display entries that are leaves.
  *
- *	CT_HIDE_ROOT		Don't display the root entry.
- *
- *	CT_HIDE_LEAVES		Don't display entries that are leaves.
- *
- *	CT_SHOW_COLUMN_TITLES	Indicates whether to draw titles over each
- *				column.
- *
+ *	NEW_TAGS		
  */
-#define CT_HIDE_ROOT		(1<<23) 
-#define CT_HIDE_LEAVES		(1<<24) 
-#define CT_NEW_TAGS		(1<<27)
+#define HIDE_ROOT		(1<<23) 
+#define HIDE_LEAVES		(1<<24) 
+#define NEW_TAGS		(1<<27)
 
 /*
  *---------------------------------------------------------------------------
@@ -271,48 +251,46 @@ typedef struct _Icon {
 #define IconHeight(icon)	((icon)->height)
 #define IconWidth(icon)		((icon)->width)
 #define IconImage(icon)		((icon)->tkImage)
-#define IconName(icon)		(Blt_NameOfImage((icon)->tkImage))
+#define IconName(icon)		(Blt_Image_Name((icon)->tkImage))
 
 struct _Style {
-    const char *name;		/* Instance name. */
+    const char *name;			/* Instance name. */
     Blt_HashEntry *hPtr;
     ComboTree *comboPtr;
-    int refCount;		/* Indicates if the style is currently
-				 * in use in the combotree. */
+    int refCount;			/* Indicates if the style is currently
+					 * in use in the combotree. */
 
-    unsigned int flags;		/* Bit field containing both the style type
-				 * and various flags. */
+    unsigned int flags;			/* Bit field containing both the style
+					 * type and various flags. */
 
     /* General style fields. */
 
-    int borderWidth;		/* Width of 3D border. */
+    int borderWidth;			/* Width of 3D border. */
     int activeRelief;
     int relief;
 
-    int gap;			/* # pixels gap between icon and text. */
+    int gap;				/* # pixels gap between icon and
+					 * text. */
     Blt_Font labelFont;
-    XColor *labelNormalColor;	/* Normal foreground color of cell. */
-    XColor *labelActiveColor;	/* Foreground color of cell when active. */
+    XColor *labelNormalColor;		/* Normal foreground color of cell. */
+    XColor *labelActiveColor;		/* Foreground color of cell when
+					 * active. */
 
-    Blt_Background normalBg;	/* Normal background color. */
-    Blt_Background altBg;	/* Alternate normal background color. */
-    Blt_Background activeBg;	/* Background color when active. */
-    Blt_Background disabledBg;	/* Background color when active. */
+    Blt_Background normalBg;		/* Normal background color. */
+    Blt_Background altBg;		/* Alternate normal background
+					 * color. */
+    Blt_Background activeBg;		/* Active entry background color. */
+    Blt_Background disabledBg;		/* Disabled entry background color. */
 
     GC labelNormalGC;
     GC labelActiveGC;
     GC labelDisabledGC;
 
-    Icon *icons;		/* Tk images displayed for the entry.  The
-				 * first image is the icon displayed to the
-				 * left of the entry's label. The second is
-				 * icon displayed when entry is "open". */
-
-    Icon *activeIcons;		/* Tk images displayed for the entry.  The
-				 * first image is the icon displayed to the
-				 * left of the entry's label. The second is
-				 * icon displayed when entry is "open". */
-
+    Icon *icons;			/* Tk images displayed for the entry.
+					 * The first image is the icon
+					 * displayed to the left of the
+					 * entry's label. The second is icon
+					 * displayed when entry is "open". */
 };
 
 /*
@@ -694,14 +672,14 @@ typedef int (ApplyProc) (ComboTree *comboPtr, Entry *entryPtr);
 #define DEF_COMBO_LINESPACING		"0"
 #define DEF_COMBO_LINEWIDTH		"1"
 #define DEF_COMBO_MAKE_PATH		"no"
-#define DEF_COMBO_NEW_TAGS		"no"
+#define DEF_COMBO_NEWTAGS		"no"
 #define DEF_COMBO_RELIEF		"solid"
 #define DEF_COMBO_SCROLLBAR		((char *)NULL)
-#define DEF_COMBO_SCROLL_INCREMENT	"20"
+#define DEF_COMBO_SCROLLINCREMENT	"20"
 #define DEF_COMBO_SHOW_ROOT		"yes"
 #define DEF_COMBO_TAKE_FOCUS		"1"
 #define DEF_COMBO_TEXT_VARIABLE		((char *)NULL)
-#define DEF_COMBO_VLINE_COLOR		RGB_GREY50
+#define DEF_COMBO_LINECOLOR		RGB_GREY50
 #define DEF_COMBO_WIDTH			"0"
 #ifdef WIN32
 #define DEF_COMBO_SEPARATOR		"\\"
@@ -712,14 +690,13 @@ typedef int (ApplyProc) (ComboTree *comboPtr, Entry *entryPtr);
 #define DEF_ENTRY_STYLE			"default"
 #define DEF_STYLE_ACTIVE_BG		RGB_SKYBLUE4
 #define DEF_STYLE_ACTIVE_FG		RGB_WHITE
-#define DEF_STYLE_ACTIVE_ICONS		"::blt::activeOpenFolder ::blt::activeCloseFolder"
 #define DEF_STYLE_ACTIVE_RELIEF		"flat"
 #define DEF_STYLE_ALT_BG		((char *)NULL)
 #define DEF_STYLE_BG			"white"
 #define DEF_STYLE_BORDERWIDTH		STD_BORDERWIDTH
 #define DEF_STYLE_FG			STD_NORMAL_FOREGROUND
 #define DEF_STYLE_FONT			"Courier 12"
-#define DEF_STYLE_ICONS			"::blt::normalOpenFolder ::blt::normalCloseFolder"
+#define DEF_STYLE_ICONS			"::blt::ComboTree::openIcon ::blt::ComboTree::closeIcon"
 #define DEF_STYLE_NORMAL_BG		STD_NORMAL_BACKGROUND
 #define DEF_STYLE_RELIEF		"flat"
 
@@ -802,7 +779,7 @@ static Blt_ConfigSpec entrySpecs[] =
 {
     {BLT_CONFIG_CUSTOM, "-bindtags", (char *)NULL, (char *)NULL, (char *)NULL, 
 	Blt_Offset(Entry, tagsObjPtr), BLT_CONFIG_NULL_OK, &uidOption},
-    {BLT_CONFIG_CUSTOM, "-button", (char *)NULL, (char *)NULL, DEF_COMBO_BUTTON, 
+    {BLT_CONFIG_CUSTOM, "-button", (char *)NULL, (char *)NULL, DEF_COMBO_BUTTON,
 	Blt_Offset(Entry, flags), BLT_CONFIG_DONT_SET_DEFAULT, &buttonOption},
     {BLT_CONFIG_CUSTOM, "-closecommand", (char *)NULL, (char *)NULL,
 	(char *)NULL, Blt_Offset(Entry, closeCmd), BLT_CONFIG_NULL_OK, 
@@ -827,9 +804,6 @@ static Blt_ConfigSpec styleSpecs[] =
 	DEF_STYLE_ACTIVE_BG, Blt_Offset(Style, activeBg), 0},
     {BLT_CONFIG_COLOR, "-activeforeground", (char *)NULL, (char *)NULL,
 	DEF_STYLE_ACTIVE_FG, Blt_Offset(Style, labelActiveColor), 0},
-    {BLT_CONFIG_CUSTOM, "-activeicons", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_ACTIVE_ICONS, Blt_Offset(Style, activeIcons), 
-	BLT_CONFIG_NULL_OK, &iconsOption},
     {BLT_CONFIG_RELIEF, "-activerelief", "activeRelief", "Relief",
 	DEF_STYLE_ACTIVE_RELIEF, Blt_Offset(Style, activeRelief), 0},
     {BLT_CONFIG_BACKGROUND, "-alternatebackground", "alternateBackground", 
@@ -865,9 +839,6 @@ static Blt_ConfigSpec comboSpecs[] =
     {BLT_CONFIG_COLOR, "-activeforeground", "activeForeground", 
 	"ActiveForeground", DEF_STYLE_ACTIVE_FG, 
         Blt_Offset(ComboTree, defStyle.labelActiveColor), 0},
-    {BLT_CONFIG_CUSTOM, "-activeicons", "activeIcons", "Icons",
-	DEF_STYLE_ACTIVE_ICONS, Blt_Offset(ComboTree, defStyle.activeIcons),
-	BLT_CONFIG_NULL_OK, &iconsOption},
     {BLT_CONFIG_BACKGROUND, "-alternatebackground", "alternateBackground", 
 	"Background", DEF_STYLE_ALT_BG, Blt_Offset(ComboTree, defStyle.altBg), 
 	 0},
@@ -900,10 +871,10 @@ static Blt_ConfigSpec comboSpecs[] =
 	Blt_Offset(ComboTree, reqHeight), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BITMASK, "-hideleaves", "hideLeaves", "HideLeaves",
 	DEF_COMBO_HIDE_LEAVES, Blt_Offset(ComboTree, flags),
-	BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)CT_HIDE_LEAVES},
+	BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)HIDE_LEAVES},
     {BLT_CONFIG_BITMASK, "-hideroot", "hideRoot", "HideRoot",
 	DEF_COMBO_HIDE_ROOT, Blt_Offset(ComboTree, flags),
-	BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)CT_HIDE_ROOT},
+	BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)HIDE_ROOT},
     {BLT_CONFIG_OBJ, "-iconvariable", "iconVariable", "IconVariable", 
 	DEF_COMBO_ICON_VARIABLE, Blt_Offset(ComboTree, iconVarObjPtr), 
         BLT_CONFIG_NULL_OK},
@@ -911,7 +882,7 @@ static Blt_ConfigSpec comboSpecs[] =
 	Blt_Offset(ComboTree, defStyle.icons), BLT_CONFIG_NULL_OK, 
 	&iconsOption},
     {BLT_CONFIG_COLOR, "-linecolor", "lineColor", "LineColor",
-	DEF_COMBO_VLINE_COLOR, Blt_Offset(ComboTree, lineColor),
+	DEF_COMBO_LINECOLOR, Blt_Offset(ComboTree, lineColor),
 	BLT_CONFIG_COLOR_ONLY},
     {BLT_CONFIG_PIXELS_NNEG, "-linespacing", "lineSpacing", "LineSpacing",
 	DEF_COMBO_LINESPACING, Blt_Offset(ComboTree, leader),
@@ -919,9 +890,9 @@ static Blt_ConfigSpec comboSpecs[] =
     {BLT_CONFIG_PIXELS_NNEG, "-linewidth", "lineWidth", "LineWidth", 
 	DEF_COMBO_LINEWIDTH, Blt_Offset(ComboTree, lineWidth),
 	BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_BITMASK, "-newtags", "newTags", "NewTags", DEF_COMBO_NEW_TAGS, 
+    {BLT_CONFIG_BITMASK, "-newtags", "newTags", "NewTags", DEF_COMBO_NEWTAGS, 
 	Blt_Offset(ComboTree, flags), BLT_CONFIG_DONT_SET_DEFAULT, 
-	(Blt_CustomOption *)CT_NEW_TAGS},
+	(Blt_CustomOption *)NEW_TAGS},
     {BLT_CONFIG_STRING, "-opencommand", "openCommand", "OpenCommand",
 	(char *)NULL, Blt_Offset(ComboTree, openCmd), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief",
@@ -946,7 +917,7 @@ static Blt_ConfigSpec comboSpecs[] =
 	(char *)NULL, Blt_Offset(ComboTree, xScrollCmdObjPtr), 
 	BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_PIXELS_NNEG, "-xscrollincrement", "xScrollIncrement", 
-	"ScrollIncrement", DEF_COMBO_SCROLL_INCREMENT, 
+	"ScrollIncrement", DEF_COMBO_SCROLLINCREMENT, 
 	Blt_Offset(ComboTree, xScrollUnits), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_OBJ, "-yscrollbar", "yScrollbar", "Scrollbar", 
 	DEF_COMBO_SCROLLBAR, Blt_Offset(ComboTree, yScrollbarObjPtr), 
@@ -955,13 +926,14 @@ static Blt_ConfigSpec comboSpecs[] =
 	(char *)NULL, Blt_Offset(ComboTree, yScrollCmdObjPtr), 
 	BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_PIXELS_NNEG, "-yscrollincrement", "yScrollIncrement", 
-	"ScrollIncrement", DEF_COMBO_SCROLL_INCREMENT, 
+	"ScrollIncrement", DEF_COMBO_SCROLLINCREMENT, 
 	Blt_Offset(ComboTree, yScrollUnits), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
 	(char *)NULL, 0, 0}
 };
 
 /* Forward Declarations */
+static Tcl_IdleProc ConfigureScrollbarsProc;
 static Blt_BindPickProc PickEntry;
 static Blt_BindTagProc GetTags;
 static Blt_TreeNotifyEventProc TreeEventProc;
@@ -1008,8 +980,8 @@ typedef int (ComboTreeCmdProc)(ComboTree *comboPtr, Tcl_Interp *interp,
 static void
 EventuallyRedraw(ComboTree *comboPtr)
 {
-    if ((comboPtr->tkwin != NULL) && ((comboPtr->flags & CT_REDRAW) == 0)) {
-	comboPtr->flags |= CT_REDRAW;
+    if ((comboPtr->tkwin != NULL) && ((comboPtr->flags & REDRAW_PENDING)==0)) {
+	comboPtr->flags |= REDRAW_PENDING;
 	Tcl_DoWhenIdle(DisplayComboTree, comboPtr);
     }
 }
@@ -1037,13 +1009,29 @@ EventuallyRedrawEntry(Entry *entryPtr)
     ComboTree *comboPtr;
 
     comboPtr = entryPtr->comboPtr;
-    if ((comboPtr->tkwin != NULL) && ((comboPtr->flags & CT_REDRAW) == 0) &&
+    if ((comboPtr->tkwin != NULL) && ((comboPtr->flags & REDRAW_PENDING)==0) &&
 	((entryPtr->flags & ENTRY_REDRAW) == 0)) {
 	Tcl_DoWhenIdle(DisplayEntry, entryPtr);
 	entryPtr->flags |= ENTRY_REDRAW;
     }
 }
 
+static void
+ConfigureScrollbarsProc(ClientData clientData)
+{
+    ComboTree *comboPtr = clientData;
+    Tcl_Interp *interp;
+
+    interp = comboPtr->interp;
+    /* 
+     * Execute the initialization procedure on this widget.
+     */
+    comboPtr->flags &= ~UPDATE_PENDING;
+    if (Tcl_VarEval(interp, "::blt::ComboTree::ConfigureScrollbars ", 
+	Tk_PathName(comboPtr->tkwin), (char *)NULL) != TCL_OK) {
+	Tcl_BackgroundError(interp);
+    }
+}
 
 static void
 UnmanageScrollbar(ComboTree *comboPtr, Tk_Window tkwin)
@@ -1116,7 +1104,7 @@ InstallXScrollbar(ClientData clientData)
 {
     ComboTree *comboPtr = clientData;
 
-    comboPtr->flags &= ~CT_INSTALL_SCROLLBAR_X;
+    comboPtr->flags &= ~INSTALL_SCROLLBAR_X;
     InstallScrollbar(comboPtr->interp, comboPtr, comboPtr->xScrollbarObjPtr,
 		     &comboPtr->xScrollbar);
 }
@@ -1126,7 +1114,7 @@ InstallYScrollbar(ClientData clientData)
 {
     ComboTree *comboPtr = clientData;
 
-    comboPtr->flags &= ~CT_INSTALL_SCROLLBAR_Y;
+    comboPtr->flags &= ~INSTALL_SCROLLBAR_Y;
     InstallScrollbar(comboPtr->interp, comboPtr, comboPtr->yScrollbarObjPtr,
 		     &comboPtr->yScrollbar);
 }
@@ -1171,14 +1159,14 @@ EntryIsHidden(Entry *entryPtr)
 {
     ComboTree *comboPtr = entryPtr->comboPtr; 
 
-    if ((comboPtr->flags & CT_HIDE_LEAVES) && (Blt_Tree_IsLeaf(entryPtr->node))) {
+    if ((comboPtr->flags & HIDE_LEAVES) && (Blt_Tree_IsLeaf(entryPtr->node))) {
 	return TRUE;
     }
     return (entryPtr->flags & ENTRY_HIDE) ? TRUE : FALSE;
 }
 
 static Entry *
-FindEntry(ComboTree *comboPtr, Blt_TreeNode node)
+GetEntryFromNode(ComboTree *comboPtr, Blt_TreeNode node)
 {
     Blt_HashEntry *hPtr;
 
@@ -1325,7 +1313,7 @@ NextEntry(Entry *entryPtr, unsigned int mask)
     Entry *nextPtr;
     int ignoreLeaf;
 
-    ignoreLeaf = ((comboPtr->flags & CT_HIDE_LEAVES) && 
+    ignoreLeaf = ((comboPtr->flags & HIDE_LEAVES) && 
 	(Blt_Tree_IsLeaf(entryPtr->node)));
 
     if ((!ignoreLeaf) && ((entryPtr->flags & mask) == 0)) {
@@ -1488,7 +1476,7 @@ FreeEntry(ComboTree *comboPtr, Entry *entryPtr)
      * because this node was deleted.  The screen positions of the nodes
      * in comboPtr->visibleEntries are invalidated.
      */
-    comboPtr->flags |= (CT_LAYOUT | CT_DIRTY);
+    comboPtr->flags |= (LAYOUT_PENDING | DIRTY);
     EventuallyRedraw(comboPtr);
 }
 
@@ -1657,7 +1645,7 @@ CloseEntry(ComboTree *comboPtr, Entry *entryPtr)
 	    return TCL_ERROR;
 	}
     }
-    comboPtr->flags |= CT_LAYOUT;
+    comboPtr->flags |= LAYOUT_PENDING;
     return TCL_OK;
 }
 
@@ -1689,7 +1677,7 @@ OpenEntry(ComboTree *comboPtr, Entry *entryPtr)
 	    return TCL_ERROR;
 	}
     }
-    comboPtr->flags |= CT_LAYOUT;
+    comboPtr->flags |= LAYOUT_PENDING;
     return TCL_OK;
 }
 
@@ -1744,7 +1732,7 @@ ConfigureEntry(
 
     /* Assume all changes require a new layout. */
     entryPtr->flags |= ENTRY_LAYOUT_PENDING;
-    comboPtr->flags |= (CT_LAYOUT | CT_DIRTY);
+    comboPtr->flags |= (LAYOUT_PENDING | DIRTY);
     return TCL_OK;
 }
 
@@ -1812,7 +1800,7 @@ CreateEntry(
 	FreeEntry(comboPtr, entryPtr);
 	return TCL_ERROR;	/* Error configuring the entry. */
     }
-    comboPtr->flags |= (CT_LAYOUT | CT_DIRTY);
+    comboPtr->flags |= (LAYOUT_PENDING | DIRTY);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -1928,7 +1916,7 @@ GetEntryIterator(
 	iterPtr->first = LastEntry(comboPtr, comboPtr->rootPtr, ENTRY_MASK);
     } else if ((c == 't') && (strcmp(string, "top") == 0)) {
 	entryPtr = comboPtr->rootPtr;
-	if (comboPtr->flags & CT_HIDE_ROOT) {
+	if (comboPtr->flags & HIDE_ROOT) {
 	    entryPtr = NextEntry(entryPtr, ENTRY_MASK);
 	}
 	iterPtr->first = entryPtr;
@@ -1942,7 +1930,7 @@ GetEntryIterator(
 	}
     } else if ((c == 'c') && (strcmp(string, "current") == 0)) {
 	/* Can't trust picked entry, if entries have been added or deleted. */
-	if (!(comboPtr->flags & CT_DIRTY)) {
+	if (!(comboPtr->flags & DIRTY)) {
 	    ClientData context;
 
 	    context = Blt_GetCurrentContext(comboPtr->bindTable);
@@ -1956,7 +1944,7 @@ GetEntryIterator(
 	    entryPtr = fromPtr;
 	}
 	if ((entryPtr == comboPtr->rootPtr) && 
-	    (comboPtr->flags & CT_HIDE_ROOT)) {
+	    (comboPtr->flags & HIDE_ROOT)) {
 	    entryPtr = NextEntry(entryPtr, ENTRY_MASK);
 	}
 	iterPtr->first = entryPtr;
@@ -1966,7 +1954,7 @@ GetEntryIterator(
 	    entryPtr = fromPtr;
 	}
 	if ((entryPtr == comboPtr->rootPtr) && 
-	    (comboPtr->flags & CT_HIDE_ROOT)) {
+	    (comboPtr->flags & HIDE_ROOT)) {
 	    entryPtr = NextEntry(entryPtr, ENTRY_MASK);
 	}
 	iterPtr->first = entryPtr;
@@ -1977,14 +1965,14 @@ GetEntryIterator(
 	    entryPtr = LastEntry(comboPtr, comboPtr->rootPtr, ENTRY_MASK);
 	}
 	if ((entryPtr == comboPtr->rootPtr) && 
-	    (comboPtr->flags & CT_HIDE_ROOT)) {
+	    (comboPtr->flags & HIDE_ROOT)) {
 	    entryPtr = NextEntry(entryPtr, ENTRY_MASK);
 	}
 	iterPtr->first = entryPtr;
     } else if ((c == 'n') && (strcmp(string, "next") == 0)) {
         entryPtr = NextEntry(fromPtr, ENTRY_MASK);
 	if (entryPtr == NULL) {
-	    if (comboPtr->flags & CT_HIDE_ROOT) {
+	    if (comboPtr->flags & HIDE_ROOT) {
 		entryPtr = NextEntry(comboPtr->rootPtr,ENTRY_MASK);
 	    } else {
 		entryPtr = comboPtr->rootPtr;
@@ -2142,7 +2130,9 @@ GetEntryFromObj(
  *
  * GetEntry --
  *
- *	Returns an entry based upon its index.
+ *	Returns an entry based upon its index.  This differs from
+ *	GetEntryFromObj in that an non-existant entry (NULL) is treated
+ *	an error.
  *
  * Results:
  *	If the string is successfully converted, TCL_OK is returned.  The
@@ -2411,7 +2401,7 @@ MapEntry(Entry *entryPtr)
      *	      mean "dirty entry"? When does it mean "dirty column"?
      *	      Does it matter? probably
      */
-    if ((entryPtr->flags & ENTRY_DIRTY) || (comboPtr->flags & CT_UPDATE)) {
+    if (entryPtr->flags & ENTRY_DIRTY) {
 	Blt_FontMetrics fontMetrics;
 	Style *stylePtr;
 	const char *label;
@@ -2596,7 +2586,7 @@ MapTree(ComboTree *comboPtr)
      *		4. Build an array to hold level information to be filled
      *		   in on pass 2.
      */
-    if (comboPtr->flags & CT_DIRTY) {
+    if (comboPtr->flags & DIRTY) {
 	Entry *entryPtr;
 
 	comboPtr->minHeight = SHRT_MAX;
@@ -2618,7 +2608,7 @@ MapTree(ComboTree *comboPtr)
 	    if (entryPtr->flags & ENTRY_BTN_SHOW) {
 		entryPtr->flags |= ENTRY_BUTTON;
 	    } else if (entryPtr->flags & ENTRY_BTN_AUTO) {
-		if (comboPtr->flags & CT_HIDE_LEAVES) {
+		if (comboPtr->flags & HIDE_LEAVES) {
 		    /* Check that a non-leaf child exists */
 		    if (FirstChild(entryPtr, ENTRY_HIDE) != NULL) {
 			entryPtr->flags |= ENTRY_BUTTON;
@@ -2640,7 +2630,7 @@ MapTree(ComboTree *comboPtr)
 	}
 	comboPtr->levelInfo = Blt_AssertCalloc(comboPtr->depth + 2, 
 		sizeof(LevelInfo));
-	comboPtr->flags &= ~CT_DIRTY;
+	comboPtr->flags &= ~DIRTY;
     }
     { 
 	size_t i;
@@ -2662,7 +2652,7 @@ MapTree(ComboTree *comboPtr)
      *		3. Build an array to hold level information.
      */
     y = 0;
-    if (comboPtr->flags & CT_HIDE_ROOT) {
+    if (comboPtr->flags & HIDE_ROOT) {
 	/* If the root entry is to be hidden, cheat by offsetting the
 	 * y-coordinates by the height of the entry. */
 	y = -(comboPtr->rootPtr->height);
@@ -2695,131 +2685,6 @@ MapTree(ComboTree *comboPtr)
     }
 }
 
-static void
-ComputeMenuCoords(ComboTree *comboPtr, int menuAnchor, int *xPtr, int *yPtr)
-{
-    int rootX, rootY, x, y;
-    int screenWidth, screenHeight;
-    Tk_Window parent;
-
-    parent = Tk_Parent(comboPtr->tkwin);
-    screenWidth = WidthOfScreen(Tk_Screen(comboPtr->tkwin));
-    screenHeight = HeightOfScreen(Tk_Screen(comboPtr->tkwin));
-    Tk_GetRootCoords(parent, &rootX, &rootY);
-    if (rootX < 0) {
-	rootX = 0;
-    }
-    if (rootY < 0) {
-	rootY = 0;
-    }
-    x = rootX, y = rootY;
-    switch(menuAnchor) {
-    case TK_ANCHOR_W:
-    case TK_ANCHOR_SW:
-	y += Tk_Height(parent);
-	if ((y + Tk_ReqHeight(comboPtr->tkwin)) > screenHeight) {
-	    /* If we go offscreen on the bottom, show as 'NW'. */
-	    y = rootY - Tk_Height(comboPtr->tkwin);
-	    if (y < 0) {
-		y = 0;
-	    }
-	}
-	fprintf(stderr, "W,SW x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), 
-		Tk_ReqWidth(comboPtr->tkwin));
-	if ((x + Tk_ReqWidth(comboPtr->tkwin)) > screenWidth) {
-	    x = screenWidth - Tk_ReqWidth(comboPtr->tkwin);
-	}
-	break;
-    case TK_ANCHOR_CENTER:
-    case TK_ANCHOR_S:
-	x += (Tk_Width(parent) - Tk_ReqWidth(comboPtr->tkwin)) / 2;
-	y += Tk_Height(parent);
-	if ((y + Tk_ReqHeight(comboPtr->tkwin)) > screenHeight) {
-	    /* If we go offscreen on the bottom, show as 'N'. */
-	    y = rootY - Tk_Height(comboPtr->tkwin);
-	    if (y < 0) {
-		y = 0;
-	    }
-	}
-	fprintf(stderr, "C,S x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), 
-		Tk_ReqWidth(comboPtr->tkwin));
-	if (x < 0) {
-	    x = 0;
-	} else if ((x + Tk_ReqWidth(comboPtr->tkwin)) > screenWidth) {
-	    x = screenWidth - Tk_ReqWidth(comboPtr->tkwin);
-	}
-	break;
-    case TK_ANCHOR_E:
-    case TK_ANCHOR_SE:
-	x += Tk_Width(parent) - Tk_ReqWidth(comboPtr->tkwin);
-	y += Tk_Height(parent);
-	if ((y + Tk_ReqHeight(comboPtr->tkwin)) > screenHeight) {
-	    /* If we go offscreen on the bottom, show as 'NE'. */
-	    y = rootY - Tk_Height(comboPtr->tkwin);
-	    if (y < 0) {
-		y = 0;
-	    }
-	}
-	fprintf(stderr, "E,SE x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), 
-		Tk_ReqWidth(comboPtr->tkwin));
-	if (x < 0) {
-	    x = 0;
-	}
-	break;
-    case TK_ANCHOR_NW:
-	y -= Tk_ReqHeight(comboPtr->tkwin);
-	if (y < 0) {
-	    /* If we go offscreen on the top, show as 'SW'. */
-	    y = rootY + Tk_Height(parent);
-	    if ((y + Tk_ReqWidth(comboPtr->tkwin) > screenHeight)) {
-		y = screenHeight - Tk_ReqWidth(comboPtr->tkwin);
-	    }
-	}
-	fprintf(stderr, "NW x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), 
-		Tk_ReqWidth(comboPtr->tkwin));
-	if ((x + Tk_ReqWidth(comboPtr->tkwin)) > screenWidth) {
-	    x = screenWidth - Tk_ReqWidth(comboPtr->tkwin);
-	}
-	break;
-    case TK_ANCHOR_N:
-	x += (Tk_Width(parent) - Tk_ReqWidth(comboPtr->tkwin)) / 2;
-	y -= Tk_ReqHeight(comboPtr->tkwin);
-	if (y < 0) {
-	    /* If we go offscreen on the top, show as 'S'. */
-	    y = rootY + Tk_Height(parent);
-	    if ((y + Tk_ReqWidth(comboPtr->tkwin) > screenHeight)) {
-		y = screenHeight - Tk_ReqWidth(comboPtr->tkwin);
-	    }
-	}
-	fprintf(stderr, "N x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), 
-		Tk_ReqWidth(comboPtr->tkwin));
-	if (x < 0) {
-	    x = 0;
-	} else if ((x + Tk_ReqWidth(comboPtr->tkwin)) > screenWidth) {
-	    x = screenWidth - Tk_ReqWidth(comboPtr->tkwin);
-	}
-	break;
-    case TK_ANCHOR_NE:
-	x += Tk_Width(parent) - Tk_ReqWidth(comboPtr->tkwin);
-	y -= Tk_ReqHeight(comboPtr->tkwin);
-	if (y < 0) {
-	    /* If we go offscreen on the top, show as 'SE'. */
-	    y = rootY + Tk_Height(parent);
-	    if ((y + Tk_ReqWidth(comboPtr->tkwin) > screenHeight)) {
-		y = screenHeight - Tk_ReqWidth(comboPtr->tkwin);
-	    }
-	}
-	fprintf(stderr, "NE x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), 
-		Tk_ReqWidth(comboPtr->tkwin));
-	if (x < 0) {
-	    x = 0;
-	}
-	break;
-    }    
-    *xPtr = x;
-    *yPtr = y;
-}
-
 /*
  *---------------------------------------------------------------------------
  *
@@ -2840,9 +2705,12 @@ static void
 ComputeComboGeometry(ComboTree *comboPtr)
 {
     int w, h;
+    int screenWidth, screenHeight;
+
 
     MapTree(comboPtr);
 
+    Blt_SizeOfScreen(comboPtr->tkwin, &screenWidth, &screenHeight);
     comboPtr->xScrollbarHeight = comboPtr->yScrollbarWidth = 0;
     if (comboPtr->reqWidth > 0) {
 	w = comboPtr->reqWidth;
@@ -2857,8 +2725,7 @@ ComputeComboGeometry(ComboTree *comboPtr)
 	    w = Tk_ReqWidth(Tk_Parent(comboPtr->tkwin));
 	}
 	fprintf(stderr, "%s min(%d,%d)=%d\n", Tk_PathName(comboPtr->tkwin), 
-		WidthOfScreen(Tk_Screen(comboPtr->tkwin)),
-		comboPtr->worldWidth, w);
+		screenWidth, comboPtr->worldWidth, w);
     }
     if ((comboPtr->worldWidth > w) && (comboPtr->xScrollbar != NULL)) {
 	comboPtr->xScrollbarHeight = Tk_ReqHeight(comboPtr->xScrollbar);
@@ -2868,7 +2735,7 @@ ComputeComboGeometry(ComboTree *comboPtr)
     } else if (comboPtr->reqHeight < 0) {
 	h = MIN(-comboPtr->reqHeight, comboPtr->worldHeight);
     } else {
-	h=MIN(HeightOfScreen(Tk_Screen(comboPtr->tkwin)),comboPtr->worldHeight);
+	h=MIN(screenHeight, comboPtr->worldHeight);
     }
     if ((comboPtr->worldHeight > h) && (comboPtr->yScrollbar != NULL)) {
 	comboPtr->yScrollbarWidth = Tk_ReqWidth(comboPtr->yScrollbar);
@@ -2895,7 +2762,7 @@ ComputeComboGeometry(ComboTree *comboPtr)
 	(h != Tk_ReqHeight(comboPtr->tkwin))) {
 	Tk_GeometryRequest(comboPtr->tkwin, w, h);
     }
-    comboPtr->flags |= CT_SCROLL | CT_LAYOUT;
+    comboPtr->flags |= SCROLL_PENDING | LAYOUT_PENDING;
 }
 
 /* Converters for configuration options. */
@@ -3272,7 +3139,7 @@ IconChangedProc(
 {
     ComboTree *comboPtr = clientData;
 
-    comboPtr->flags |= (CT_DIRTY | CT_LAYOUT | CT_SCROLL);
+    comboPtr->flags |= (DIRTY | LAYOUT_PENDING | SCROLL_PENDING);
     EventuallyRedraw(comboPtr);
 }
 
@@ -3363,7 +3230,7 @@ IconsToObjProc(
 	for (iconPtr = icons; *iconPtr != NULL; iconPtr++) {
 	    Tcl_Obj *objPtr;
 
-	    objPtr = Tcl_NewStringObj(Blt_NameOfImage((*iconPtr)->tkImage), -1);
+	    objPtr = Tcl_NewStringObj(Blt_Image_Name((*iconPtr)->tkImage), -1);
 	    Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
 
 	}
@@ -3582,7 +3449,7 @@ TreeEventProc(ClientData clientData, Blt_TreeNotifyEvent *eventPtr)
 	if (node != NULL) {
 	    Entry *entryPtr;
 
-	    entryPtr = FindEntry(comboPtr, node);
+	    entryPtr = GetEntryFromNode(comboPtr, node);
 	    if (entryPtr != NULL) {
 		FreeEntry(comboPtr, entryPtr);
 	    }
@@ -3599,7 +3466,7 @@ TreeEventProc(ClientData clientData, Blt_TreeNotifyEvent *eventPtr)
     case TREE_NOTIFY_MOVE:
     case TREE_NOTIFY_SORT:
 	EventuallyRedraw(comboPtr);
-	comboPtr->flags |= (CT_LAYOUT | CT_DIRTY);
+	comboPtr->flags |= (LAYOUT_PENDING | DIRTY);
 	break;
     default:
 	/* empty */
@@ -3697,10 +3564,10 @@ PickEntry(
     if (contextPtr != NULL) {
 	*contextPtr = NULL;
     }
-    if (comboPtr->flags & CT_DIRTY) {
+    if (comboPtr->flags & DIRTY) {
 	/* Can't trust the selected entry if nodes have been added or
 	 * deleted. So recompute the layout. */
-	if (comboPtr->flags & CT_LAYOUT) {
+	if (comboPtr->flags & LAYOUT_PENDING) {
 	    ComputeComboGeometry(comboPtr);
 	} 
 	ComputeVisibleEntries(comboPtr);
@@ -3764,7 +3631,7 @@ NewComboTree(Tcl_Interp *interp, Tcl_Obj *objPtr)
     comboPtr->tkwin = tkwin;
     comboPtr->display = Tk_Display(tkwin);
     comboPtr->interp = interp;
-    comboPtr->flags = (CT_HIDE_ROOT | CT_DIRTY | CT_LAYOUT | CT_SETUP);
+    comboPtr->flags = (HIDE_ROOT | DIRTY | LAYOUT_PENDING | REPOPULATE);
     comboPtr->leader = 0;
     comboPtr->dashes = 1;
     comboPtr->borderWidth = 1;
@@ -3899,7 +3766,7 @@ ScrollbarEventProc(
 	} else if (eventPtr->xany.window == Tk_WindowId(comboPtr->xScrollbar)) {
 	    comboPtr->xScrollbar = NULL;
 	} 
-	comboPtr->flags |= CT_LAYOUT;;
+	comboPtr->flags |= LAYOUT_PENDING;;
 	EventuallyRedraw(comboPtr);
     }
 }
@@ -3940,7 +3807,7 @@ ScrollbarCustodyProc(
 	return;		
     }
     Tk_UnmaintainGeometry(tkwin, comboPtr->tkwin);
-    comboPtr->flags |= CT_LAYOUT;
+    comboPtr->flags |= LAYOUT_PENDING;
     EventuallyRedraw(comboPtr);
 }
 
@@ -3968,7 +3835,7 @@ ScrollbarGeometryProc(
 {
     ComboTree *comboPtr = (ComboTree *)clientData;
 
-    comboPtr->flags |= CT_LAYOUT;
+    comboPtr->flags |= LAYOUT_PENDING;
     EventuallyRedraw(comboPtr);
 }
 
@@ -4000,14 +3867,14 @@ ComboTreeEventProc(ClientData clientData, XEvent *eventPtr)
 	    Blt_PickCurrentItem(comboPtr->bindTable);
 	}
     } else if (eventPtr->type == ConfigureNotify) {
-	comboPtr->flags |= (CT_LAYOUT | CT_SCROLL);
+	comboPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
 	EventuallyRedraw(comboPtr);
     } else if ((eventPtr->type == FocusIn) || (eventPtr->type == FocusOut)) {
 	if (eventPtr->xfocus.detail != NotifyInferior) {
 	    if (eventPtr->type == FocusIn) {
-		comboPtr->flags |= CT_FOCUS;
+		comboPtr->flags |= FOCUS;
 	    } else {
-		comboPtr->flags &= ~CT_FOCUS;
+		comboPtr->flags &= ~FOCUS;
 	    }
 	    EventuallyRedraw(comboPtr);
 	}
@@ -4015,7 +3882,7 @@ ComboTreeEventProc(ClientData clientData, XEvent *eventPtr)
 	if (comboPtr->tkwin != NULL) {
 	    comboPtr->tkwin = NULL;
 	}
-	if (comboPtr->flags & CT_REDRAW) {
+	if (comboPtr->flags & REDRAW_PENDING) {
 	    Tcl_CancelIdleCall(DisplayComboTree, comboPtr);
 	}
 	Tcl_EventuallyFree(comboPtr, DestroyComboTree);
@@ -4079,13 +3946,10 @@ ComboTreeInstCmdDeleteProc(ClientData clientData)
  *---------------------------------------------------------------------------
  */
 static int
-ConfigureComboTree(
-    Tcl_Interp *interp, 
-    ComboTree *comboPtr, 
-    int objc, 
-    Tcl_Obj *const *objv, 
-    int flags)	
+ConfigureComboTree(Tcl_Interp *interp, ComboTree *comboPtr, int objc, 
+		   Tcl_Obj *const *objv, int flags)	
 {
+    int updateNeeded;
     GC newGC;
     XGCValues gcValues;
     unsigned long gcMask;
@@ -4123,7 +3987,7 @@ ConfigureComboTree(
      */
     if (Blt_ConfigModified(comboSpecs, "-font", "-linespacing", "-*width", 
 	"-height", "-hide*", "-tree", (char *)NULL)) {
-	comboPtr->flags |= (CT_LAYOUT | CT_SCROLL);
+	comboPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
     }
     /*
      * If the tree view was changed, mark all the nodes dirty (we'll be
@@ -4133,7 +3997,7 @@ ConfigureComboTree(
     if (Blt_ConfigModified(comboSpecs, "-hideleaves", (char *)NULL)) {
 	Entry *ep;
 	
-	comboPtr->flags |= CT_DIRTY;
+	comboPtr->flags |= DIRTY;
 	/* Mark all entries dirty. */
 	for (ep = comboPtr->rootPtr; ep != NULL; ep = NextEntry(ep, 0)) {
 	    ep->flags |= ENTRY_DIRTY;
@@ -4151,12 +4015,14 @@ ConfigureComboTree(
 	    != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	comboPtr->flags |= CT_SETUP;
+	comboPtr->flags |= REPOPULATE;
     }	
     /* If the tree object was changed, we need to setup the new one. */
-    if (comboPtr->flags & CT_SETUP) {
+    if (comboPtr->flags & REPOPULATE) {
 	Blt_TreeNode root;
 
+	Blt_Tree_CreateEventHandler(comboPtr->tree, TREE_NOTIFY_ALL, 
+		TreeEventProc, comboPtr);
 	root = Blt_Tree_RootNode(comboPtr->tree);
 	/* Automatically add view-entry values to the new tree. */
 	Blt_Tree_Apply(root, CreateApplyProc, comboPtr);
@@ -4165,12 +4031,13 @@ ConfigureComboTree(
 	if (OpenEntry(comboPtr, comboPtr->rootPtr) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	if (comboPtr->flags & CT_NEW_TAGS) {
+	if (comboPtr->flags & NEW_TAGS) {
 	    Blt_Tree_NewTagTable(comboPtr->tree);
 	}
-	comboPtr->flags &= ~CT_SETUP;
+	comboPtr->flags &= ~REPOPULATE;
     }
 
+    updateNeeded = FALSE;
     /* Install the embedded scrollbars as needed.  We defer installing the
      * scrollbars so the scrollbar widgets don't have to exist when they are
      * specified by the -xscrollbar and -yscrollbar options respectively. The
@@ -4181,19 +4048,27 @@ ConfigureComboTree(
 	    UnmanageScrollbar(comboPtr, comboPtr->xScrollbar);
 	    comboPtr->xScrollbar = NULL;
 	}
-	if ((comboPtr->flags & CT_INSTALL_SCROLLBAR_X) == 0) {
+	if ((comboPtr->flags & INSTALL_SCROLLBAR_X) == 0) {
 	    Tcl_DoWhenIdle(InstallXScrollbar, comboPtr);
-	    comboPtr->flags |= CT_INSTALL_SCROLLBAR_X;
+	    comboPtr->flags |= INSTALL_SCROLLBAR_X;
 	}	    
+	updateNeeded = TRUE;
     }
     if (Blt_ConfigModified(comboSpecs, "-yscrollbar", (char *)NULL)) {
 	if (comboPtr->yScrollbar != NULL) {
 	    UnmanageScrollbar(comboPtr, comboPtr->yScrollbar);
 	    comboPtr->yScrollbar = NULL;
 	}
-	if ((comboPtr->flags & CT_INSTALL_SCROLLBAR_Y) == 0) {
+	if ((comboPtr->flags & INSTALL_SCROLLBAR_Y) == 0) {
 	    Tcl_DoWhenIdle(InstallYScrollbar, comboPtr);
-	    comboPtr->flags |= CT_INSTALL_SCROLLBAR_Y;
+	    comboPtr->flags |= INSTALL_SCROLLBAR_Y;
+	}	    
+	updateNeeded = TRUE;
+    }
+    if (updateNeeded) {
+	if ((comboPtr->flags & UPDATE_PENDING) == 0) {
+	    Tcl_DoWhenIdle(ConfigureScrollbarsProc, comboPtr);
+	    comboPtr->flags |= UPDATE_PENDING;
 	}	    
     }
     EventuallyRedraw(comboPtr);
@@ -4207,45 +4082,69 @@ static void
 PrintFlags(ComboTree *comboPtr, char *string)
 {    
     fprintf(stderr, "%s: flags=", string);
-    if (comboPtr->flags & CT_LAYOUT) {
+    if (comboPtr->flags & LAYOUT_PENDING) {
 	fprintf(stderr, "layout ");
     }
-    if (comboPtr->flags & CT_REDRAW) {
+    if (comboPtr->flags & REDRAW_PENDING) {
 	fprintf(stderr, "redraw ");
     }
-    if (comboPtr->flags & CT_XSCROLL) {
+    if (comboPtr->flags & SCROLLX) {
 	fprintf(stderr, "xscroll ");
     }
-    if (comboPtr->flags & CT_YSCROLL) {
+    if (comboPtr->flags & SCROLLY) {
 	fprintf(stderr, "yscroll ");
     }
-    if (comboPtr->flags & CT_FOCUS) {
+    if (comboPtr->flags & FOCUS) {
 	fprintf(stderr, "focus ");
     }
-    if (comboPtr->flags & CT_DIRTY) {
+    if (comboPtr->flags & DIRTY) {
 	fprintf(stderr, "dirty ");
     }
-    if (comboPtr->flags & CT_UPDATE) {
-	fprintf(stderr, "update ");
-    }
-    if (comboPtr->flags & CT_RESORT) {
-	fprintf(stderr, "resort ");
-    }
-    if (comboPtr->flags & CT_SORTED) {
-	fprintf(stderr, "sorted ");
-    }
-    if (comboPtr->flags & CT_SORT_PENDING) {
-	fprintf(stderr, "sort_pending ");
-    }
-    if (comboPtr->flags & CT_BORDERS) {
+    if (comboPtr->flags & REDRAW_BORDERS) {
 	fprintf(stderr, "borders ");
     }
-    if (comboPtr->flags & CT_VIEWPORT) {
+    if (comboPtr->flags & VIEWPORT) {
 	fprintf(stderr, "viewport ");
     }
     fprintf(stderr, "\n");
 }
 #endif
+
+static void
+FixMenuCoords(ComboTree *comboPtr, int *xPtr, int *yPtr)
+{
+    int x, y, w, h;
+    int screenWidth, screenHeight;
+    Tk_Window parent;
+
+    parent = Tk_Parent(comboPtr->tkwin);
+    Blt_SizeOfScreen(comboPtr->tkwin, &screenWidth, &screenHeight);
+    x = *xPtr, y = *yPtr;
+
+    /* Determine the size of the menu. */
+    w = Tk_Width(comboPtr->tkwin);
+    if (w <= 1) {
+	w = Tk_ReqWidth(comboPtr->tkwin);
+    }
+    h = Tk_Height(comboPtr->tkwin);
+    if (h <= 1) {
+	h = Tk_Height(comboPtr->tkwin);
+    }
+    if ((y + h) > screenHeight) {
+	y -= (Tk_Height(parent) + h); /* Flip to show menu above. */
+	if (y < 0) {
+	    y = 0;
+	}
+    }
+    if ((x + w) > screenWidth) {
+	x -= (Tk_Width(parent)); /* Flip to show menu on left side. */
+	if (x < 0) {
+	    x = 0;
+	}
+    }
+    *xPtr = x;
+    *yPtr = y;
+}
 
 /*
  *---------------------------------------------------------------------------
@@ -4279,7 +4178,7 @@ ComputeVisibleEntries(ComboTree *comboPtr)
     if ((xOffset != comboPtr->xOffset) || (yOffset != comboPtr->yOffset)) {
 	comboPtr->yOffset = yOffset;
 	comboPtr->xOffset = xOffset;
-	comboPtr->flags |= CT_VIEWPORT;
+	comboPtr->flags |= VIEWPORT;
     }
     /* Allocate worst case number of slots for entry array. */
     nSlots = (VPORTHEIGHT(comboPtr) / comboPtr->minHeight) + 3;
@@ -4368,7 +4267,7 @@ ComputeVisibleEntries(ComboTree *comboPtr)
 	comboPtr->worldHeight, VPORTHEIGHT(comboPtr), comboPtr->yScrollUnits,
 	BLT_SCROLL_MODE_HIERBOX);
 
-    comboPtr->flags &= ~CT_DIRTY;
+    comboPtr->flags &= ~DIRTY;
     Blt_PickCurrentItem(comboPtr->bindTable);
     return TCL_OK;
 }
@@ -4397,11 +4296,7 @@ GetEntryIcon(ComboTree *comboPtr, Entry *entryPtr)
     Icon *icons;
     Icon icon;
 
-    if (entryPtr == comboPtr->activePtr) {
-	icons = entryPtr->stylePtr->activeIcons;
-    } else {
-	icons = entryPtr->stylePtr->icons;
-    }
+    icons = entryPtr->stylePtr->icons;
     icon = NULL;
     if (icons != NULL) {	
 	icon = icons[0];	/* Open icon. */
@@ -4556,12 +4451,13 @@ DrawButton(
 }
 
 static int
-DrawComboIcon(ComboTree *comboPtr, Entry *entryPtr, Drawable drawable, int x, int y)
+DrawComboIcon(ComboTree *comboPtr, Entry *entryPtr, Drawable drawable, int x, 
+	      int y)
 {
     Icon icon;
 
     icon = GetEntryIcon(comboPtr, entryPtr);
-    if (icon != NULL) {		/* Icon or default icon bitmap? */
+    if (icon != NULL) {			/* Icon or default icon bitmap? */
 	int entryHeight;
 	int level;
 	int maxY;
@@ -4603,7 +4499,7 @@ DrawLabel(ComboTree *comboPtr, Entry *entryPtr, Drawable drawable, int x, int y,
 {
     const char *label;
     int entryHeight;
-    int width, height;		/* Width and height of label. */
+    int width, height;			/* Width and height of label. */
 
     entryHeight = MAX3(entryPtr->lineHeight, entryPtr->iconHeight, 
        comboPtr->button.height);
@@ -4634,8 +4530,13 @@ DrawLabel(ComboTree *comboPtr, Entry *entryPtr, Drawable drawable, int x, int y,
 	Blt_Ts_InitStyle(ts);
 	Blt_Ts_SetFont(ts, stylePtr->labelFont);
 	Blt_Ts_SetForeground(ts, color);
+	Blt_Ts_SetMaxLength(ts, maxLength);
 	Blt_Ts_DrawLayout(comboPtr->tkwin, drawable, entryPtr->textPtr, &ts, 
-		x, y, maxLength);
+		x, y);
+	if (entryPtr == comboPtr->activePtr) {
+	    Blt_Ts_UnderlineLayout(comboPtr->tkwin, drawable, entryPtr->textPtr,
+		&ts, x, y);
+	}
     }
     return entryHeight;
 }
@@ -4672,14 +4573,14 @@ DrawEntryBackground(
  *
  * DrawEntry --
  *
- * 	Draws a button for the given entry.  Note that buttons should only
- *	be drawn if the entry has sub-entries to be opened or closed.  It's
- *	the responsibility of the calling routine to ensure this.
+ * 	Draws a button for the given entry.  Note that buttons should only be
+ * 	drawn if the entry has sub-entries to be opened or closed.  It's the
+ * 	responsibility of the calling routine to ensure this.
  *
- *	The button is drawn centered in the region immediately to the left
- *	of the origin of the entry (computed in the layout routines). The
- *	height and width of the button were previously calculated from the
- *	average row height.
+ *	The button is drawn centered in the region immediately to the left of
+ *	the origin of the entry (computed in the layout routines). The height
+ *	and width of the button were previously calculated from the average
+ *	row height.
  *
  *		button height = entry height - (2 * some arbitrary padding).
  *		button width = button height.
@@ -4877,7 +4778,7 @@ DrawVerticals(ComboTree *comboPtr, Entry *entryPtr, Drawable drawable,
 	    ay = y + comboPtr->button.height / 2;
 	    by = ay + entryPtr->vertLineLength;
 	    if ((entryPtr == comboPtr->rootPtr) && 
-		(comboPtr->flags & CT_HIDE_ROOT)) {
+		(comboPtr->flags & HIDE_ROOT)) {
 		ay += entryPtr->height;
 	    }
 	    /*
@@ -4982,7 +4883,6 @@ DrawOuterBorders(ComboTree *comboPtr, Drawable drawable)
 	    comboPtr->defStyle.normalBg, 0, 0, Tk_Width(comboPtr->tkwin),
 	   Tk_Height(comboPtr->tkwin), comboPtr->borderWidth, comboPtr->relief);
     }
-    comboPtr->flags &= ~CT_BORDERS;
 }
 
 /*
@@ -5053,23 +4953,23 @@ DisplayEntry(ClientData clientData)
  *
  * ActivateOp --
  *
+ *	Activate the specified entry (draw with active foreground/background).
+ *	Only one entry may be active at one time, so the previously active
+ *	entry is deactivated.
+ *
  * Results:
  *	Standard TCL result.
  *
  * Side effects:
- *	Commands may get excecuted; variables may get set; sub-menus may
- *	get posted.
+ *	The widget is eventually redraw.
  *
  *	.cm activate entry
  *
  *---------------------------------------------------------------------------
  */
 static int
-ActivateOp(
-    ComboTree *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+ActivateOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, 
+	   Tcl_Obj *const *objv)
 {
     Entry *entryPtr;
 
@@ -5077,9 +4977,9 @@ ActivateOp(
 	return TCL_ERROR;
     } 
     if (comboPtr->activePtr == entryPtr) {
-	return TCL_OK;		/* Entry is already active. */
+	return TCL_OK;			/* Entry is already active. */
     }
-    ActivateEntry(comboPtr, NULL);
+    ActivateEntry(comboPtr, NULL);	/* Deactive the current active. */
     if (entryPtr != NULL) {
 	ActivateEntry(comboPtr, entryPtr);
     }
@@ -5117,9 +5017,10 @@ BindOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 	}
 	node = Blt_Tree_GetNode(comboPtr->tree, inode);
 	object = NodeToEntry(comboPtr, node);
-    } else if (GetEntryFromObj(interp, comboPtr, objv[2], &entryPtr) == TCL_OK) {
+    } else if (GetEntryFromObj(interp, comboPtr, objv[2], &entryPtr)==TCL_OK) {
 	if (entryPtr != NULL) {
-	    return TCL_OK;	/* Special id doesn't currently exist. */
+	    return TCL_OK;		/* Special id doesn't currently
+					 * exist. */
 	}
 	object = entryPtr;
     } else {
@@ -5161,7 +5062,7 @@ ButtonActivateOp(
     }
     oldPtr = comboPtr->activeBtnPtr;
     comboPtr->activeBtnPtr = entryPtr;
-    if (!(comboPtr->flags & CT_REDRAW) && (entryPtr != oldPtr)) {
+    if (!(comboPtr->flags & REDRAW_PENDING) && (entryPtr != oldPtr)) {
 	if ((oldPtr != NULL) && (oldPtr != comboPtr->rootPtr)) {
 #ifdef notdef
 	    DrawButton(comboPtr, oldPtr);
@@ -5371,7 +5272,7 @@ CloseOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     }
     /* Closing a node may affect the visible entries and the the world layout
      * of the entries. */
-    comboPtr->flags |= (CT_LAYOUT | CT_DIRTY);
+    comboPtr->flags |= (LAYOUT_PENDING | DIRTY);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -5441,7 +5342,7 @@ EntryActivateOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc,
     }
     oldPtr = comboPtr->activePtr;
     comboPtr->activePtr = newPtr;
-    if (((comboPtr->flags & CT_REDRAW) == 0) && (newPtr != oldPtr)) {
+    if (((comboPtr->flags & REDRAW_PENDING) == 0) && (newPtr != oldPtr)) {
 	Drawable drawable;
 	int x, y;
 	
@@ -5539,7 +5440,7 @@ EntryConfigureOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc,
 	    return TCL_ERROR;
 	}
     }
-    comboPtr->flags |= (CT_DIRTY | CT_LAYOUT | CT_SCROLL);
+    comboPtr->flags |= (DIRTY | LAYOUT_PENDING | SCROLL_PENDING);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -5760,7 +5661,7 @@ MapAncestors(ComboTree *comboPtr, Entry *entryPtr)
     while (entryPtr != comboPtr->rootPtr) {
 	entryPtr = ParentEntry(entryPtr);
 	if (entryPtr->flags & (ENTRY_CLOSED | ENTRY_HIDE)) {
-	    comboPtr->flags |= CT_LAYOUT;
+	    comboPtr->flags |= LAYOUT_PENDING;
 	    entryPtr->flags &= ~(ENTRY_CLOSED | ENTRY_HIDE);
 	} 
     }
@@ -6031,7 +5932,7 @@ HideOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     }
 
     /* Hiding an entry only effects the visible nodes. */
-    comboPtr->flags |= (CT_LAYOUT | CT_SCROLL);
+    comboPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -6286,13 +6187,14 @@ OpenOp(
 	MapAncestors(comboPtr, entryPtr);
     }
     /*FIXME: This is only for flattened entries.  */
-    comboPtr->flags |= (CT_LAYOUT | CT_DIRTY | CT_SCROLL);
-	/* Can't trust the selected entry if nodes have been added or
-	 * deleted. So recompute the layout. */
-	if (comboPtr->flags & CT_LAYOUT) {
-	    ComputeComboGeometry(comboPtr);
-	} 
-	ComputeVisibleEntries(comboPtr);
+    comboPtr->flags |= (LAYOUT_PENDING | DIRTY | SCROLL_PENDING);
+
+    /* Can't trust the selected entry if nodes have been added or deleted. So
+     * recompute the layout. */
+    if (comboPtr->flags & LAYOUT_PENDING) {
+	ComputeComboGeometry(comboPtr);
+    } 
+    ComputeVisibleEntries(comboPtr);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -6304,17 +6206,47 @@ OpenOp(
  *
  *	Posts this menu at the given root screen coordinates.
  *
- *  .cm post x y
+ *  .cm post ?x y?
  *
  *---------------------------------------------------------------------------
  */
 static int
-PostOp(
-    ComboTree *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+PostOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
+    int x, y;
+    Tk_Window parent;
+    int menuWidth;
+
+    if ((Tcl_GetIntFromObj(interp, objv[2], &x) != TCL_OK) || 
+	(Tcl_GetIntFromObj(interp, objv[3], &y) != TCL_OK)) {
+	return TCL_ERROR;
+    } 
+    if (comboPtr->flags & LAYOUT_PENDING) {
+	ComputeComboGeometry(comboPtr);
+    }
+    menuWidth = Tk_ReqWidth(comboPtr->tkwin);
+    parent = Tk_Parent(comboPtr->tkwin);
+    if (Tk_Width(parent) > menuWidth) {
+	menuWidth = Tk_Width(parent);
+    }
+    if (objc == 5) {
+	const char *string;
+
+	string = Tcl_GetString(objv[4]);
+	if (strcmp(string, "left") == 0) {
+	    /* Do nothing. */
+	} else if (strcmp(string, "right") == 0) {
+	    x -= menuWidth;
+	} else if (strcmp(string, "center") == 0) {
+	    x -= menuWidth / 2;
+	} else {
+	    Tcl_AppendResult(interp, "bad alignment value \"", string, 
+		"\": should be left, right, or center.", (char *)NULL);
+	    return TCL_ERROR;
+	}
+    }
+    FixMenuCoords(comboPtr, &x, &y);
+#ifdef notdef
     int x, y;
 
     if (objc == 4) {
@@ -6323,7 +6255,7 @@ PostOp(
 	    return TCL_ERROR;
 	} 
     } else if (objc == 2) {
-	if (comboPtr->flags & CT_LAYOUT) {
+	if (comboPtr->flags & LAYOUT_PENDING) {
 	    ComputeComboGeometry(comboPtr);
 	}
 	ComputeMenuCoords(comboPtr, TK_ANCHOR_SE, &x, &y);
@@ -6335,7 +6267,7 @@ PostOp(
     if (Tk_IsMapped(comboPtr->tkwin)) {
 	return TCL_OK;		/* This menu is already posted. */
     }
-
+#endif
     /*
      * If there is a post command for the menu, execute it.  This may change
      * the size of the menu, so be sure to recompute the menu's geometry if
@@ -6357,7 +6289,7 @@ PostOp(
 	if (comboPtr->tkwin == NULL) {
 	    return TCL_OK;
 	}
-	if (comboPtr->flags & CT_LAYOUT) {
+	if (comboPtr->flags & LAYOUT_PENDING) {
 	    ComputeComboGeometry(comboPtr);
 	}
     }
@@ -6386,27 +6318,26 @@ PostOp(
     {
 	int vx, vy, vw, vh;
 	int tmp;
-	Screen *screenPtr;
+	int screenWidth, screenHeight;
 
+	Blt_SizeOfScreen(comboPtr->tkwin, &screenWidth, &screenHeight);
 	Tk_GetVRootGeometry(Tk_Parent(comboPtr->tkwin), &vx, &vy, &vw, &vh);
 	x += vx;
 	y += vy;
-	screenPtr = Tk_Screen(comboPtr->tkwin);
-	tmp = WidthOfScreen(screenPtr) - Tk_ReqWidth(comboPtr->tkwin);
+	tmp = screenWidth - Tk_ReqWidth(comboPtr->tkwin);
 	if (x > tmp) {
 	    x = tmp;
 	}
 	if (x < 0) {
 	    x = 0;
 	}
-	tmp = HeightOfScreen(screenPtr) - Tk_ReqHeight(comboPtr->tkwin);
+	tmp = screenHeight - Tk_ReqHeight(comboPtr->tkwin);
 	if (y > tmp) {
 	    y = tmp;
 	}
 	if (y < 0) {
 	    y = 0;
 	}
-	fprintf(stderr, "ComboTree: post %d, %d\n", x, y);
 	Tk_MoveToplevelWindow(comboPtr->tkwin, x, y);
 	Blt_MapToplevelWindow(comboPtr->tkwin);
 	if (!Tk_IsMapped(comboPtr->tkwin)) {
@@ -6417,30 +6348,6 @@ PostOp(
 #ifdef notdef
 	TkWmRestackToplevel(comboPtr->tkwin, Above, NULL);
 #endif
-    }
-    return TCL_OK;
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * UnpostOp --
- *
- *	Unposts this menu.
- *
- *  .cm post 
- *
- *---------------------------------------------------------------------------
- */
-static int
-UnpostOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, 
-	 Tcl_Obj *const *objv)
-{
-    if (!Tk_IsMapped(comboPtr->tkwin)) {
-	return TCL_OK;		/* This menu is already unposted. */
-    }
-    if (Tk_IsMapped(comboPtr->tkwin)) {
-	Tk_UnmapWindow(comboPtr->tkwin);
     }
     return TCL_OK;
 }
@@ -6516,7 +6423,7 @@ ScanOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 	}
 	comboPtr->xOffset = worldX;
 	comboPtr->yOffset = worldY;
-	comboPtr->flags |= CT_SCROLL;
+	comboPtr->flags |= SCROLL_PENDING;
 	EventuallyRedraw(comboPtr);
     }
     return TCL_OK;
@@ -6559,7 +6466,7 @@ SeeOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     }
     if (entryPtr->flags & ENTRY_HIDE) {
 	MapAncestors(comboPtr, entryPtr);
-	comboPtr->flags |= CT_SCROLL;
+	comboPtr->flags |= SCROLL_PENDING;
 	/*
 	 * If the entry wasn't previously exposed, its world coordinates
 	 * aren't likely to be valid.  So re-compute the layout before we try
@@ -6634,7 +6541,7 @@ SeeOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     if ((y != comboPtr->yOffset) || (x != comboPtr->xOffset)) {
 	/* comboPtr->xOffset = x; */
 	comboPtr->yOffset = y;
-	comboPtr->flags |= CT_SCROLL;
+	comboPtr->flags |= SCROLL_PENDING;
     }
     EventuallyRedraw(comboPtr);
     return TCL_OK;
@@ -6662,7 +6569,7 @@ ShowOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 	    (int *)NULL) != TCL_OK) {
 	return TCL_ERROR;
     }
-    comboPtr->flags |= (CT_LAYOUT | CT_SCROLL);
+    comboPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -6746,7 +6653,7 @@ StyleConfigureOp(
     if (result == TCL_ERROR) {
 	return TCL_ERROR;
     }
-    comboPtr->flags |= (CT_LAYOUT | CT_SCROLL);
+    comboPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -6855,52 +6762,68 @@ ToggleOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc,
 	    CloseEntry(comboPtr, entryPtr);
 	}
     }
-    comboPtr->flags |= CT_SCROLL;
+    comboPtr->flags |= SCROLL_PENDING;
     EventuallyRedraw(comboPtr);
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * UnpostOp --
+ *
+ *	Unposts this menu.
+ *
+ *  .cm unpost 
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+UnpostOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, 
+	 Tcl_Obj *const *objv)
+{
+    if (!Tk_IsMapped(comboPtr->tkwin)) {
+	return TCL_OK;			/* This menu is already unposted. */
+    }
+    if (Tk_IsMapped(comboPtr->tkwin)) {
+	Tk_UnmapWindow(comboPtr->tkwin);
+    }
     return TCL_OK;
 }
 
 static int
 XViewOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
-    int width, worldWidth;
+    int w, worldWidth;
 
-    width = VPORTWIDTH(comboPtr);
+    w = VPORTWIDTH(comboPtr);
     worldWidth = comboPtr->worldWidth;
     if (objc == 2) {
 	double fract;
 	Tcl_Obj *listObjPtr;
 
-	/*
-	 * Note that we are bounding the fractions between 0.0 and 1.0
-	 * to support the "canvas"-style of scrolling.
-	 */
 	listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
 	fract = (double)comboPtr->xOffset / worldWidth;
 	fract = FCLAMP(fract);
 	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(fract));
-	fract = (double)(comboPtr->xOffset + width) / worldWidth;
+	fract = (double)(comboPtr->xOffset + w) / worldWidth;
 	fract = FCLAMP(fract);
 	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(fract));
 	Tcl_SetObjResult(interp, listObjPtr);
 	return TCL_OK;
     }
     if (Blt_GetScrollInfoFromObj(interp, objc - 2, objv + 2, &comboPtr->xOffset,
-	    worldWidth, width, comboPtr->xScrollUnits, BLT_SCROLL_MODE_HIERBOX) 
+	    worldWidth, w, comboPtr->xScrollUnits, BLT_SCROLL_MODE_HIERBOX) 
 	    != TCL_OK) {
 	return TCL_ERROR;
     }
-    comboPtr->flags |= CT_XSCROLL;
+    comboPtr->flags |= SCROLLX;
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
 
 static int
-YViewOp(
-    ComboTree *comboPtr,
-    Tcl_Interp *interp,
-    int objc,
-    Tcl_Obj *const *objv)
+YViewOp(ComboTree *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     int h, worldHeight;
 
@@ -6926,7 +6849,7 @@ YViewOp(
 	!= TCL_OK) {
 	return TCL_ERROR;
     }
-    comboPtr->flags |= CT_SCROLL;
+    comboPtr->flags |= SCROLL_PENDING;
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -6962,12 +6885,13 @@ static Blt_OpSpec comboOps[] =
     {"invoke",    3, InvokeOp,    3, 3, "entry",},
     {"nearest",   1, NearestOp,   4, 5, "x y ?varName?",}, 
     {"open",      1, OpenOp,      2, 4, "?-recurse? entry",}, 
-    {"post",      1, PostOp,      2, 4, "?x y?",},
+    {"post",      1, PostOp,      4, 5, "x y ?align?",},
     {"scan",      2, ScanOp,      5, 5, "dragto|mark x y",},
     {"see",       2, SeeOp,       3, 0, "?-anchor anchor? entry",},
     {"show",      2, ShowOp,      2, 0, "?-exact? ?-glob? ?-regexp? ?-nonmatching? ?-name string? ?-full string? ?-data string? ?--? ?entry...?",},
     {"style",     2, StyleOp,	  2, 0, "args",},
     {"toggle",    2, ToggleOp,    3, 3, "entry",},
+    {"unpost",    1, UnpostOp,    2, 2, "",},
     {"xview",     1, XViewOp,     2, 5, "?moveto fract? ?scroll number what?",},
     {"yview",     1, YViewOp,     2, 5, "?moveto fract? ?scroll number what?",},
 };
@@ -7031,7 +6955,7 @@ DisplayComboTree(ClientData clientData)	/* Information about widget. */
     ComboTree *comboPtr = clientData;
     Pixmap drawable; 
 
-    comboPtr->flags &= ~CT_REDRAW;
+    comboPtr->flags &= ~REDRAW_PENDING;
     if (comboPtr->tkwin == NULL) {
 	return;			/* Window has been destroyed. */
     }
@@ -7039,7 +6963,7 @@ DisplayComboTree(ClientData clientData)	/* Information about widget. */
 	fprintf(stderr, "no root to tree \n");
 	return;
     }
-    if (comboPtr->flags & CT_LAYOUT) {
+    if (comboPtr->flags & LAYOUT_PENDING) {
 	/*
 	 * Recompute the layout when entries are opened/closed,
 	 * inserted/deleted, or when text attributes change (such as
@@ -7047,31 +6971,27 @@ DisplayComboTree(ClientData clientData)	/* Information about widget. */
 	 */
 	ComputeComboGeometry(comboPtr);
     }
-    if (comboPtr->flags & (CT_SCROLL | CT_DIRTY)) {
+    if (comboPtr->flags & (SCROLL_PENDING | DIRTY)) {
 	/* 
 	 * Scrolling means that the view port has changed and that the
 	 * visible entries need to be recomputed.
 	 */
 	ComputeVisibleEntries(comboPtr);
-	if ((comboPtr->flags & CT_XSCROLL) && 
-	    (comboPtr->xScrollCmdObjPtr != NULL)) {
+	if ((comboPtr->flags & SCROLLX) && (comboPtr->xScrollCmdObjPtr!=NULL)) {
 	    int w;
 		
 	    w = VPORTWIDTH(comboPtr);
 	    Blt_UpdateScrollbar(comboPtr->interp, comboPtr->xScrollCmdObjPtr,
-		(double)comboPtr->xOffset / comboPtr->worldWidth,
-		(double)(comboPtr->xOffset + w) / comboPtr->worldWidth);
+		comboPtr->xOffset, comboPtr->xOffset + w, comboPtr->worldWidth);
 	}
-	if ((comboPtr->flags & CT_YSCROLL) &&  
-	    (comboPtr->yScrollCmdObjPtr != NULL)) {
+	if ((comboPtr->flags & SCROLLY) && (comboPtr->yScrollCmdObjPtr!=NULL)) {
 	    int h;
 
 	    h = VPORTHEIGHT(comboPtr);
 	    Blt_UpdateScrollbar(comboPtr->interp, comboPtr->yScrollCmdObjPtr,
-		(double)comboPtr->yOffset / comboPtr->worldHeight,
-		(double)(comboPtr->yOffset + h) / comboPtr->worldHeight);
+		comboPtr->yOffset, comboPtr->yOffset + h, comboPtr->worldHeight);
 	}
-	comboPtr->flags &= ~CT_SCROLL;
+	comboPtr->flags &= ~SCROLL_PENDING;
     }
 #ifdef notdef
     if (comboPtr->reqWidth == 0) {
@@ -7093,7 +7013,7 @@ DisplayComboTree(ClientData clientData)	/* Information about widget. */
 	Tk_Width(comboPtr->tkwin), Tk_Height(comboPtr->tkwin), 
 	Tk_Depth(comboPtr->tkwin));
 
-    comboPtr->flags |= CT_VIEWPORT;
+    comboPtr->flags |= VIEWPORT;
     /* Clear the column background. */
     DrawComboTree(comboPtr, drawable);
     DrawOuterBorders(comboPtr, drawable);
@@ -7103,7 +7023,7 @@ DisplayComboTree(ClientData clientData)	/* Information about widget. */
 	comboPtr->lineGC, 0, 0, Tk_Width(comboPtr->tkwin), 
 	Tk_Height(comboPtr->tkwin), 0, 0);
     Tk_FreePixmap(comboPtr->display, drawable);
-    comboPtr->flags &= ~CT_VIEWPORT;
+    comboPtr->flags &= ~VIEWPORT;
 }
 
 /*
@@ -7153,7 +7073,7 @@ ComboTreeObjCmdProc(
      * "$blt_library/treeview.tcl".  We deferred sourcing the file until now
      * so that the variable $blt_library could be set within a script.
      */
-    if (!Tcl_GetCommandInfo(interp, "::blt::InitComboTree", &cmdInfo)) {
+    if (!Tcl_GetCommandInfo(interp, "::blt::ComboTree::Initialize", &cmdInfo)) {
 	static char cmd[] = { 
 	    "source [file join $blt_library combotree.tcl]" 
 	};
@@ -7190,7 +7110,7 @@ ComboTreeObjCmdProc(
     {
 	Tcl_Obj *cmd[2];
 
-	cmd[0] = Tcl_NewStringObj("::blt::InitComboTree", -1);
+	cmd[0] = Tcl_NewStringObj("::blt::ComboTree::Initialize", -1);
 	cmd[1] = objv[1];
 	Tcl_IncrRefCount(cmd[0]);
 	Tcl_IncrRefCount(cmd[1]);

@@ -127,7 +127,7 @@ typedef struct {
  *---------------------------------------------------------------------------
  */
 typedef struct {
-    GraphObj obj;		/* Must be first field in axis. */
+    GraphObj obj;			/* Must be first field in axis. */
 
     unsigned int flags;		
 
@@ -137,87 +137,93 @@ typedef struct {
 
     const char *detail;
 
-    int refCount;		/* Number of elements referencing this
-				 * axis. */
+    int refCount;			/* Number of elements referencing this
+					 * axis. */
+    int logScale;			/* If non-zero, generate log scale
+					 * ticks for the axis. */
+    int timeScale;			/* If non-zero, generate time scale
+					 * ticks for the axis. This option is
+					 * overridden by -logscale. */
+    int descending;			/* If non-zero, display the range of
+					 * values on the axis in descending
+					 * order, from high to low. */
 
-    int logScale;
+    int looseMin, looseMax;		/* If non-zero, axis range extends to
+					 * the outer major ticks, otherwise at
+					 * the limits of the data values. This
+					 * is overriddened by setting the -min
+					 * and -max options.  */
 
-    int descending;		/* If non-zero, display the range of
-				 * values on the axis in descending
-				 * order, from high to low. */
+    const char *title;			/* Title of the axis. */
 
-    int looseMin, looseMax;	/* If non-zero, axis range extends to
-				 * the outer major ticks, otherwise at
-				 * the limits of the data values. This
-				 * is overriddened by setting the -min
-				 * and -max options.  */
+    int titleAlternate;			/* Indicates whether to position the
+					 * title above/left of the axis. */
 
-    const char *title;		/* Title of the axis. */
-
-    int titleAlternate;		/* Indicates whether to position the
-				 * title above/left of the axis. */
-
-    Point2d titlePos;		/* Position of the title */
+    Point2d titlePos;			/* Position of the title */
 
     unsigned short int titleWidth, titleHeight;	
 
 
-    int lineWidth;		/* Width of lines representing axis
-				 * (including ticks).  If zero, then
-				 * no axis lines or ticks are
-				 * drawn. */
+    int lineWidth;			/* Width of lines representing axis
+					 * (including ticks).  If zero, then
+					 * no axis lines or ticks are
+					 * drawn. */
 
-    const char **limitsFormats;	/* One or two strings of sprintf-like
-				 * formats describing how to display
-				 * virtual axis limits. If NULL,
-				 * display no limits. */
+    const char **limitsFormats;		/* One or two strings of sprintf-like
+					 * formats describing how to display
+					 * virtual axis limits. If NULL,
+					 * display no limits. */
     int nFormats;
 
-    TextStyle limitsTextStyle;	/* Text attributes (color, font,
-				 * rotation, etc.)  of the limits. */
+    TextStyle limitsTextStyle;		/* Text attributes (color, font,
+					 * rotation, etc.)  of the limits. */
 
-    double windowSize;		/* Size of a sliding window of values
-				 * used to scale the axis automatically
-				 * as new data values are added. The axis
-				 * will always display the latest values
-				 * in this range. */
+    double windowSize;			/* Size of a sliding window of values
+					 * used to scale the axis
+					 * automatically as new data values
+					 * are added. The axis will always
+					 * display the latest values in this
+					 * range. */
 
-    double shiftBy;		/* Shift maximum by this interval. */
+    double shiftBy;			/* Shift maximum by this interval. */
 
-    int tickLength;		/* Length of major ticks in pixels */
+    int tickLength;			/* Length of major ticks in pixels */
 
-    const char *formatCmd;	/* Specifies a TCL command, to be invoked
-				 * by the axis whenever it has to generate 
-				 * tick labels. */
+    const char *formatCmd;		/* Specifies a TCL command, to be
+					 * invoked by the axis whenever it has
+					 * to generate tick labels. */
 
     Tcl_Obj *scrollCmdObjPtr;
     int scrollUnits;
 
-    double min, max;		/* The actual axis range. */
+    double min, max;			/* The actual axis range. */
 
-    double reqMin, reqMax;	/* Requested axis bounds. Consult the
-				 * axisPtr->flags field for
-				 * AXIS_CONFIG_MIN and AXIS_CONFIG_MAX
-				 * to see if the requested bound have
-				 * been set.  They override the
-				 * computed range of the axis
-				 * (determined by auto-scaling). */
+    double reqMin, reqMax;		/* Requested axis bounds. Consult the
+					 * axisPtr->flags field for
+					 * AXIS_CONFIG_MIN and AXIS_CONFIG_MAX
+					 * to see if the requested bound have
+					 * been set.  They override the
+					 * computed range of the axis
+					 * (determined by auto-scaling). */
 
     double reqScrollMin, reqScrollMax;
 
-    double scrollMin, scrollMax;/* Defines the scrolling reqion of the axis.
-				 * Normally the region is determined from 
-				 * the data limits. If specified, these 
-				 * values override the data-range. */
+    double scrollMin, scrollMax;	/* Defines the scrolling reqion of the
+					 * axis.  Normally the region is
+					 * determined from the data limits. If
+					 * specified, these values override
+					 * the data-range. */
 
-    AxisRange valueRange;	/* Range of data values of elements mapped 
-				 * to this axis. This is used to auto-scale 
-				 * the axis in "tight" mode. */
-
-    AxisRange axisRange;	/* Smallest and largest major tick values
-				 * for the axis.  The tick values lie outside
-				 * the range of data values.  This is used to
-				 * auto-scale the axis in "loose" mode. */
+    AxisRange valueRange;		/* Range of data values of elements
+					 * mapped to this axis. This is used
+					 * to auto-scale the axis in "tight"
+					 * mode. */
+    AxisRange axisRange;		/* Smallest and largest major tick
+					 * values for the axis.  The tick
+					 * values lie outside the range of
+					 * data values.  This is used to
+					 * auto-scale the axis in "loose"
+					 * mode. */
 
     double prevMin, prevMax;
 
@@ -250,23 +256,22 @@ typedef struct {
 
     /* The following fields are specific to logical axes */
 
-    Blt_ChainLink link;		/* Axis link in margin list. */
+    int margin;				/* Margin that contains this axis. */
+    Blt_ChainLink link;			/* Axis link in margin list. */
     Blt_Chain chain;
-
-    Segment2d *segments;	/* Array of line segments representing
-				 * the major and minor ticks, but also
-				 * the axis line itself. The segment
-				 * coordinates are relative to the
-				 * axis. */
-
-    int nSegments;		/* Number of segments in the above array. */
-
-    Blt_Chain tickLabels;	/* Contains major tick label strings 
-				 * and their offsets along the axis. */
-
+    Segment2d *segments;		/* Array of line segments representing
+					 * the major and minor ticks, but also
+					 * the * axis line itself. The segment
+					 * coordinates * are relative to the
+					 * axis. */
+    int nSegments;			/* Number of segments in the above
+					 * array. */
+    Blt_Chain tickLabels;		/* Contains major tick label strings
+					 * and their offsets along the
+					 * axis. */
     short int left, right, top, bottom;	/* Region occupied by the of axis. */
-    short int width, height;	/* Extents of axis */
-
+    short int width, height;		/* Extents of axis */
+    short int maxTickWidth, maxTickHeight;
     Blt_Background normalBg;
     Blt_Background activeBg;
     XColor *activeFgColor;
@@ -280,7 +285,8 @@ typedef struct {
     Tk_Anchor tickAnchor;
     Tk_Anchor reqTickAnchor;
     XColor *tickColor;
-    GC tickGC;			/* Graphics context for axis and tick labels */
+    GC tickGC;				/* Graphics context for axis and tick
+					 * labels */
     GC activeTickGC;
 
     double titleAngle;	
@@ -289,7 +295,7 @@ typedef struct {
     Tk_Justify titleJustify;
     XColor *titleColor;
     
-    Grid major, minor;		/* Axis grid information. */
+    Grid major, minor;			/* Axis grid information. */
 
     double screenScale;
     int screenMin, screenRange;

@@ -78,4 +78,10 @@ BLT_EXTERN GC Blt_BackgroundBorderGC(Tk_Window tkwin, Blt_Background bg,
 BLT_EXTERN void Blt_SetBackgroundFromBackground(Tk_Window tkwin, 
 	Blt_Background bg);
 
+BLT_EXTERN void Blt_UnsetBackgroundClipRegion(Tk_Window tkwin, 
+	Blt_Background bg);
+
+BLT_EXTERN void Blt_SetBackgroundClipRegion(Tk_Window tkwin, Blt_Background bg,
+	TkRegion rgn);
+
 #endif /* BLT_BGPATTERN_H */

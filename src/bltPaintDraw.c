@@ -215,7 +215,9 @@ PaintThickRoundedRectangle(
 	    r = lineWidth;
 	}
     }
+#ifdef notdef
     fprintf(stderr, "Paint Thick Rounded Rectangle\n");
+#endif
     /* Compute the coordinates of the four corner radii. */
     x1 = xOrigin + r;
     y1 = yOrigin + r;
@@ -285,8 +287,10 @@ PaintThickRoundedRectangle(
 	    int dx;
 	    
 	    dx = outer[dy].right;
+#ifdef notdef
 	    fprintf(stderr, "r=%d, dx=%d w=%d x1=%d x2=%d\n", r, dx, w, x1, x2);
 	    fprintf(stderr, "x0=%d\n", xOrigin);
+#endif
 	    FillHorizontalLine(picture, x1 - dx, x2 + dx, y1 - dy, &fill,blend);
 	    FillHorizontalLine(picture, x1 - dx, x2 + dx, y2 + dy, &fill,blend);
 	}
@@ -544,7 +548,7 @@ FilledOval(int width, int height, Color color)
 #endif
 
 static void
-xPaintCircle(Blt_Picture src, int x, int y, int r, Blt_Pixel *colorPtr)
+PaintCircle3(Blt_Picture src, int x, int y, int r, Blt_Pixel *colorPtr)
 {
     Blt_Pixel edge, interior;
     double t;
@@ -554,7 +558,8 @@ xPaintCircle(Blt_Picture src, int x, int y, int r, Blt_Pixel *colorPtr)
     r2 = r * r;
     t = 0.0;
     x = r;
-    interior = edge = PremultiplyAlpha(colorPtr, 255);
+
+    interior.u32 = edge.u32 = colorPtr->u32;
     /* Center line */
     PutPixel(src, r - x, r, &edge);
     PutPixel(src, r + x, r, &edge);
@@ -572,14 +577,15 @@ xPaintCircle(Blt_Picture src, int x, int y, int r, Blt_Pixel *colorPtr)
 	}
 	q = FABS(d * 255.0);
 	a = (unsigned char)CLAMP(q);
-	edge = PremultiplyAlpha(colorPtr, a);
-	interior = PremultiplyAlpha(colorPtr, ~a);
-	/* By symmetry we can fill upper and lower scan lines. */
-	PutPixel(src, r - x - 1, r + y, &interior);
-	PutPixel(src, r + x + 1, r + y, &edge);
+	edge.Alpha = a;
+	interior.Alpha = ~a;
 
-	PutPixel(src, r - x - 1, r - y, &edge);
-	PutPixel(src, r + x + 1, r - y, &interior);
+	/* By symmetry we can fill upper and lower scan lines. */
+	PaintPixel(src, r - x - 1, r + y, &interior);
+	PaintPixel(src, r + x + 1, r + y, &edge);
+
+	PaintPixel(src, r - x - 1, r - y, &edge);
+	PaintPixel(src, r + x + 1, r - y, &interior);
 
 	t = d;
     }
@@ -588,6 +594,7 @@ xPaintCircle(Blt_Picture src, int x, int y, int r, Blt_Pixel *colorPtr)
     x = 0;
     y = r;
     t = 0;
+    interior.u32 = edge.u32 = colorPtr->u32;
     VertLine(src, r, 0, y1, &edge);    /* Center line */
     VertLine(src, r, y2, r + r, &edge);    
     while (y > x) {
@@ -603,20 +610,92 @@ xPaintCircle(Blt_Picture src, int x, int y, int r, Blt_Pixel *colorPtr)
 	}
 	q = FABS(d * 255.0);
 	a = (unsigned int)CLAMP(q);
-	edge = PremultiplyAlpha(colorPtr, a);
-	interior = PremultiplyAlpha(colorPtr, ~a);
+	edge.Alpha = a;
+	interior.Alpha = ~a;
 
 	/* By symmetry we can fill upper and lower scan lines. */
-	PutPixel(src, r - x, r - y - 1, &edge);
-	PutPixel(src, r - x, r + y + 1, &interior);
+	PaintPixel(src, r - x, r - y - 1, &edge);
+	PaintPixel(src, r - x, r + y + 1, &interior);
 
-	PutPixel(src, r + x, r - y - 1, &interior);
-	PutPixel(src, r + x, r + y + 1, &edge);
+	PaintPixel(src, r + x, r - y - 1, &interior);
+	PaintPixel(src, r + x, r + y + 1, &edge);
 
 	t = d;
     }
 }
 
+static INLINE float 
+sqr(float x) 
+{
+    return x * x;
+}
+    
+static void
+PaintCircle4(Pict *srcPtr, int x, int y, int r, Blt_Pixel *colorPtr)
+{
+    int cx, cy;
+    int x1, x2, y1, y2;
+    int Fact;
+    float RPF2, RMF2;
+    float sqY, sqDist;
+    float *sqX;
+    float feather = 4.0;
+    Blt_Pixel *srcRowPtr;
+
+    cx = x, cy = y;
+    // Determine some helpful values (singles)
+    RPF2 = sqr(r + feather/2);
+    RMF2 = sqr(r - feather/2);
+
+    // Determine bounds:
+    x1 = MAX(floor(cx - RPF2), 0);
+    x2 = MIN(ceil (cx + RPF2), srcPtr->width - 1);
+    y1 = MAX(floor(cy - RPF2), 0);
+    y2 = MIN(ceil (cy + RPF2), srcPtr->height - 1);
+
+    // Optimization run: find squares of X first
+    sqX = Blt_AssertMalloc(sizeof(float) * (x2 - x1 + 1));
+    for (x = x1; x <= x2; x++) {
+	sqX[x - x1] = sqr(x - cx);
+    }
+    // Loop through Y values
+    srcRowPtr = srcPtr->bits + (y1 * srcPtr->pixelsPerRow) + x1;
+    for (y = y1; y <= y2; y++) {
+	Blt_Pixel *sp;
+
+	sqY = sqr(y - cy);
+	// Loop through X values
+	sp = srcRowPtr;
+	for (x = x1; x <= x2; x++, sp++) {
+	    // determine squared distance from center for this pixel
+	    sqDist = sqY + sqX[x - x1];
+	    // inside inner circle? Most often..
+	    if (sqDist < RMF2) {
+		// inside the inner circle.. just give the scanline the
+		// new color
+		sp->u32 = colorPtr->u32;
+	    } else if (sqDist < RPF2) {	// inside outer circle?
+		unsigned int a;
+		// We are inbetween the inner and outer bound, now
+		// mix the color
+		Fact = ROUND(((r - sqrt(sqDist)) * 2 / feather)*127.5 + 127.5);
+		// just in case limit to [0, 255]
+		a = MAX(0, MIN(Fact, 255));
+#ifndef notdef
+		BlendPixel(sp, colorPtr, a);
+#else
+		sp->u32 = colorPtr->u32;
+		sp->Alpha = a;
+#endif
+	    } else {
+		/* do nothing */
+	    }
+	}
+	srcRowPtr += srcPtr->pixelsPerRow;
+    }
+    srcPtr->flags &= ~BLT_PIC_ASSOCIATED_COLORS;
+    Blt_Free(sqX);
+}
 
 static Pict *
 xFilledCircle(int diam, Blt_Pixel *colorPtr)
@@ -929,7 +1008,9 @@ PaintFilledCircle(Pict *destPtr, int x, int y, int r, Blt_Pixel *colorPtr)
 	}
 	destRowPtr += destPtr->pixelsPerRow;
     }
+#ifdef notdef
     fprintf(stderr, "%d pixels %d sqrts\n", (r + r + 1) * (r + r + 1), count);
+#endif
 }
 
 static void

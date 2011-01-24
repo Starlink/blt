@@ -108,7 +108,7 @@ typedef struct _Blt_Picture Pict;
 
 typedef struct {
     Blt_Picture original;
-    Pict *srcPtr;
+    Blt_Picture current;
     int delay;
     int nColors;
 } Frame;
@@ -143,6 +143,7 @@ typedef struct {
     const char **comments;		/* Comments */
     unsigned int flags;
     int index;
+    int delay;
 } GifExportSwitches;
 
 BLT_EXTERN Blt_SwitchParseProc Blt_ColorSwitchProc;
@@ -151,9 +152,12 @@ static Blt_SwitchCustom colorSwitch = {
 };
 
 #define EXPORT_BLEND	(1<<0)
+#define EXPORT_ANIMATE	(1<<1)
 
 static Blt_SwitchSpec exportSwitches[] = 
 {
+    {BLT_SWITCH_BITMASK, "-animate", "",
+	Blt_Offset(GifExportSwitches, flags),	   0, EXPORT_ANIMATE},
     {BLT_SWITCH_CUSTOM, "-bg", "color",
 	Blt_Offset(GifExportSwitches, bg),         0, 0, &colorSwitch},
     {BLT_SWITCH_BITMASK, "-blend", "",
@@ -166,6 +170,8 @@ static Blt_SwitchSpec exportSwitches[] =
 	Blt_Offset(GifExportSwitches, comments),   0},
     {BLT_SWITCH_INT_NNEG, "-index", "int",
 	Blt_Offset(GifExportSwitches, index), 0},
+    {BLT_SWITCH_INT_NNEG, "-delay", "int",
+	Blt_Offset(GifExportSwitches, delay), 0},
     {BLT_SWITCH_END}
 };
 
@@ -1335,10 +1341,13 @@ GifToPictures(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer,
 }
 
 static int 
-GetLog2(unsigned int n) 
+GetLog2(int n) 
 {
     int i;
 
+    if (n < 3) {
+	return 1;
+    }
     for (i = 0; (n >> i) != 0; i++) {
 	/*empty*/
     }
@@ -1359,23 +1368,20 @@ GetLog2(unsigned int n)
  *     12 6  1    Pixel Aspect Ratio
  */
 static void 
-GifWriteLogicalScreenDescriptor(
-    int width, 
-    int height, 
-    int bitsPerPixel, 
-    unsigned char *bp)
+GifWriteLogicalScreenDescriptor(int w, int h, int bitsPerPixel, 
+				unsigned char *bp)
 {
     unsigned char flags;
 
 #define MAXSIZE (1<<16)
-    if ((width >= MAXSIZE) || (height >= MAXSIZE)) {
+    if ((w >= MAXSIZE) || (h >= MAXSIZE)) {
 	GifError("picture is too big for GIF format");
     }	     
     if ((bitsPerPixel > 8) || (bitsPerPixel < 1)) {
 	GifError("#bits per pixel is %d for GIF format", bitsPerPixel);
     }	     
-    GifSetShort(bp + 0, width);
-    GifSetShort(bp + 2, height);
+    GifSetShort(bp + 0, w);
+    GifSetShort(bp + 2, h);
     flags = 0;
     flags |= (1<<7);		/* Global color map flag.*/
     flags |= (bitsPerPixel - 1) << 4;  /* Color resolution. */
@@ -1430,13 +1436,13 @@ GifWriteImageDescriptor(int w, int h, unsigned char *bp)
  *   7 1  Block terminator
  */
 static void 
-GifWriteGraphicControlExtension(int colorIndex, unsigned char *bp)
+GifWriteGraphicControlExtension(int colorIndex, int delay, unsigned char *bp)
 {
     bp[0] = '!';		/* Extension introducer */
     bp[1] = 0xF9; 		/* Graphic control label */
     bp[2] = 4;			/* Block size. */
     bp[3] = (colorIndex != -1);	/* Transparent flag. */
-    bp[4] = bp[5] = 0;		/* Delay time. */
+    GifSetShort(bp + 4, delay);
     bp[6] = colorIndex;		/* Transparent color index */
     bp[7] = 0;			/* Block terminator */
 }
@@ -1462,6 +1468,35 @@ GifWriteCommentExtension(Blt_DBuffer dbuffer, const char *comment)
     bp[2] = length;
     memcpy(bp + 3, comment, length);
     bp[n - 1] = '\0';
+}
+
+/*
+ *  Graphic Control Extension 
+ *
+ *   0 1  Extension Introducer
+ *   1 2  Graphic Control Label
+ *   2 1  Block size
+ *   3 1  Flags.
+ *		bits 5-7 Reserved                      3 Bits 
+ *		bits 2-4 Disposal Method               3 Bits 
+ *		bit 1    User Input Flag               1 Bit 
+ *		bit 0    Transparent Color Flag        1 Bit 
+ *   4 2  Delay time.
+ *   6 1  Transparent Color Index
+ *   7 1  Block terminator
+ */
+static void 
+GifWriteNetscapeAppExtension(int nLoop, unsigned char *bp)
+{
+    bp[0] = '!';			/* Extension introducer */
+    bp[1] = 0xFF;			/* Application extension label */
+    bp[2] = 11;				/* Block size. */
+    memcpy(bp + 3, "NETSCAPE2.0", 11);
+    bp[14] = 0x3;			/* Length of data sub-block */
+    bp[15] = 0x1;
+    bp[16] = 0xFF;
+    bp[17] = 0xFF;
+    bp[18] = 0;				/* Block terminator */
 }
 
 #define DICTSIZE  5003            /* 80% occupancy */
@@ -1827,6 +1862,9 @@ PictureToGif(Tcl_Interp *interp, Blt_Picture original, Blt_DBuffer dbuffer,
     unsigned char *bp;
 
     srcPtr = original;
+    if ((srcPtr->width < 1) || (srcPtr->height < 1)) {
+	return TCL_OK;
+    }
     nColors = Blt_QueryColors(srcPtr, (Blt_HashTable *)NULL);
     maxColors = 256;
     if (Blt_PictureIsMasked(srcPtr)) {
@@ -1879,18 +1917,20 @@ PictureToGif(Tcl_Interp *interp, Blt_Picture original, Blt_DBuffer dbuffer,
     } else {
 	memcpy(bp, "GIF87a", 6);
     }
-    bp += 6;			/* Size of header */
+    bp += 6;				/* Size of header */
     GifWriteLogicalScreenDescriptor(srcPtr->width, srcPtr->height, 
 				    bitsPerPixel, bp);
-    bp += 7;			/* Size of logical screen descriptor. */
+    bp += 7;				/* Size of logical screen
+					 * descriptor. */
     GifWriteGlobalColorTable(&colorTable, bp);
-    bp += 3 * (1<<bitsPerPixel);  /* Size of global color table. */
+    bp += 3 * (1<<bitsPerPixel);	/* Size of global color table. */
     if (isMasked) {
-	GifWriteGraphicControlExtension(nColors, bp);
-	bp += 8;		/* Size of graphic control extension. */
+	GifWriteGraphicControlExtension(nColors, 0, bp);
+	bp += 8;			/* size of graphic control
+					 * extension. */
     }
     GifWriteImageDescriptor(srcPtr->width, srcPtr->height, bp);
-    bp += 10;			/* Size of image descriptor. */
+    bp += 10;				/* Size of image descriptor. */
 
     GifWriteImageData(dbuffer, srcPtr, &colorTable);
     if (switchesPtr->comments != NULL) {
@@ -1903,36 +1943,178 @@ PictureToGif(Tcl_Interp *interp, Blt_Picture original, Blt_DBuffer dbuffer,
     return TCL_OK;
 }
 
-/* { 7,  7,  5  },		 8 bits, 198 colors */
-
-static void
-FillPalette(int nRed, int nGreen, int nBlue, Blt_Pixel *palette,
-	    unsigned int *rBits, unsigned int *gBits, unsigned int *bBits)
+#ifndef notdef
+/*
+ *---------------------------------------------------------------------------
+ *
+ * PicturesToAnimatedGif --
+ *
+ *      Converts a one or more pictures to into the animates GIF format.
+ *      Since the GIF format doesn't handle semi-transparent pixels we have to
+ *      blend the image with a given background color, while still retaining
+ *      any 100% transparent pixels.
+ *
+ * Results:
+ *      A standard TCL result is returned.  If an error occured, such as the
+ *      designated file could not be opened, TCL_ERROR is returned.
+ *
+ * Side Effects:
+ *	The dynamic buffer is filled with the GIF image.
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+PicturesToAnimatedGif(Tcl_Interp *interp, Blt_Chain chain, Blt_DBuffer dbuffer,
+		      GifExportSwitches *switchesPtr)
 {
-    int i, rMult;
-    double rScale, gScale, bScale;
-    
-    rMult = nGreen * nBlue;
-    
-    rScale = 255.0 / (nRed - 1);
-    gScale = 255.0 / (nGreen - 1);
-    bScale = 255.0 / (nBlue - 1);
-    
-    for (i = 0; i < 256; i++) {
-	int r, g, b;
-	
-	r = (i * (nRed   - 1) + 127) / 255;
-	g = (i * (nGreen - 1) + 127) / 255;
-	b = (i * (nBlue  - 1) + 127) / 255;
-	palette[i].Red = (unsigned char)(r * rScale + 0.5);
-	palette[i].Green = (unsigned char)(g * gScale + 0.5);
-	palette[i].Blue = (unsigned char)(b * bScale + 0.5);
-	rBits[i] = r * rMult;
-	gBits[i] = g * nBlue;
-	bBits[i] = b;
-    }
-}    
+    Blt_ChainLink link;
+    Blt_HashTable colorTable;
+    Frame *fp, *fend, *frames;
+    int bitsPerPixel;
+    int n;
+    int nColors, maxColors, nFrames;
+    int screenWidth, screenHeight;
+    unsigned char *bp;
 
+    /* For each frame quantize if needed, accumulate the colors used.  try to
+     * assemble  */
+
+    maxColors = 255;
+    nFrames = Blt_Chain_GetLength(chain);
+    if (nFrames == 0) {
+	return TCL_ERROR;
+    }
+    frames = Blt_AssertCalloc(nFrames, sizeof(Frame));
+    link = Blt_Chain_FirstLink(chain);
+    fp = frames;
+    fp->original = Blt_Chain_GetValue(link);
+
+    /* 
+     * Step 1:  Load the pictures into the array.  Determine what the
+     *	        maximum picture width and height are.
+     */
+    screenWidth = Blt_PictureWidth(fp->original);
+    screenHeight = Blt_PictureHeight(fp->original);
+    for (fp = frames, link = Blt_Chain_FirstLink(chain); link != NULL; 
+	 link = Blt_Chain_NextLink(link), fp++) {
+	Pict *srcPtr;
+
+	srcPtr = fp->current = fp->original = Blt_Chain_GetValue(link);
+	fp->delay = srcPtr->delay;
+	if (srcPtr->width > screenWidth) {
+	    screenWidth = srcPtr->width;
+	}
+	if (srcPtr->height > screenHeight) {
+	    screenHeight = srcPtr->height;
+	}
+    }
+    /* 
+     * Step 2:  Convert the pictures into the same maximum size. Automatically
+     *		handle blended pictures by blending into a known background.
+     */
+    Blt_InitHashTable(&colorTable, BLT_ONE_WORD_KEYS);
+    for (fp = frames, fend = fp + nFrames; fp < fend; fp++) {
+	Pict *srcPtr;
+
+	srcPtr = fp->current;
+	if ((srcPtr->flags & BLT_PIC_BLEND) || (srcPtr->width != screenWidth) || 
+	    (srcPtr->height != screenHeight)) {
+	    Pict *bg;
+
+	    /* Blend picture with solid color background. */
+	    bg = Blt_CreatePicture(screenWidth, screenHeight);
+	    Blt_BlankPicture(bg, &switchesPtr->bg); 
+	    Blt_BlendPictures(bg, srcPtr, 0, 0, srcPtr->width, srcPtr->height, 
+		0, 0);
+	    srcPtr = fp->current = bg;
+	}
+	Blt_QueryColors(srcPtr, &colorTable);
+    }
+    /* 
+     * Step 3:  If there are more that 256 colors, compute color lookup
+     *		table by quantizing all the pictures in the sequence.
+     */
+    if (colorTable.numEntries > maxColors) {
+	Blt_Chain sequence;
+	Blt_ColorLookupTable clut;
+
+	sequence = Blt_Chain_Create();
+	for (fp = frames, fend = fp + nFrames; fp < fend; fp++) {
+	    Blt_Chain_Append(sequence, fp->current);
+	}
+	clut = Blt_GetColorLookupTable(sequence, maxColors);
+	Blt_Chain_Destroy(sequence);
+
+	/* Dump the old color table and build a new old. */
+	Blt_DeleteHashTable(&colorTable);
+	Blt_InitHashTable(&colorTable, BLT_ONE_WORD_KEYS);
+
+	for (fp = frames, fend = fp + nFrames; fp < fend; fp++) {
+	    Pict *srcPtr, *destPtr;
+
+	    srcPtr = fp->current;
+	    destPtr = Blt_CreatePicture(srcPtr->width, srcPtr->height);
+	    Blt_MapColors(destPtr, srcPtr, clut);
+	    if (fp->current != fp->original) {
+		Blt_FreePicture(fp->current);
+	    }
+	    fp->current = destPtr;
+	    Blt_QueryColors(destPtr, &colorTable);
+	}
+	Blt_Free(clut);
+    }
+
+    /* 
+     * Step 4:  Write the animated GIF output.
+     */
+    nColors = colorTable.numEntries;
+    bitsPerPixel = GetLog2(nColors - 1);
+    /* 
+     * 6			Header
+     * 7			Logical Screen Descriptor
+     * 3 * (1<<bitPerPixel)	Global Color Table
+     * 8			Graphic Control Extension
+     * 10			Image Descriptor
+     */
+    n = 6 + 7 + (3 * (1<<bitsPerPixel)) + 19;
+    bp = Blt_DBuffer_Extend(dbuffer, n);
+
+    /* Header */
+    memcpy(bp, "GIF89a", 6);
+    bp += 6;				/* Size of header */
+    GifWriteLogicalScreenDescriptor(screenWidth, screenHeight, 
+	bitsPerPixel, bp);
+    bp += 7;				/* Size of logical screen
+					 * descriptor. */
+    GifWriteGlobalColorTable(&colorTable, bp);
+    bp += 3 * (1<<bitsPerPixel);	/* Size of global color table. */
+
+    GifWriteNetscapeAppExtension(10, bp);
+    bp += 19;
+    for (fp = frames, fend = fp + nFrames; fp < fend; fp++) {
+	Pict *srcPtr;
+
+	bp = Blt_DBuffer_Extend(dbuffer, 18);
+	srcPtr = fp->current;
+	GifWriteGraphicControlExtension(-1, switchesPtr->delay, bp);
+	bp += 8;			/* Size of graphic control
+					 * extension. */
+	GifWriteImageDescriptor(srcPtr->width, srcPtr->height, bp);
+	bp += 10;			/* Size of image descriptor. */
+	GifWriteImageData(dbuffer, srcPtr, &colorTable);
+	if (fp->current != fp->original) {
+	    Blt_FreePicture(fp->current);
+	}
+    }
+    Blt_Free(frames);
+    Blt_DeleteHashTable(&colorTable);
+    if (switchesPtr->comments != NULL) {
+	GifAddText(dbuffer, switchesPtr->comments);
+    }
+    Blt_DBuffer_AppendByte(dbuffer, ';');  /* File terminator */
+    return TCL_OK;
+}
+#endif
 
 /*
  *---------------------------------------------------------------------------
@@ -1968,30 +2150,21 @@ ReadGif(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer)
 }
 
 static Tcl_Obj *
-WriteGif(Tcl_Interp *interp, Blt_Chain chain)
+WriteGif(Tcl_Interp *interp, Blt_Picture picture)
 {
-    Tcl_Obj *objPtr;
     Blt_DBuffer dbuffer;
     GifExportSwitches switches;
-    Blt_ChainLink link;
+    Tcl_Obj *objPtr;
+    char *bytes;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
-
     dbuffer = Blt_DBuffer_Create();
     objPtr = NULL;
-    for (link = Blt_Chain_FirstLink(chain); link != NULL; 
-	 link = Blt_Chain_NextLink(link)) {
-	Blt_Picture picture;
-
-	picture = Blt_Chain_GetValue(link);
-	if (PictureToGif(interp, picture, dbuffer, &switches) != TCL_OK) {
-	    Blt_DBuffer_Destroy(dbuffer);
-	    return NULL;
-	}
+    if (PictureToGif(interp, picture, dbuffer, &switches) != TCL_OK) {
+	Blt_DBuffer_Destroy(dbuffer);
+	return NULL;
     }
-    char *bytes;
-
     bytes = Blt_DBuffer_EncodeBase64(interp, dbuffer);
     if (bytes != NULL) {
 	objPtr = Tcl_NewStringObj(bytes, -1);
@@ -2029,7 +2202,7 @@ ImportGif(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv,
 	int nBytes;
 
 	bytes = Tcl_GetByteArrayFromObj(switches.dataObjPtr, &nBytes);
-	if (Blt_IsBase64((const char *)bytes, nBytes)) {
+	if (Blt_IsBase64(bytes, nBytes)) {
 	    if (Blt_DBuffer_DecodeBase64(interp, string, nBytes, dbuffer) 
 		!= TCL_OK) {
 		goto error;
@@ -2057,16 +2230,17 @@ ImportGif(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv,
 }
 
 static int
-ExportGif(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
+ExportGif(Tcl_Interp *interp, unsigned int index, Blt_Chain chain, int objc, 
+	  Tcl_Obj *const *objv)
 {
-    Blt_ChainLink link;
-    GifExportSwitches switches;
     Blt_DBuffer dbuffer;
+    GifExportSwitches switches;
     int result;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
-
+    switches.index = index;
+    switches.delay = 20;
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, 
 	&switches, BLT_SWITCH_DEFAULTS) < 0) {
 	Blt_FreeSwitches(exportSwitches, (char *)&switches, 0);
@@ -2078,25 +2252,27 @@ ExportGif(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
 	Blt_FreeSwitches(exportSwitches, (char *)&switches, 0);
 	return TCL_ERROR;
     }
-
     dbuffer = Blt_DBuffer_Create();
-    for (link = Blt_Chain_FirstLink(chain); link != NULL; 
-	 link = Blt_Chain_NextLink(link)) {
+    if (switches.flags & EXPORT_ANIMATE) {
+	if (PicturesToAnimatedGif(interp, chain, dbuffer, &switches) != TCL_OK){
+	    Tcl_AppendResult(interp, "can't convert \"", Tcl_GetString(objv[2]),
+			     "\"", (char *)NULL);
+	    goto error;
+	}
+    } else {
 	Blt_Picture picture;
 
-	picture = Blt_Chain_GetValue(link);
+	picture = Blt_GetNthPicture(chain, switches.index);
+	if (picture == NULL) {
+	    Tcl_AppendResult(interp, "bad picture index.", (char *)NULL);
+	    goto error;
+	}
 	if (PictureToGif(interp, picture, dbuffer, &switches) != TCL_OK) {
-	    Tcl_AppendResult(interp, "can't convert \"", 
-			     Tcl_GetString(objv[2]), "\"", (char *)NULL);
+	    Tcl_AppendResult(interp, "can't convert \"", Tcl_GetString(objv[2]), 
+			     "\"", (char *)NULL);
 	    goto error;
 	}
     }
-    if (result != TCL_OK) {
-	Tcl_AppendResult(interp, "can't export \"", 
-		Tcl_GetString(objv[2]), "\" to GIF format", (char *)NULL);
-	goto error;
-    }
-
     if (switches.fileObjPtr != NULL) {
 	const char *fileName;
 
@@ -2156,197 +2332,3 @@ Blt_PictureGifInit(Tcl_Interp *interp)
 	ImportGif,		/* Import format procedure. */
 	ExportGif);		/* Export format switches. */
 }
-
-#ifdef notdef
-/*
- *---------------------------------------------------------------------------
- *
- * PicturesToGif --
- *
- *      Converts a picture to the GIF format.  Since the GIF format doesn't
- *      handle semi-transparent pixels we have to blend the image with a given
- *      background color, while still retaining any 100% transparent pixels.
- *
- * Results:
- *      A standard TCL result is returned.  If an error occured, 
- *	such as the designated file could not be opened, TCL_ERROR is returned.
- *
- * Side Effects:
- *	The dynamic buffer is filled with the GIF image.
- *
- *---------------------------------------------------------------------------
- */
-static int
-PicturesToGif(Tcl_Interp *interp, Blt_Chain chain, Blt_DBuffer dbuffer,
-	      GifExportSwitches *switchesPtr, int noHeader)
-{
-    Blt_HashTable colorTable;
-    Pict *srcPtr;
-    int bitsPerPixel;
-    int isMasked;
-    int n;
-    int nColors, maxColors;
-    unsigned char *bp;
-    Blt_Chain converted;
-    
-    /* For each frame 
-     * quantize if needed, accumulate the colors used.
-     * try to assemble  */
-
-    /* Step 1. Count the Convert the pictures as necessary adding into another list. */
-    Blt_InitHashTable(&colorTable, BLT_ONE_WORD_KEYS);
-    nFrames = Blt_Chain_GetLength(chain);
-    if (nFrames == 0) {
-	return TCL_ERROR;
-    }
-    frames = Blt_Malloc(sizeof(Frame) * nFrames);
-    if (frames == NULL) {
-	Tcl_AppendResult(interp, "can't allocate ", Blt_Itoa(nFrames), 
-			 " frames",  (char *)NULL);
-	return TCL_ERROR;
-    }
-    count = 0;
-    link = Blt_Chain_FirstLink(chain);
-    framePtr = frames;
-    framePtr->picture = Blt_Chain_GetValue(link);
-
-    screenWidth = Blt_PictureWidth(frame[0].picture);
-    screenHeight = Blt_PictureHeight(frame[0].picture);
-    for (fp = frames = Blt_Chain_FirstLink(chain); link != NULL; 
-	 link = Blt_Chain_NextLink(link), fp++) {
-	Pict *srcPtr;
-
-	srcPtr = fp->original = Blt_Chain_GetValue(link);
-	fp->delay = srcPtr->delay;
-	if (srcPtr->width > screenWidth) {
-	    screenWidth = srcPtr->width;
-	}
-	if (srcPtr->height > screenHeight) {
-	    screenHeight = srcPtr->height;
-	}
-    }
-    for (fp = frames; fendPtr = frames + nFrames; fp < fendPtr; fp++) {
-	Pict *srcPtr;
-
-	srcPtr = fp->current = fp->original;
-	if ((srcPtr->width != screenWidth) ||
-	    (srcPtr->height != screenHeight) ||
-	    (srcPtr->flags | (BLT_PIC_MASK|BLT_PIC_BLEND)) {
-		if (switchesPtr->flags & EXPORT_BLEND) {	
-		    Blt_Picture background;
-		    
-		    /* Blend picture with solid color background. */
-		    background = Blt_CreatePicture(screenWidth, screenHeight);
-		    Blt_BlankPicture(background, &switchesPtr->bg); 
-		    Blt_BlendPictures(background, srcPtr, 0, 0, srcPtr->width, 
-				      srcPtr->height, 0, 0);
-		    srcPtr = fp->current = background;
-		}
-		nColors = Blt_QueryColors(srcPtr, (Blt_HashTable *)NULL);
-	    } else if (nColors >= 256) {
-		maxColors--;
-	    }
-	}
-	if (nColors > maxColors) {
-	    Blt_Picture quant;
-	    
-	    quant = Blt_QuantizePicture(srcPtr, maxColors);
-	    if (srcPtr != original) {
-		Blt_FreePicture(srcPtr);
-	    }
-	    srcPtr = quant;
-	}
-	/* FIXME: Save the quantized or standard image. Save delay. */
-	Blt_QueryColors(srcPtr, &colorTable);
-    }
-    if (colorTable.numEntries > maxEntries) {
-	Blt_Pixel palette[256];
-	unsigned int rBits[256], gBits[256], bBits[256];
-
-	FillPalette(7,7,5, palette, rBits, gBits, bBits);
-	/* Pass 2. Create a color ramp and match the frames to the ramp. */
-	for (link = Blt_Chain_FirstLink(newChain); link != NULL; 
-	     link = Blt_Chain_NextLink(link)) {
-	    Pict *srcPtr;
-	    srcPtr = Blt_Chain_GetValue(link);
-	    index = (rBits[sp->Red] | gBits[sp->Green] | bBits[sp->Blue]);
-	    
-	}
-    }
-    srcPtr = original;
-    nColors = Blt_QueryColors(srcPtr, (Blt_HashTable *)NULL);
-    maxColors = 256;
-    if (Blt_PictureIsMasked(srcPtr)) {
-	if (switchesPtr->flags & EXPORT_BLEND) {	
-	    Blt_Picture background;
-	    
-	    /* Blend picture with solid color background. */
-	    background = Blt_CreatePicture(srcPtr->width, srcPtr->height);
-	    Blt_BlankPicture(background, &switchesPtr->bg); 
-	    Blt_BlendPictures(background, srcPtr, 0, 0, srcPtr->width, 
-			      srcPtr->height, 0, 0);
-	    if (srcPtr != original) {
-		Blt_FreePicture(srcPtr);
-	    }
-	    srcPtr = background;
-	    nColors = Blt_QueryColors(srcPtr, (Blt_HashTable *)NULL);
-	} else if (nColors >= 256) {
-	    maxColors--;
-	}
-    }
-    if (nColors > maxColors) {
-	Blt_Picture quant;
-
-	quant = Blt_QuantizePicture(srcPtr, maxColors);
-	if (srcPtr != original) {
-	    Blt_FreePicture(srcPtr);
-	}
-	srcPtr = quant;
-    }
-    Blt_InitHashTable(&colorTable, BLT_ONE_WORD_KEYS);
-    nColors = Blt_QueryColors(srcPtr, &colorTable);
-    isMasked = Blt_PictureIsMasked(srcPtr);
-    bitsPerPixel = GetLog2(nColors - 1);
-    /* 
-     * 6			Header
-     * 7			Logical Screen Descriptor
-     * 3 * (1<<bitPerPixel)	Global Color Table
-     * 8			Graphic Control Extension
-     * 10			Image Descriptor
-     */
-    n = 6 + 7 + (3 * (1<<bitsPerPixel)) + 10;
-    if (isMasked) {
-	n += 8;
-    }
-    bp = Blt_DBuffer_Extend(dbuffer, n);
-
-    /* Header */
-    if (isMasked) {
-	memcpy(bp, "GIF89a", 6);
-    } else {
-	memcpy(bp, "GIF87a", 6);
-    }
-    bp += 6;			/* Size of header */
-    GifWriteLogicalScreenDescriptor(srcPtr->width, srcPtr->height, 
-				    bitsPerPixel, bp);
-    bp += 7;			/* Size of logical screen descriptor. */
-    GifWriteGlobalColorTable(&colorTable, bp);
-    bp += 3 * (1<<bitsPerPixel);  /* Size of global color table. */
-    if (isMasked) {
-	GifWriteGraphicControlExtension(nColors, bp);
-	bp += 8;		/* Size of graphic control extension. */
-    }
-    GifWriteImageDescriptor(srcPtr->width, srcPtr->height, bp);
-    bp += 10;			/* Size of image descriptor. */
-
-    GifWriteImageData(dbuffer, srcPtr, &colorTable);
-    if (switchesPtr->comments != NULL) {
-	GifAddText(dbuffer, switchesPtr->comments);
-    }
-    Blt_DBuffer_AppendByte(dbuffer, ';');  /* File terminator */
-    if (srcPtr != original) {
-	Blt_FreePicture(srcPtr);
-    }
-    return TCL_OK;
-}
-#endif

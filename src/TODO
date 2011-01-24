@@ -130,3 +130,46 @@ dataarray:
 6. No #auto.
 7. Test harness.
 8. Use Tcl_Objs instead of double array.  Allow strings, images, arrays, etc.
+
+
+---------------------------------------------
+
+Paneset --
+
+  Fix modes.  
+  Leave room for sash when shrinking window.
+
+Graph --
+
+  Constrain size of symbols.
+  Fix axis line with solid plot lines.
+
+Barchart --
+
+  Clip bar segments against plot area.
+
+Scrollset --
+
+  Fix manual.
+
+Treeview --
+
+  Fix combobox style to support combomenus.
+  Add automatic scrollbars.
+  Change scrolling to use XCopyArea.
+  
+Combomenu --
+
+  Better icon for radiobuttons.
+
+Comboentry --
+
+Combotree --
+
+  Fix background.
+
+Combobutton --
+
+Menubar --
+
+

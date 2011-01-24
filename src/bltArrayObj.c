@@ -194,7 +194,7 @@ Blt_NewArrayObj(int objc, Tcl_Obj **objv)
 	int isNew;
 
 	hp = Blt_CreateHashEntry(tablePtr, Tcl_GetString(objv[i]), &isNew);
-	objPtr = ((i + 1) == objc) ? Blt_EmptyStringObj() : objv[i+1];
+	objPtr = ((i + 1) == objc) ? Tcl_NewStringObj("", -1) : objv[i+1];
 	Tcl_IncrRefCount(objPtr);
 	if (!isNew) {
 	    Tcl_Obj *oldObjPtr;

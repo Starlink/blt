@@ -569,21 +569,16 @@ ReadXbm(Tcl_Interp *interp, const char *fileName, Blt_DBuffer buffer)
 }
 
 static Tcl_Obj *
-WriteXbm(Tcl_Interp *interp, Blt_Chain chain)
+WriteXbm(Tcl_Interp *interp, Blt_Picture picture)
 {
     Tcl_Obj *objPtr;
     Blt_DBuffer buffer;
     XbmExportSwitches switches;
-    Blt_Picture picture;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
     switches.bg.u32 = 0xFFFFFFFF; /* white */
 
-    picture = Blt_GetNthPicture(chain, 0);
-    if (picture == NULL) {
-	return Blt_EmptyStringObj();
-    }
     buffer = Blt_DBuffer_Create();
     if (PictureToXbm(interp, picture, buffer, &switches) != TCL_OK) {
 	objPtr = NULL;
@@ -643,7 +638,8 @@ ImportXbm(
 }
 
 static int
-ExportXbm(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
+ExportXbm(Tcl_Interp *interp, unsigned int index, Blt_Chain chain, int objc, 
+	  Tcl_Obj *const *objv)
 {
     XbmExportSwitches switches;
     Blt_DBuffer buffer;
@@ -652,7 +648,7 @@ ExportXbm(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
 
     memset(&switches, 0, sizeof(switches));
     switches.bg.u32 = 0xFFFFFFFF; /* Default bgcolor is white. */
-
+    switches.index = index;
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, 
 	&switches, BLT_SWITCH_DEFAULTS) < 0) {
 	Blt_FreeSwitches(exportSwitches, (char *)&switches, 0);

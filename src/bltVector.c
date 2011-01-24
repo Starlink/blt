@@ -469,19 +469,18 @@ void
 Blt_Vec_NotifyClients(ClientData clientData)
 {
     Vector *vPtr = clientData;
-    Blt_ChainLink link;
+    Blt_ChainLink link, next;
     Blt_VectorNotify notify;
 
     notify = (vPtr->notifyFlags & NOTIFY_DESTROYED)
 	? BLT_VECTOR_NOTIFY_DESTROY : BLT_VECTOR_NOTIFY_UPDATE;
     vPtr->notifyFlags &= ~(NOTIFY_UPDATED | NOTIFY_DESTROYED | NOTIFY_PENDING);
-
-    for (link = Blt_Chain_FirstLink(vPtr->chain); link != NULL;
-	link = Blt_Chain_NextLink(link)) {
+    for (link = Blt_Chain_FirstLink(vPtr->chain); link != NULL; link = next) {
 	VectorClient *clientPtr;
 
+	next = Blt_Chain_NextLink(link);
 	clientPtr = Blt_Chain_GetValue(link);
-	if (clientPtr->proc != NULL) {
+	if ((clientPtr->proc != NULL) && (clientPtr->serverPtr != NULL)) {
 	    (*clientPtr->proc) (vPtr->interp, clientPtr->clientData, notify);
 	}
     }

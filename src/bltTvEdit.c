@@ -151,7 +151,7 @@ typedef struct {
 				 * definitions. */
 
     /* Textbox-specific fields */
-    Blt_TreeView *tvPtr;
+    TreeView *viewPtr;
     int x, y;			/* Position of window. */
 
     int active;			/* Indicates that the frame is active. */
@@ -181,10 +181,10 @@ typedef struct {
     Tcl_TimerToken timerToken;	/* Handle for a timer event called periodically
 				 * to blink the cursor. */
     /* Data-specific fields. */
-    Blt_TreeViewEntry *entryPtr;	/* Selected entry */
-    Blt_TreeViewColumn *columnPtr;	/* Column of entry to be edited */
-    Blt_TreeViewStyle *stylePtr;
-    Blt_TreeViewIcon icon;
+    TreeViewEntry *entryPtr;	/* Selected entry */
+    TreeViewColumn *columnPtr;	/* Column of entry to be edited */
+    TreeViewStyle *stylePtr;
+    TreeViewIcon icon;
     int gap;
     char *string;
     TextLayout *textPtr;
@@ -193,9 +193,9 @@ typedef struct {
 
     Tk_3DBorder selBorder;
     int selRelief;
-    int selBorderWidth;
+    int selBW;
     XColor *selFgColor;		/* Text color of a selected entry. */
-    int buttonBorderWidth;
+    int buttonBW;
     Tk_3DBorder buttonBorder;
     int buttonRelief;
 } Textbox;
@@ -242,7 +242,7 @@ static Blt_ConfigSpec textboxConfigSpecs[] =
 	BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_PIXELS_NNEG, "-buttonborderwidth", "buttonBorderWidth", 
 	"ButtonBorderWidth", DEF_TEXTBOX_BUTTON_BORDERWIDTH, 
-	Blt_Offset(Textbox, buttonBorderWidth),
+	Blt_Offset(Textbox, buttonBW),
 	BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BOOLEAN, "-exportselection", "exportSelection",
 	"ExportSelection", DEF_TEXTBOX_EXPORT_SELECTION, 
@@ -258,7 +258,7 @@ static Blt_ConfigSpec textboxConfigSpecs[] =
 	BLT_CONFIG_COLOR_ONLY},
     {BLT_CONFIG_PIXELS_NNEG, "-selectborderwidth", "selectBorderWidth", 
         "BorderWidth", DEF_TEXTBOX_SELECT_BORDERWIDTH, 
-	Blt_Offset(Textbox, selBorderWidth), BLT_CONFIG_DONT_SET_DEFAULT},
+	Blt_Offset(Textbox, selBW), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_COLOR, "-selectforeground", "selectForeground", "Foreground",
 
 	DEF_TEXTBOX_SELECT_FG_MONO, Blt_Offset(Textbox, selFgColor),
@@ -401,7 +401,7 @@ TextboxEventProc(ClientData clientData, XEvent *eventPtr)
 	if (tbPtr->timerToken != NULL) {
 	    Tcl_DeleteTimerHandler(tbPtr->timerToken);
 	}
-	tbPtr->tvPtr->comboWin = NULL;
+	tbPtr->viewPtr->comboWin = NULL;
 	Tcl_EventuallyFree(tbPtr, DestroyTextbox);
     }
 }
@@ -447,8 +447,8 @@ PointerToIndex(Textbox *tbPtr, int x, int y)
     if ((tbPtr->string == NULL) || (tbPtr->string[0] == '\0')) {
 	return 0;
     }
-    x -= tbPtr->selBorderWidth;
-    y -= tbPtr->selBorderWidth;
+    x -= tbPtr->selBW;
+    y -= tbPtr->selBW;
 
     textPtr = tbPtr->textPtr;
 
@@ -525,7 +525,7 @@ IndexToPointer(Textbox *tbPtr)
     sum = 0;
     x = y = tbPtr->borderWidth;
     if (tbPtr->icon != NULL) {
-	x += Blt_TreeView_IconWidth(tbPtr->icon) + 2 * tbPtr->gap;
+	x += TreeView_IconWidth(tbPtr->icon) + 2 * tbPtr->gap;
     }
     fragPtr = textPtr->fragments;
     for (i = 0; i <= maxLines; i++) {
@@ -550,18 +550,18 @@ IndexToPointer(Textbox *tbPtr)
 static void
 UpdateLayout(Textbox *tbPtr)
 {
-    Blt_TreeView *tvPtr;
+    TreeView *viewPtr;
     TextStyle ts;
     int width, height;
     TextLayout *textPtr;
     int gap, offset;
     int iw, ih;
 
-    tvPtr = tbPtr->tvPtr;
+    viewPtr = tbPtr->viewPtr;
     offset = gap = iw = ih = 0;
     if (tbPtr->icon != NULL) {
-	iw = Blt_TreeView_IconWidth(tbPtr->icon) + 4;
-	ih = Blt_TreeView_IconHeight(tbPtr->icon);
+	iw = TreeView_IconWidth(tbPtr->icon) + 4;
+	ih = TreeView_IconHeight(tbPtr->icon);
 	gap = tbPtr->gap;
     }
 
@@ -576,10 +576,10 @@ UpdateLayout(Textbox *tbPtr)
 
     width = iw + textPtr->width + gap * 2;
     height = MAX(ih, textPtr->height);
-    if ((tbPtr->columnPtr == &tvPtr->treeColumn) && (!tvPtr->flatView)) {
+    if ((tbPtr->columnPtr == &viewPtr->treeColumn) && (!viewPtr->flatView)) {
 	int level;
 	
-	level = DEPTH(tvPtr, tbPtr->entryPtr->node);
+	level = DEPTH(viewPtr, tbPtr->entryPtr->node);
 	offset = -(ICONWIDTH(level) + 2);
     }
 
@@ -720,37 +720,37 @@ DeleteText(Textbox *tbPtr, int firstPos, int lastPos)
 }
 
 static int
-AcquireText(Blt_TreeView *tvPtr, Textbox *tbPtr, Blt_TreeViewEntry *entryPtr, 
-	    Blt_TreeViewColumn *columnPtr)
+AcquireText(TreeView *viewPtr, Textbox *tbPtr, TreeViewEntry *entryPtr, 
+	    TreeViewColumn *columnPtr)
 {
-    Blt_TreeViewStyle *stylePtr;
+    TreeViewStyle *stylePtr;
     int x, y;
     const char *string;
-    Blt_TreeViewIcon icon;
+    TreeViewIcon icon;
 
-    if (columnPtr == &tvPtr->treeColumn) {
+    if (columnPtr == &viewPtr->treeColumn) {
 	int level;
 
-	level = DEPTH(tvPtr, entryPtr->node);
-	x = SCREENX(tvPtr, entryPtr->worldX);
-	y = SCREENY(tvPtr, entryPtr->worldY);
+	level = DEPTH(viewPtr, entryPtr->node);
+	x = SCREENX(viewPtr, entryPtr->worldX);
+	y = SCREENY(viewPtr, entryPtr->worldY);
 #ifdef notdef
 	x += ICONWIDTH(level) + ICONWIDTH(level + 1) + 4;
 #endif
-	if (!tvPtr->flatView) {
+	if (!viewPtr->flatView) {
 	    x += ICONWIDTH(level);
 	}
 	string = GETLABEL(entryPtr);
 	stylePtr = columnPtr->stylePtr;
-	icon = Blt_TreeView_GetEntryIcon(tvPtr, entryPtr);
+	icon = Blt_TreeView_GetEntryIcon(viewPtr, entryPtr);
     } else {
-	Blt_TreeViewValue *valuePtr;
+	TreeViewValue *valuePtr;
 
-	x = SCREENX(tvPtr, columnPtr->worldX);
-	y = SCREENY(tvPtr, entryPtr->worldY);
+	x = SCREENX(viewPtr, columnPtr->worldX);
+	y = SCREENY(viewPtr, entryPtr->worldY);
 	stylePtr = columnPtr->stylePtr;
 	valuePtr = Blt_TreeView_FindValue(entryPtr, columnPtr);
-	string = valuePtr->string;
+	string = valuePtr->fmtString;
 	if (valuePtr->stylePtr != NULL) {
 	    stylePtr = valuePtr->stylePtr;
 	}
@@ -775,7 +775,7 @@ AcquireText(Blt_TreeView *tvPtr, Textbox *tbPtr, Blt_TreeViewEntry *entryPtr,
     tbPtr->gap = stylePtr->gap;
     tbPtr->string = Blt_AssertStrdup(string);
     tbPtr->gc = Blt_TreeView_GetStyleGC(stylePtr);
-    tbPtr->font = Blt_TreeView_GetStyleFont(tvPtr, stylePtr);
+    tbPtr->font = Blt_TreeView_GetStyleFont(viewPtr, stylePtr);
     tbPtr->selFirst = tbPtr->selLast = -1;
     UpdateLayout(tbPtr);
     Tk_MapWindow(tbPtr->tkwin);
@@ -999,7 +999,7 @@ ConfigureTextbox(Textbox *tbPtr)
 {
 #ifdef notdef
     GC newGC;
-    Textbox *tbPtr = tvPtr->tbPtr;
+    Textbox *tbPtr = viewPtr->tbPtr;
     XGCValues gcValues;
     unsigned long gcMask;
 
@@ -1027,57 +1027,56 @@ ConfigureTextbox(Textbox *tbPtr)
 }
 
 int
-Blt_TreeView_CreateTextbox(Blt_TreeView *tvPtr, Blt_TreeViewEntry *entryPtr, 
-		     Blt_TreeViewColumn *columnPtr)
+Blt_TreeView_CreateTextbox(TreeView *viewPtr, TreeViewEntry *entryPtr, 
+			   TreeViewColumn *columnPtr)
 {
     Tk_Window tkwin;
     Textbox *tbPtr;
-    char editClass[200];
 
-    if (tvPtr->comboWin != NULL) {
-	Tk_DestroyWindow(tvPtr->comboWin);
+    if (viewPtr->comboWin != NULL) {
+	Tk_DestroyWindow(viewPtr->comboWin);
     }
-    tkwin = Tk_CreateWindow(tvPtr->interp, tvPtr->tkwin, "edit", (char *)NULL);
+    tkwin = Tk_CreateWindow(viewPtr->interp, viewPtr->tkwin, "edit", 
+	(char *)NULL);
     if (tkwin == NULL) {
 	return TCL_ERROR;
     }
 
     Tk_MakeWindowExist(tkwin);
 
-    sprintf_s(editClass, 200, "%sEditor", Tk_Class(tvPtr->tkwin));
-    Tk_SetClass(tkwin, editClass); 
+    Tk_SetClass(tkwin, "TreeViewEditor"); 
 
     tbPtr = Blt_AssertCalloc(1, sizeof(Textbox));
 
-    tbPtr->interp = tvPtr->interp;
+    tbPtr->interp = viewPtr->interp;
     tbPtr->display = Tk_Display(tkwin);
     tbPtr->tkwin = tkwin;
     tbPtr->borderWidth = 1;
     tbPtr->relief = TK_RELIEF_SOLID;
     tbPtr->selRelief = TK_RELIEF_FLAT;
-    tbPtr->selBorderWidth = 1;
+    tbPtr->selBW = 1;
     tbPtr->selAnchor = -1;
     tbPtr->selFirst = tbPtr->selLast = -1;
     tbPtr->onTime = 600;
     tbPtr->active = TRUE;
     tbPtr->offTime = 300;
-    tbPtr->tvPtr = tvPtr;
+    tbPtr->viewPtr = viewPtr;
     tbPtr->buttonRelief = TK_RELIEF_SUNKEN;
-    tbPtr->buttonBorderWidth = 1;
-    tvPtr->comboWin = tkwin;
+    tbPtr->buttonBW = 1;
+    viewPtr->comboWin = tkwin;
     Blt_SetWindowInstanceData(tkwin, tbPtr);
     Tk_CreateSelHandler(tkwin, XA_PRIMARY, XA_STRING, 
 	TextboxSelectionProc, tbPtr, XA_STRING);
     Tk_CreateEventHandler(tkwin, ExposureMask | StructureNotifyMask |
 	FocusChangeMask, TextboxEventProc, tbPtr);
-    Tcl_CreateObjCommand(tvPtr->interp, Tk_PathName(tkwin), 
+    Tcl_CreateObjCommand(viewPtr->interp, Tk_PathName(tkwin), 
 	TextboxCmd, tbPtr, NULL);
-    if (Blt_ConfigureWidgetFromObj(tvPtr->interp, tkwin, textboxConfigSpecs, 0, 
+    if (Blt_ConfigureWidgetFromObj(viewPtr->interp, tkwin, textboxConfigSpecs, 0, 
 	(Tcl_Obj **)NULL, (char *)tbPtr, 0) != TCL_OK) {
 	Tk_DestroyWindow(tkwin);
 	return TCL_ERROR;
     }
-    AcquireText(tvPtr, tbPtr, entryPtr, columnPtr);
+    AcquireText(viewPtr, tbPtr, entryPtr, columnPtr);
     tbPtr->insertPos = strlen(tbPtr->string);
     
     Tk_MoveResizeWindow(tkwin, tbPtr->x, tbPtr->y, tbPtr->width, tbPtr->height);
@@ -1128,12 +1127,12 @@ DisplayTextbox(ClientData clientData)
 #endif
 
     if (tbPtr->icon != NULL) {
-	y += (tbPtr->height - Blt_TreeView_IconHeight(tbPtr->icon)) / 2;
-	Tk_RedrawImage(Blt_TreeView_IconBits(tbPtr->icon), 0, 0, 
-		       Blt_TreeView_IconWidth(tbPtr->icon), 
-		       Blt_TreeView_IconHeight(tbPtr->icon), 
+	y += (tbPtr->height - TreeView_IconHeight(tbPtr->icon)) / 2;
+	Tk_RedrawImage(TreeView_IconBits(tbPtr->icon), 0, 0, 
+		       TreeView_IconWidth(tbPtr->icon), 
+		       TreeView_IconHeight(tbPtr->icon), 
 		       drawable, x, y);
-	x += Blt_TreeView_IconWidth(tbPtr->icon) + tbPtr->gap;
+	x += TreeView_IconWidth(tbPtr->icon) + tbPtr->gap;
     }
     
     Blt_GetFontMetrics(tbPtr->font, &fontMetrics);
@@ -1193,7 +1192,7 @@ DisplayTextbox(ClientData clientData)
 	    Blt_Fill3DRectangle(tbPtr->tkwin, drawable, tbPtr->selBorder,
 		x1, y + fragPtr->y - fontMetrics.ascent, 
 	        width, fontMetrics.linespace,
-		tbPtr->selBorderWidth, tbPtr->selRelief);
+		tbPtr->selBW, tbPtr->selRelief);
 	}
 	Blt_DrawChars(Tk_Display(tbPtr->tkwin), drawable, tbPtr->gc, 
 		tbPtr->font, Tk_Depth(tbPtr->tkwin), 0.0f, fragPtr->text, 
@@ -1230,11 +1229,11 @@ DisplayTextbox(ClientData clientData)
 static int
 ApplyOp(Textbox *tbPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
-    Blt_TreeViewEntry *entryPtr;
-    Blt_TreeView *tvPtr = tbPtr->tvPtr;
-    Blt_TreeViewColumn *columnPtr;
+    TreeViewEntry *entryPtr;
+    TreeView *viewPtr = tbPtr->viewPtr;
+    TreeViewColumn *columnPtr;
     int valid;
-    Blt_TreeViewStyle *stylePtr;
+    TreeViewStyle *stylePtr;
     char *newValue;
 
     entryPtr = tbPtr->entryPtr;
@@ -1243,8 +1242,8 @@ ApplyOp(Textbox *tbPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 
     columnPtr = tbPtr->columnPtr;
     stylePtr = NULL;
-    if (columnPtr != &tvPtr->treeColumn) {
-	Blt_TreeViewValue *valuePtr;
+    if (columnPtr != &viewPtr->treeColumn) {
+	TreeViewValue *valuePtr;
 
 	valuePtr = Blt_TreeView_FindValue(tbPtr->entryPtr, columnPtr);
 	if (valuePtr != NULL) {
@@ -1258,7 +1257,7 @@ ApplyOp(Textbox *tbPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 	Tcl_DString dString;
 	int result;
 
-	Blt_TreeView_PercentSubst(tvPtr, entryPtr, stylePtr->validateCmd, &dString);
+	Blt_TreeView_PercentSubst(viewPtr, entryPtr, stylePtr->validateCmd, &dString);
 	Tcl_DStringAppend(&dString, " ", -1);
 	Tcl_DStringAppend(&dString, tbPtr->string, -1);
 	result = Tcl_GlobalEval(interp, Tcl_DStringValue(&dString));
@@ -1270,20 +1269,20 @@ ApplyOp(Textbox *tbPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 	}
     }
     if (valid) {
-	if (columnPtr == &tvPtr->treeColumn) {
+	if (columnPtr == &viewPtr->treeColumn) {
 	    if (entryPtr->labelUid != NULL) {
-		Blt_TreeView_FreeUid(tvPtr, entryPtr->labelUid);
+		Blt_TreeView_FreeUid(viewPtr, entryPtr->labelUid);
 	    }
 	    if (newValue == NULL) {
-		entryPtr->labelUid = Blt_TreeView_GetUid(tvPtr, "");
+		entryPtr->labelUid = Blt_TreeView_GetUid(viewPtr, "");
 	    } else {
-		entryPtr->labelUid = Blt_TreeView_GetUid(tvPtr, newValue);
+		entryPtr->labelUid = Blt_TreeView_GetUid(viewPtr, newValue);
 	    }
 	} else {
 	    Tcl_Obj *objPtr;
 	    
 	    objPtr = Tcl_NewStringObj(newValue, -1);
-	    if (Blt_Tree_SetValueByKey(interp, tvPtr->tree, entryPtr->node, 
+	    if (Blt_Tree_SetValueByKey(interp, viewPtr->tree, entryPtr->node, 
 		columnPtr->key, objPtr) != TCL_OK) {
 		Tcl_DecrRefCount(objPtr);
 		return TCL_ERROR;
@@ -1291,10 +1290,10 @@ ApplyOp(Textbox *tbPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 	    entryPtr->flags |= ENTRY_DIRTY;
 	}	
     }
-    if (tvPtr != NULL) {
-	Blt_TreeView_ConfigureEntry(tvPtr, entryPtr, 0, NULL, BLT_CONFIG_OBJV_ONLY);
-	tvPtr->flags |= (TV_LAYOUT | TV_DIRTY);
-	Blt_TreeView_EventuallyRedraw(tvPtr);
+    if (viewPtr != NULL) {
+	Blt_TreeView_ConfigureEntry(viewPtr, entryPtr, 0, NULL, BLT_CONFIG_OBJV_ONLY);
+	viewPtr->flags |= (LAYOUT_PENDING | DIRTY);
+	Blt_TreeView_EventuallyRedraw(viewPtr);
     }
     Tk_DestroyWindow(tbPtr->tkwin);
     return TCL_OK;
@@ -1340,7 +1339,7 @@ CgetOp(Textbox *tbPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
  *
  * Side effects:
  *	Configuration information, such as text string, colors, font,
- *	etc. get set for tvPtr; old resources get freed, if there
+ *	etc. get set for viewPtr; old resources get freed, if there
  *	were any.  The hypertext is redisplayed.
  *
  *---------------------------------------------------------------------------

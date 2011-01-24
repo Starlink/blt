@@ -9,6 +9,9 @@
 #include "bltPicture.h"
 #include "bltPictFmts.h"
 
+#define FALSE	0
+#define TRUE	1
+
 #ifdef HAVE_MEMORY_H
 #  include <memory.h>
 #endif /* HAVE_MEMORY_H */
@@ -120,6 +123,12 @@ PictureToPhoto(
     return TCL_OK;
 }
 
+static int
+IsPhoto(Blt_DBuffer buffer)
+{
+    return FALSE;
+}
+
 static Blt_Chain
 ImportPhoto(
     Tcl_Interp *interp, 
@@ -148,7 +157,8 @@ ImportPhoto(
 }
 
 static int
-ExportPhoto(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
+ExportPhoto(Tcl_Interp *interp, unsigned int index, Blt_Chain chain, int objc, 
+	    Tcl_Obj *const *objv)
 {
     int result;
     PhotoExportSwitches switches;
@@ -156,7 +166,7 @@ ExportPhoto(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
-
+    switches.index = index;
     result = TCL_ERROR;
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, 
 	&switches, BLT_SWITCH_DEFAULTS) < 0) {
@@ -167,11 +177,10 @@ ExportPhoto(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
 		(char *)NULL);
 	goto error;
     }
-    picture = Blt_GetNthPicture(chain, 0);
+    picture = Blt_GetNthPicture(chain, switches.index);
     if (picture == NULL) {
-	Tcl_AppendResult(interp, "no pictures to convert in \"", 
-		Tcl_GetString(objv[2]), "\"", (char *)NULL);
-	return TCL_ERROR;
+	Tcl_AppendResult(interp, "bad picture index.", (char *)NULL);
+	goto error;
     }
     result = PictureToPhoto(interp, picture, &switches);
     if (result != TCL_OK) {
@@ -202,7 +211,7 @@ Blt_PicturePhotoInit(Tcl_Interp *interp)
     }
     return Blt_PictureRegisterFormat(interp,
 	"photo",		/* Name of format. */
-	NULL,			/* Discovery routine. */
+	IsPhoto,		/* Discovery routine. */
 	NULL,			/* Read format procedure. */
 	NULL,			/* Write format procedure. */
 	ImportPhoto,		/* Import format procedure. */

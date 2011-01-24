@@ -84,13 +84,13 @@ typedef Blt_Chain (Blt_PictureReadDataProc)(Tcl_Interp *interp,
 	const char *fileName, Blt_DBuffer buffer);
 
 typedef Tcl_Obj *(Blt_PictureWriteDataProc)(Tcl_Interp *interp, 
-	Blt_Chain chain);
+	Blt_Picture picture);
 
 typedef Blt_Chain (Blt_PictureImportProc)(Tcl_Interp *interp, int objc, 
 	Tcl_Obj *const *objv, const char **fileNamePtr);
 
-typedef int (Blt_PictureExportProc)(Tcl_Interp *interp, Blt_Chain chain, 
-	int objc, Tcl_Obj *const *objv);
+typedef int (Blt_PictureExportProc)(Tcl_Interp *interp, unsigned int index,
+	Blt_Chain chain, int objc, Tcl_Obj *const *objv);
 
 BLT_EXTERN int Blt_PictureRegisterFormat(Tcl_Interp *interp, 
 	const char *name, 
@@ -101,6 +101,5 @@ BLT_EXTERN int Blt_PictureRegisterFormat(Tcl_Interp *interp,
 	Blt_PictureExportProc *exportProc);
 
 BLT_EXTERN Blt_Picture Blt_GetNthPicture(Blt_Chain chain, size_t index);
-BLT_EXTERN Tcl_Obj *Blt_EmptyStringObj(void);
 
 #endif /* _BLT_PIC_FMTS_H */

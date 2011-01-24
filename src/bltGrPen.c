@@ -576,7 +576,7 @@ ConfigureOp(Tcl_Interp *interp, Graph *graphPtr, int objc, Tcl_Obj *const *objv)
 	}
     }
     if (redraw) {
-	graphPtr->flags |= REDRAW_BACKING_STORE;
+	graphPtr->flags |= CACHE_DIRTY;
 	Blt_EventuallyRedrawGraph(graphPtr);
     }
     if (i < nNames) {

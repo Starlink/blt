@@ -2364,7 +2364,7 @@ Blt_EmulateXCopyPlane(
 #if WINDEBUG
 	PurifyPrintf("mask %s src\n", (mask == src) ? "==" : "!=");
 	PurifyPrintf("GetDeviceCaps=%x\n", 
-		GetDeviceCaps(destDC, TECHNOLOGY) & DT_RASDISPLAY);
+		GetDeviceCaps(destDC, TECHNOLOGY) & TABLE_RASDISPLAY);
 #endif
 	{
 	    HDC maskDC;
@@ -2926,3 +2926,4 @@ Blt_TextOut(
 	DeleteDC(memDC);
     }
 }
+

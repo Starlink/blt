@@ -33,14 +33,10 @@ proc FormatLabel { w value } {
 
 source scripts/stipples.tcl
 
-image create picture bgTexture -file ./images/rain.gif
-
 set normalBg [blt::bgpattern create gradient -shape linear \
 		  -dir y -low white -high grey -relativeto self]
-
-#option add *tile			bgTexture
-
-option add *Button.tile			""
+set normalBg [blt::bgpattern create solid -color lightblue -opacity 50]
+#set normalBg lightblue
 
 option add *Htext.tileOffset		no
 
@@ -52,7 +48,7 @@ option add *x.Command	FormatLabel
 option add *y.Title	"Y Axis Label"
 option add *x.tickFont  "{San Serif} 8"
 option add *Element.Background		white
-option add *Element.Relief		solid
+#option add *Element.Relief		solid
 option add *Element.BorderWidth		1
 
 option add *Legend.hide			yes
@@ -98,7 +94,7 @@ blt::htext .footer -text {
 
 %% }
 
-blt::barchart .bc
+blt::barchart .bc -plotpadx 10
 
 .bc configure -bg white -plotborderwidth 0
 #
@@ -123,7 +119,8 @@ foreach stipple $bitmaps {
     set yhigh [expr $y + 0.5]
     set ylow [expr $y - 0.5]
     .bc element create $label -y $y -x $count \
-	 -fg "" -bg $normalBg -yhigh $yhigh -ylow $ylow -errorbarcolor brown
+	 -fg "" -bg $normalBg -yhigh $yhigh -ylow $ylow -errorbarcolor brown \
+	-relief raised -bd 2
     set elemLabels($count) $label
     incr count
 }

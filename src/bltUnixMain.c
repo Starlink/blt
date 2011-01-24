@@ -91,6 +91,7 @@ BLT_EXTERN Tcl_AppInitProc Blt_PictureGifInit;
 BLT_EXTERN Tcl_AppInitProc Blt_PictureJpgInit;
 BLT_EXTERN Tcl_AppInitProc Blt_PicturePbmInit;
 BLT_EXTERN Tcl_AppInitProc Blt_PicturePhotoInit;
+BLT_EXTERN Tcl_AppInitProc Blt_PicturePdfInit;
 BLT_EXTERN Tcl_AppInitProc Blt_PicturePngInit;
 BLT_EXTERN Tcl_AppInitProc Blt_PicturePsInit;
 BLT_EXTERN Tcl_AppInitProc Blt_PictureTifInit;
@@ -99,14 +100,14 @@ BLT_EXTERN Tcl_AppInitProc Blt_PictureXpmInit;
 #endif /* TCL_ONLY */
 
 /* Data table format packages. */
-BLT_EXTERN Tcl_AppInitProc Blt_DataTable_CsvInit;
+BLT_EXTERN Tcl_AppInitProc Blt_Table_CsvInit;
 #ifdef HAVE_LIBMYSQL
-BLT_EXTERN Tcl_AppInitProc Blt_DataTable_MysqlInit;
+BLT_EXTERN Tcl_AppInitProc Blt_Table_MysqlInit;
 #endif	/* HAVE_LIBMYSQL */
-BLT_EXTERN Tcl_AppInitProc Blt_DataTable_TreeInit;
-BLT_EXTERN Tcl_AppInitProc Blt_DataTable_VectorInit;
+BLT_EXTERN Tcl_AppInitProc Blt_Table_TreeInit;
+BLT_EXTERN Tcl_AppInitProc Blt_Table_VectorInit;
 #ifdef HAVE_LIBEXPAT
-BLT_EXTERN Tcl_AppInitProc Blt_DataTable_XmlInit;
+BLT_EXTERN Tcl_AppInitProc Blt_Table_XmlInit;
 #endif
 
 /* Tree format packages. */
@@ -148,40 +149,40 @@ Initialize(Tcl_Interp *interp)	/* Interpreter for application. */
 
 #ifdef STATIC_PKGS
     /* Tcl-only static packages */
-    if (Blt_DataTable_CsvInit(interp) != TCL_OK) {
+    if (Blt_Table_CsvInit(interp) != TCL_OK) {
 	return TCL_ERROR;
     }
 
     /* Data table packages. */
-    Tcl_StaticPackage(interp, "blt_datatable_csv", Blt_DataTable_CsvInit, 
-	Blt_DataTable_CsvInit);
+    Tcl_StaticPackage(interp, "blt_datatable_csv", Blt_Table_CsvInit, 
+	Blt_Table_CsvInit);
 
 #ifdef HAVE_LIBMYSQL
-    if (Blt_DataTable_MysqlInit(interp) != TCL_OK) {
+    if (Blt_Table_MysqlInit(interp) != TCL_OK) {
 	return TCL_ERROR;
     }
-    Tcl_StaticPackage(interp, "blt_datatable_mysql", Blt_DataTable_MysqlInit, 
-	Blt_DataTable_MysqlInit);
+    Tcl_StaticPackage(interp, "blt_datatable_mysql", Blt_Table_MysqlInit, 
+	Blt_Table_MysqlInit);
 #endif	/* HAVE_LIBMYSQL */
 
-    if (Blt_DataTable_TreeInit(interp) != TCL_OK) {
+    if (Blt_Table_TreeInit(interp) != TCL_OK) {
 	return TCL_ERROR;
     }
-    Tcl_StaticPackage(interp, "blt_datatable_tree", Blt_DataTable_TreeInit, 
-	Blt_DataTable_TreeInit);
+    Tcl_StaticPackage(interp, "blt_datatable_tree", Blt_Table_TreeInit, 
+	Blt_Table_TreeInit);
 
-    if (Blt_DataTable_VectorInit(interp) != TCL_OK) {
+    if (Blt_Table_VectorInit(interp) != TCL_OK) {
 	return TCL_ERROR;
     }
-    Tcl_StaticPackage(interp, "blt_datatable_vector", Blt_DataTable_VectorInit,
-	Blt_DataTable_VectorInit);
+    Tcl_StaticPackage(interp, "blt_datatable_vector", Blt_Table_VectorInit,
+	Blt_Table_VectorInit);
 
 #ifdef HAVE_LIBEXPAT
-    if (Blt_DataTable_XmlInit(interp) != TCL_OK) {
+    if (Blt_Table_XmlInit(interp) != TCL_OK) {
 	return TCL_ERROR;
     }
-    Tcl_StaticPackage(interp, "blt_datatable_xml", Blt_DataTable_XmlInit, 
-	Blt_DataTable_XmlInit);
+    Tcl_StaticPackage(interp, "blt_datatable_xml", Blt_Table_XmlInit, 
+	Blt_Table_XmlInit);
 #endif	/* HAVE_LIBEXPAT */
 
     /* Tree packages. */
@@ -252,6 +253,12 @@ Initialize(Tcl_Interp *interp)	/* Interpreter for application. */
     }
     Tcl_StaticPackage(interp, "blt_picture_ps", Blt_PicturePsInit, 
 	Blt_PicturePsInit);
+
+    if (Blt_PicturePdfInit(interp) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    Tcl_StaticPackage(interp, "blt_picture_pdf", Blt_PicturePdfInit, 
+	Blt_PicturePdfInit);
 
 #ifdef HAVE_LIBTIF
     if (Blt_PictureTifInit(interp) != TCL_OK) {

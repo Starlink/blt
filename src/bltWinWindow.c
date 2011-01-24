@@ -236,6 +236,36 @@ Blt_GetWindowRegion(
     return TCL_OK;
 }
 
+void
+Blt_GetRootCoords(
+    Display *display,
+    Window window,
+    int *xPtr, int *yPtr, 
+    int *widthPtr, int *heightPtr)
+{
+    int result;
+    RECT region;
+    TkWinWindow *winPtr = (TkWinWindow *)window;
+
+    result = GetWindowRect(winPtr->handle, &region);
+    if (!result) {
+	return TCL_ERROR;
+    }
+    if (xPtr != NULL) {
+	*xPtr = region.left;
+    }
+    if (yPtr != NULL) {
+	*yPtr = region.top;
+    }
+    if (widthPtr != NULL) {
+	*widthPtr = region.right - region.left;
+    }
+    if (heightPtr != NULL) {
+	*heightPtr = region.bottom - region.top;
+    }
+    return TCL_OK;
+}
+
 /*
  *---------------------------------------------------------------------------
  *
@@ -291,7 +321,7 @@ Blt_GetToplevelWindow(Tk_Window tkwin) /* Window for which the toplevel
 /*
  *---------------------------------------------------------------------------
  *
- * Blt_RaiseToLevelWindow --
+ * Blt_RaiseTopLevelWindow --
  *
  * Results:
  *	None.

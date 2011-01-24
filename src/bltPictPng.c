@@ -598,21 +598,17 @@ ReadPng(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer)
 }
 
 static Tcl_Obj *
-WritePng(Tcl_Interp *interp, Blt_Chain chain)
+WritePng(Tcl_Interp *interp, Blt_Picture picture)
 {
-    Tcl_Obj *objPtr;
     Blt_DBuffer dbuffer;
     PngExportSwitches switches;
-    Blt_Picture picture;
+    Tcl_Obj *objPtr;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
-    dbuffer = Blt_DBuffer_Create();
+
     objPtr = NULL;
-    picture = Blt_GetNthPicture(chain, 0);
-    if (picture == NULL) {
-	return Blt_EmptyStringObj();
-    }
+    dbuffer = Blt_DBuffer_Create();
     if (PictureToPng(interp, picture, dbuffer, &switches) == TCL_OK) {
 	char *bytes;
 
@@ -654,7 +650,7 @@ ImportPng(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv,
 	int nBytes;
 
 	bytes = Tcl_GetByteArrayFromObj(switches.dataObjPtr, &nBytes);
-	if (Blt_IsBase64((const char *)bytes, nBytes)) {
+	if (Blt_IsBase64(bytes, nBytes)) {
 	    if (Blt_DBuffer_DecodeBase64(interp, string, nBytes, dbuffer) 
 		!= TCL_OK) {
 		goto error;
@@ -679,7 +675,8 @@ ImportPng(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv,
 }
 
 static int
-ExportPng(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
+ExportPng(Tcl_Interp *interp, unsigned int index, Blt_Chain chain, int objc, 
+	  Tcl_Obj *const *objv)
 {
     PngExportSwitches switches;
     Blt_DBuffer dbuffer;
@@ -688,7 +685,7 @@ ExportPng(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
-
+    switches.index = index;
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, 
 	&switches, BLT_SWITCH_DEFAULTS) < 0) {
 	Blt_FreeSwitches(exportSwitches, (char *)&switches, 0);

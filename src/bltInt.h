@@ -52,7 +52,6 @@
 #  define _CRT_SECURE_NO_DEPRECATE
 #  define _CRT_NONSTDC_NO_DEPRECATE
 #endif
-
 #ifdef WIN32
 #  define STRICT
 #  define WIN32_LEAN_AND_MEAN
@@ -220,6 +219,9 @@ BLT_EXTERN void Blt_Fill3DRectangle(Tk_Window tkwin, Drawable drawable,
 #define RGB_GREEN		"#00ff00"
 #define RGB_GREY		"#b0b0b0"
 #define RGB_GREY15		"#262626"
+#define RGB_GREY20		"#333333"
+#define RGB_GREY25		"#404040"
+#define RGB_GREY30		"#4d4d4d"
 #define RGB_GREY35		"#595959"
 #define RGB_GREY40		"#666666"
 #define RGB_GREY50		"#7f7f7f"
@@ -232,6 +234,7 @@ BLT_EXTERN void Blt_Fill3DRectangle(Tk_Window tkwin, Drawable drawable,
 #define RGB_GREY90		"#e5e5e5"
 #define RGB_GREY93		"#ececec"
 #define RGB_GREY95		"#f2f2f2"
+#define RGB_GREY97		"#f7f7f7"
 #define RGB_LIGHTBLUE0		"#e4f7ff"
 #define RGB_LIGHTBLUE00		"#D9F5FF"
 #define RGB_LIGHTBLUE1		"#bfefff"
@@ -242,6 +245,7 @@ BLT_EXTERN void Blt_Fill3DRectangle(Tk_Window tkwin, Drawable drawable,
 #define RGB_PINK		"#ffc0cb"
 #define RGB_BISQUE1		"#ffe4c4"
 #define RGB_RED			"#ff0000"
+#define RGB_RED3		"#cd0000"
 #define RGB_WHITE		"#ffffff"
 #define RGB_YELLOW		"#ffff00"
 #define RGB_SKYBLUE4		"#4a708b"
@@ -250,10 +254,12 @@ BLT_EXTERN void Blt_Fill3DRectangle(Tk_Window tkwin, Drawable drawable,
 #define STD_NORMAL_BACKGROUND	RGB_BISQUE1
 #define STD_ACTIVE_BACKGROUND	RGB_BISQUE2
 #define STD_SELECT_BACKGROUND	RGB_LIGHTBLUE1
+#define STD_SELECT_FOREGROUND	RGB_BLACK
 #else
 #define STD_NORMAL_BACKGROUND	RGB_GREY85
 #define STD_ACTIVE_BACKGROUND	RGB_GREY90
-#define STD_SELECT_BACKGROUND	RGB_LIGHTBLUE00
+#define STD_SELECT_BACKGROUND	RGB_SKYBLUE4
+#define STD_SELECT_FOREGROUND	RGB_WHITE
 #endif /* OLD_TK_COLORS */
 
 #define STD_ACTIVE_BG_MONO	RGB_BLACK
@@ -262,25 +268,24 @@ BLT_EXTERN void Blt_Fill3DRectangle(Tk_Window tkwin, Drawable drawable,
 #define STD_BORDERWIDTH 	"2"
 #define STD_FONT_HUGE		"{Sans Serif} 18"
 #define STD_FONT_LARGE		"{Sans Serif} 14"
-#define STD_FONT_MEDIUM		"{Sans Serif} 12"
-#define STD_FONT_NORMAL		"{Sans Serif} 11"
-#define STD_FONT_SMALL		"{Sans Serif} 9"
-#define	STD_FONT_NUMBERS	"Math 9"
+#define STD_FONT_MEDIUM		"{Sans Serif} 11"
+#define STD_FONT_NORMAL		"{Sans Serif} 9"
+#define STD_FONT_SMALL		"{Sans Serif} 8"
+#define	STD_FONT_NUMBERS	"Math 8"
 #define STD_FONT		STD_FONT_NORMAL
-#define STD_INDICATOR_COLOR	RGB_MAROON
+#define STD_INDICATOR_COLOR	RGB_RED3
 #define STD_NORMAL_BG_MONO	RGB_WHITE
 #define STD_NORMAL_FOREGROUND	RGB_BLACK
 #define STD_NORMAL_FG_MONO	RGB_BLACK
 #define STD_SELECT_BG_MONO	RGB_BLACK
 #define STD_SELECT_BORDERWIDTH	"2"
-#define STD_SELECT_FOREGROUND	RGB_BLACK
 #define STD_SELECT_FG_MONO	RGB_WHITE
 #define STD_SHADOW_MONO		RGB_BLACK
 #define STD_SELECT_FONT_HUGE	"{Sans Serif} 18 Bold"
 #define STD_SELECT_FONT_LARGE	"{Sans Serif} 14 Bold"
-#define STD_SELECT_FONT_MEDIUM	"{Sans Serif} 12 Bold"
-#define STD_SELECT_FONT_NORMAL	"{Sans Serif} 11 Bold"
-#define STD_SELECT_FONT_SMALL	"{Sans Serif} 9 Bold"
+#define STD_SELECT_FONT_MEDIUM	"{Sans Serif} 11 Bold"
+#define STD_SELECT_FONT_NORMAL	"{Sans Serif} 9 Bold"
+#define STD_SELECT_FONT_SMALL	"{Sans Serif} 8 Bold"
 #define STD_SELECT_FONT		STD_SELECT_FONT_NORMAL
 #define STD_DISABLED_FOREGROUND	RGB_GREY70
 #define STD_DISABLED_BACKGROUND	RGB_GREY90
@@ -474,10 +479,10 @@ BLT_EXTERN const char *Blt_Dtoa(Tcl_Interp *interp, double value);
 BLT_EXTERN unsigned char *Blt_Base64_Decode(Tcl_Interp *interp, 
 	const char *string, size_t *lengthPtr);
 
-BLT_EXTERN char *Blt_Base64_Encode(Tcl_Interp *interp, unsigned char *buffer,
-	size_t bufsize);
+BLT_EXTERN char *Blt_Base64_Encode(Tcl_Interp *interp, 
+	const unsigned char *buffer, size_t bufsize);
 
-BLT_EXTERN int Blt_IsBase64(const char *buf, size_t length);
+BLT_EXTERN int Blt_IsBase64(const unsigned char *buf, size_t length);
 
 BLT_EXTERN int Blt_InitCmd (Tcl_Interp *interp, const char *namespace, 
 	Blt_InitCmdSpec *specPtr);
@@ -487,6 +492,13 @@ BLT_EXTERN int Blt_InitCmds (Tcl_Interp *interp, const char *namespace,
 
 BLT_EXTERN int Blt_GlobalEvalObjv(Tcl_Interp *interp, int objc, 
 	Tcl_Obj *const *objv);
+BLT_EXTERN int Blt_GlobalEvalListObj(Tcl_Interp *interp, Tcl_Obj *cmdObjPtr);
+
+BLT_EXTERN int Blt_GetDoubleFromString(Tcl_Interp *interp, const char *s, 
+	double *valuePtr);
+BLT_EXTERN int Blt_GetDoubleFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, 
+	double *valuePtr);
+
 #ifdef WIN32
 
 typedef struct {
@@ -569,6 +581,8 @@ BLT_EXTERN void Blt_RelinkWindow (Tk_Window tkwin, Tk_Window newParent, int x,
 
 BLT_EXTERN Tk_Window Blt_Toplevel(Tk_Window tkwin);
 
+BLT_EXTERN Tk_Window Blt_GetToplevelWindow(Tk_Window tkwin);
+
 BLT_EXTERN int Blt_GetPixels(Tcl_Interp *interp, Tk_Window tkwin, 
 	const char *string, int check, int *valuePtr);
 
@@ -581,17 +595,19 @@ BLT_EXTERN int Blt_GetCount(Tcl_Interp *interp, const char *string, int check,
 BLT_EXTERN int Blt_GetCountFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, 
 	int check, long *valuePtr);
 
-BLT_EXTERN const char *Blt_NameOfFill (int fill);
+BLT_EXTERN const char *Blt_NameOfFill(int fill);
+
+BLT_EXTERN const char *Blt_NameOfResize(int resize);
 
 BLT_EXTERN int Blt_GetXY (Tcl_Interp *interp, Tk_Window tkwin, 
 	const char *string, int *xPtr, int *yPtr);
 
 BLT_EXTERN Point2d Blt_GetProjection (int x, int y, Point2d *p, Point2d *q);
 
-BLT_EXTERN void Blt_DrawArrowOld (Display *display, Drawable drawable, GC gc, 
-	int x, int y, int arrowWidth, int arrowHeight, int orientation);
+BLT_EXTERN void Blt_DrawArrowOld(Display *display, Drawable drawable, GC gc, 
+	int x, int y, int w, int h, int borderWidth, int orientation);
 
-BLT_EXTERN void Blt_DrawArrow (Display *display, Drawable drawable, GC gc, 
+BLT_EXTERN void Blt_DrawArrow (Display *display, Drawable drawable, XColor *color, 
 	int x, int y, int w, int h, int borderWidth, int orientation);
 
 BLT_EXTERN int Blt_OldConfigModified TCL_VARARGS(Tk_ConfigSpec *, specs);
@@ -627,6 +643,9 @@ BLT_EXTERN char *Blt_FlagPrint (ClientData, Tk_Window, char *, int,
 BLT_EXTERN long Blt_MaxRequestSize (Display *display, size_t elemSize);
 
 BLT_EXTERN Window Blt_GetWindowId (Tk_Window tkwin);
+
+BLT_EXTERN void Blt_InitXRandrConfig(Tcl_Interp *interp);
+BLT_EXTERN void Blt_SizeOfScreen(Tk_Window tkwin, int *widthPtr,int *heightPtr);
 
 BLT_EXTERN int Blt_RootX (Tk_Window tkwin);
 
@@ -667,8 +686,8 @@ BLT_EXTERN int Blt_GetScrollInfoFromObj (Tcl_Interp *interp, int objc,
 	Tcl_Obj *const *objv, int *offsetPtr, int worldSize, int windowSize,
 	int scrollUnits, int scrollMode);
 
-BLT_EXTERN void Blt_UpdateScrollbar (Tcl_Interp *interp, 
-	Tcl_Obj *scrollCmdObjPtr, double firstFract, double lastFract);
+BLT_EXTERN void Blt_UpdateScrollbar(Tcl_Interp *interp, 
+	Tcl_Obj *scrollCmdObjPtr, int first, int last, int width);
 
 BLT_EXTERN int Blt_ReparentWindow (Display *display, Window window, 
 	Window newParent, int x, int y);
@@ -717,6 +736,7 @@ BLT_EXTERN GC Blt_GetBitmapGC(Tk_Window tkwin);
 #undef TK_MAINWINDOW
 
 #ifdef WIN32
+#  define	NO_PTYEXEC	1
 #  define	NO_CUTBUFFER	1
 #  define	NO_DND		1  
 #else
@@ -736,6 +756,9 @@ BLT_EXTERN Tcl_AppInitProc Blt_BeepCmdInitProc;
 #endif
 #ifndef NO_BGEXEC
 BLT_EXTERN Tcl_AppInitProc Blt_BgexecCmdInitProc;
+#endif
+#ifndef NO_PTYEXEC
+BLT_EXTERN Tcl_AppInitProc Blt_PtyExecCmdInitProc;
 #endif
 #ifndef NO_BITMAP
 BLT_EXTERN Tcl_AppInitProc Blt_BitmapCmdInitProc;
@@ -781,11 +804,12 @@ BLT_EXTERN Tcl_AppInitProc Blt_HtextCmdInitProc;
 BLT_EXTERN Tcl_AppInitProc Blt_PrinterCmdInitProc;
 #  endif
 #endif
+BLT_EXTERN Tcl_AppInitProc Blt_AfmCmdInitProc;
 #ifndef NO_PICTURE
 BLT_EXTERN Tcl_AppInitProc Blt_PictureCmdInitProc;
 #endif
-#ifndef NO_TABLE
-BLT_EXTERN Tcl_AppInitProc Blt_TableCmdInitProc;
+#ifndef NO_TABLEMGR
+BLT_EXTERN Tcl_AppInitProc Blt_TableMgrCmdInitProc;
 #endif
 #ifndef NO_VECTOR
 BLT_EXTERN Tcl_AppInitProc Blt_VectorCmdInitProc;
@@ -802,8 +826,8 @@ BLT_EXTERN Tcl_AppInitProc Blt_SplineCmdInitProc;
 #ifndef NO_TABSET
 BLT_EXTERN Tcl_AppInitProc Blt_TabsetCmdInitProc;
 #endif
-#ifndef NO_DATATABLE
-BLT_EXTERN Tcl_AppInitProc Blt_DataTableCmdInitProc;
+#ifndef NO_TABLE
+BLT_EXTERN Tcl_AppInitProc Blt_TableCmdInitProc;
 #endif
 #ifndef NO_TREE
 BLT_EXTERN Tcl_AppInitProc Blt_TreeCmdInitProc;
@@ -837,11 +861,11 @@ BLT_EXTERN Tcl_AppInitProc Blt_MountainCmdInitProc;
 BLT_EXTERN Tcl_AppInitProc Blt_TedCmdInitProc;
 #endif
 
-BLT_EXTERN Tcl_AppInitProc Blt_ComboInitProc;
 BLT_EXTERN Tcl_AppInitProc Blt_ComboButtonInitProc;
 BLT_EXTERN Tcl_AppInitProc Blt_ComboEntryInitProc;
 BLT_EXTERN Tcl_AppInitProc Blt_ComboMenuInitProc;
 BLT_EXTERN Tcl_AppInitProc Blt_ComboTreeInitProc;
+BLT_EXTERN Tcl_AppInitProc Blt_ListViewInitProc;
 
 BLT_EXTERN Tcl_AppInitProc Blt_SendEventCmdInitProc;
 
@@ -861,6 +885,18 @@ BLT_EXTERN int sprintf_s(char *s, size_t size, const char *fmt, /*args*/ ...);
 #endif	/* HAVE_SPRINTF_S */
 
 
+BLT_EXTERN Pixmap Blt_GetPixmap(Display *dpy, Drawable draw, int w, int h, 
+	int depth, int lineNum, const char *fileName);
+
+#define Tk_GetPixmap(dpy, draw, w, h, depth) \
+    Blt_GetPixmap(dpy, draw, w, h, depth, __LINE__, __FILE__)
+
+#if defined(HAVE_LIBXRANDR) && defined(HAVE_X11_EXTENSIONS_RANDR_H)
+#define HAVE_RANDR 1
+#else 
+#define HAVE_RANDR 0 
+#endif
+
 #undef panic
 #define panic(mesg)	Blt_Panic("%s:%d %s", __FILE__, __LINE__, (mesg))
 BLT_EXTERN void Blt_Panic TCL_VARARGS(const char *, args);
@@ -875,7 +911,6 @@ BLT_EXTERN void Blt_Panic TCL_VARARGS(const char *, args);
 
 #endif /* WIN32 */
 
-BLT_EXTERN Tcl_Obj *Blt_EmptyStringObj(void);
 BLT_EXTERN double Blt_NaN(void);
 
 BLT_EXTERN void Blt_ScreenDPI(Tk_Window tkwin, unsigned int *xPtr, 
@@ -883,5 +918,37 @@ BLT_EXTERN void Blt_ScreenDPI(Tk_Window tkwin, unsigned int *xPtr,
 
 #include <bltAlloc.h>
 #include <bltAssert.h>
+
+#if defined (WIN32) || defined(MAC_TCL) || defined(MAC_OSX_TCL)
+typedef struct _TkRegion *TkRegion;	/* Opaque type */
+
+/* 114 */
+extern TkRegion TkCreateRegion(void);
+/* 115 */
+extern void TkDestroyRegion (TkRegion rgn);
+/* 116 */
+extern void TkIntersectRegion (TkRegion sra, TkRegion srcb, TkRegion dr_return);
+/* 117 */
+extern int TkRectInRegion(TkRegion rgn, int x, int y, unsigned int width, 
+			  unsigned int height);
+/* 118 */
+extern void TkSetRegion(Display* display, GC gc, TkRegion rgn);
+/* 119 */
+extern void TkUnionRectWithRegion(XRectangle* rect, TkRegion src, 
+	TkRegion dr_return);
+#else
+typedef struct _TkRegion *TkRegion;	/* Opaque type */
+#define TkClipBox(rgn, rect) XClipBox((Region) rgn, rect)
+#define TkCreateRegion() (TkRegion) XCreateRegion()
+#define TkDestroyRegion(rgn) XDestroyRegion((Region) rgn)
+#define TkIntersectRegion(a, b, r) XIntersectRegion((Region) a, \
+	(Region) b, (Region) r)
+#define TkRectInRegion(r, x, y, w, h) XRectInRegion((Region) r, x, y, w, h)
+#define TkSetRegion(d, gc, rgn) XSetRegion(d, gc, (Region) rgn)
+#define TkSubtractRegion(a, b, r) XSubtractRegion((Region) a, \
+	(Region) b, (Region) r)
+#define TkUnionRectWithRegion(rect, src, ret) XUnionRectWithRegion(rect, \
+	(Region) src, (Region) ret)
+#endif
 
 #endif /*_BLT_INT_H*/

@@ -5,7 +5,7 @@
  * This module implements X11-specific image processing procedures for the BLT
  * toolkit.
  *
- *	Copyright 1998-2004 George A Howlett.
+ *	Copyright (c) 1998 George A Howlett.
  *
  *	Permission is hereby granted, free of charge, to any person obtaining a
  *	copy of this software and associated documentation files (the
@@ -73,19 +73,14 @@ static int initialized = 0;
 typedef struct {
     Display *display;			/* Display of painter. Used to free
 					 * colors allocated. */
-
     Visual *visualPtr;			/* Visual information for the class of
 					 * windows displaying the image. */
-
     Colormap colormap;			/* Colormap used.  This may be the
 					 * default colormap, or an allocated
 					 * private map. */
-
     int depth;				/* Pixel depth of the display. */
-
     float gamma;			/* Gamma correction value for the
 					 * monitor. */
-
 } PainterKey;
 
 
@@ -874,13 +869,8 @@ GetPainter(
  *---------------------------------------------------------------------------
  */
 static void
-PaintXImage(
-    Painter *p,
-    Drawable drawable, 
-    XImage *imgPtr, 
-    int sx, int sy,
-    int w, int h,
-    int dx, int dy)
+PaintXImage(Painter *p, Drawable drawable, XImage *imgPtr, int sx, int sy,
+	    int w, int h, int dx, int dy)
 {
     int y;
     int n;
@@ -998,15 +988,15 @@ DrawableToPicture(
 
     imgPtr = DrawableToXImage(p->display, drawable, x, y, w, h);
     if (imgPtr == NULL) {
-	int dx, dy, dw, dh;
+	int dw, dh;
 
 	/* 
 	 * Failed to acquire an XImage from the drawable. The drawable may be
 	 * partially obscured or too small for the requested area.  Try it
 	 * again, after fixing the area with the dimensions of the drawable.
 	 */
-	if (Blt_GetWindowRegion(p->display, drawable, &dx, &dy, &dw, &dh) 
-	    == TCL_OK) {
+	if (Blt_GetWindowRegion(p->display, drawable, (int *)NULL, (int *)NULL,
+		&dw, &dh) == TCL_OK) {
 	    if ((x + w) > dw) {
 		w = dw - x;
 	    }
@@ -1576,14 +1566,18 @@ PaintPictureWithBlend(
 	    x, y, w, h, dx, dy);
 #endif
     if (dx < 0) {
-	w -= -dx;		/* Shrink the width. */
-	x += -dx;		/* Change the left of the source region. */
-	dx = 0;			/* Start at the left of the destination. */
+	w -= -dx;			/* Shrink the width. */
+	x += -dx;			/* Change the left of the source
+					 * region. */
+	dx = 0;				/* Start at the left of the
+					 * destination. */
     } 
     if (dy < 0) {
-	h -= -dy;		/* Shrink the height. */
-	y += -dy;		/* Change the top of the source region. */
-	dy = 0;			/* Start at the top of the destination. */
+	h -= -dy;			/* Shrink the height. */
+	y += -dy;			/* Change the top of the source
+					 * region. */
+	dy = 0;				/* Start at the top of the
+					 * destination. */
     }
     if ((w < 0) || (h < 0)) {
 	return FALSE;
@@ -1684,112 +1678,7 @@ Blt_PaintPicture(
 					 * drawable.  */
     unsigned int flags)
 {
-    /* 
-     * Nothing to draw. The region offset starts beyond the end of
-     * the picture. 
-     *
-     *  +---------------+    	
-     *  |               |    	
-     *  |               |    	
-     *  |    Picture    |  x,y   
-     *  |               |   +---------+
-     *  |               |   |         |
-     *  +---------------+   |         | h
-     *			    |         |
-     *                      +---------+
-     *			         w
-     */			        
-    if ((picture == NULL) || (x >= Blt_PictureWidth(picture)) || 
-	(y >= Blt_PictureHeight(picture))) {
-	return TRUE;	
-    }
-    /* 
-     * Correct the dimensions if the origin starts before the picture
-     * (i.e. coordinate is negative).  Reset the coordinate the 0. 
-     *
-     *  x,y		       
-     *   +---------+ 	           0,0		       
-     *   |  +------|--------+       +------+--------+
-     *   |  |      | h      |       |      |        |
-     *   |  |      |        |       |      | h+y    |
-     *   +--|------+        |       +------+        |
-     *      | w             |       | w+x           |
-     *      |               |       |               |
-     *      +---------------+       +---------------+ 
-     *
-     */
-    if (x < 0) {		
-        w += x;
-        x = 0;
-    }
-    if (y < 0) {
-        h += y;
-        y = 0;
-    }
-    /* 
-     * Check that the given area does not extend beyond the end of the
-     * picture.
-     *
-     *   0,0                        0,0
-     *    +-----------------+	     +-----------------+	  	
-     *    |                 |	     |                 |	  	
-     *    |        x,y      |	     |        x,y      |	  	
-     *    |         +---------+      |         +-------+
-     *    |         |       | |      |         |       |
-     *    |         |       | | h    |         |       | 
-     *    +---------|-------+ |      +---------+-------+
-     * 	            +---------+   	         
-     *                   w                                 
-     * Clip the end of the area if it's too big.
-     */
-    if ((w + x) > Blt_PictureWidth(picture)) {
-	w = Blt_PictureWidth(picture) - x;
-    }
-    if ((h + y) > Blt_PictureHeight(picture)) {
-	h = Blt_PictureHeight(picture) - y;
-    }
-    /* Check that there's still something to paint. */
-    if ((w <= 0) || (h <= 0)) {
-	return TRUE;
-    }
-#ifdef notdef
-    if (dx < 0) {
-	dx = 0;
-    } 
-    if (dy < 0) {
-	dy = 0;
-    }
-#endif
-    if (Blt_PictureIsOpaque(picture)) {
-	return PaintPicture(painter, drawable, picture, x, y, w, h, 
-		dx, dy, flags);
-    } else {
-	int alpha = 128;
-
-	return PaintPictureWithBlend(painter, drawable, picture, x, y, w, h, 
-		dx, dy, flags, alpha);
-    }
-}
-
-int
-Blt_PaintPictureWithBlend(
-    Blt_Painter painter,
-    Drawable drawable,
-    Blt_Picture picture,
-    int x, int y,		/* Coordinates of region in the
-				 * picture. */
-    int w, int h,		/* Dimension of the region.  Area
-				 * cannot extend beyond the end of the
-				 * picture. */
-    int dx, int dy,		/* Coordinates of region in the
-				 * drawable.  */
-    unsigned int flags,		/* Indicates whether to dither the
-				 * picture before displaying. */
-    double falpha)
-{
-    int alpha;
-
-    alpha = (int)(falpha * 255.0 + 0.5);
+    int x1, y1, x2, y2;
 
     /* 
      * Nothing to draw. The selected region is outside of the picture.
@@ -1807,15 +1696,23 @@ Blt_PaintPictureWithBlend(
      *		     +-------+
      *			 w
      */
+    x1 = x, y1 = y, x2 = x + w, y2 = y1 + h;
     if ((picture == NULL) || 
-	(x >= Blt_PictureWidth(picture)) || 
-	(y >= Blt_PictureHeight(picture)) ||
-	((x + w) <= 0) || ((y + h) <= 0)) {
+	(x1 >= Blt_PictureWidth(picture))  || (x2 <= 0) ||
+	(y1 >= Blt_PictureHeight(picture)) || (y2 <= 0)) {
 	return TRUE;	
+    }
+    if (dx < 0) {			
+	x1 -= dx;			/* Add offset */
+	dx = 0;
+    } 
+    if (dy < 0) {
+	y1 -= dy;			/* Add offset */
+	dy = 0;
     }
     /* 
      * Correct the dimensions if the origin starts before the picture
-     * (i.e. coordinate is negative).  Reset the coordinate the 0. 
+     * (i.e. coordinate is negative).  Reset the coordinate the 0.
      *
      * x,y		       
      *   +---------+ 	           0,0		       
@@ -1828,15 +1725,14 @@ Blt_PaintPictureWithBlend(
      *      +---------------+       +---------------+ 
      *
      */
-    if (x < 0) {		
-        w += x;
-        x = 0;
+    if (x1 < 0) {		
+        x2 += x1;
+        x1 = 0;
     }
-    if (y < 0) {
-        h += y;
-        y = 0;
+    if (y1 < 0) {
+        y2 += y1;
+        y1 = 0;
     }
-
     /* 
      * Check that the given area does not extend beyond the end of the
      * picture.
@@ -1854,24 +1750,129 @@ Blt_PaintPictureWithBlend(
      *                                                    
      * Clip the end of the area if it's too big.
      */
-    if ((x + w) > Blt_PictureWidth(picture)) {
-	w = Blt_PictureWidth(picture) - x;
+    if ((x2 - x1) > Blt_PictureWidth(picture)) {
+	x2 = x1 + Blt_PictureWidth(picture);
     }
-    if ((y + h) > Blt_PictureHeight(picture)) {
-	h = Blt_PictureHeight(picture) - y;
-    }
-    if (dx < 0) {
-	dx = 0;
-    } 
-    if (dy < 0) {
-	dy = 0;
+    if ((y2 - y1) > Blt_PictureHeight(picture)) {
+	y2 = y1 + Blt_PictureHeight(picture);
     }
     /* Check that there's still something to paint. */
-    if ((w <= 0) || (h <= 0)) {
+    if (((x2 - x1) <= 0) || ((y2 - y1) <= 0)) {
 	return TRUE;
     }
-    return PaintPictureWithBlend(painter, drawable, picture, x, y, w, h, dx, dy,
-	flags, alpha);
+    if (Blt_PictureIsOpaque(picture)) {
+	return PaintPicture(painter, drawable, picture, x1, y1, x2 - x1, 
+			    y2 - y1, dx, dy, flags);
+    } else {
+	int alpha = 128;
+
+	return PaintPictureWithBlend(painter, drawable, picture, x1, y1, 
+		x2 - x1, y2 - y1, dx, dy, flags, alpha);
+    }
+}
+
+int
+Blt_PaintPictureWithBlend(
+    Blt_Painter painter,
+    Drawable drawable,
+    Blt_Picture picture,
+    int x, int y,			/* Coordinates of region in the
+					 * picture. */
+    int w, int h,			/* Dimension of the region.  Area
+					 * cannot extend beyond the end of the
+					 * picture. */
+    int dx, int dy,			/* Coordinates of region in the
+					 * drawable.  */
+    unsigned int flags,			/* Indicates whether to dither the
+					 * picture before displaying. */
+    double falpha)
+{
+    int alpha;
+    int x1, y1, x2, y2;
+
+    alpha = (int)(falpha * 255.0 + 0.5);
+    /* 
+     * Nothing to draw. The selected region is outside of the picture.
+     *
+     *   0,0
+     *    +---------+
+     *    |         |
+     *    | Picture |
+     *	  |         |
+     *    +---------+
+     *              x,y
+     *               +-------+
+     *		     |       |
+     *               |       | h
+     *		     +-------+
+     *			 w
+     */
+    x1 = x, y1 = y, x2 = x + w, y2 = y1 + h;
+    if ((picture == NULL) || 
+	(x1 >= Blt_PictureWidth(picture))  || (x2 <= 0) ||
+	(y1 >= Blt_PictureHeight(picture)) || (y2 <= 0)) {
+	return TRUE;	
+    }
+    if (dx < 0) {			
+	x1 -= dx;
+	dx = 0;				/* Add offset */
+    } 
+    if (dy < 0) {
+	y1 -= dy;			/* Add offset */
+	dy = 0;
+    }
+    /* 
+     * Correct the dimensions if the origin starts before the picture
+     * (i.e. coordinate is negative).  Reset the coordinate the 0.
+     *
+     * x,y		       
+     *   +---------+ 	           0,0		       
+     *   |  +------|--------+       +------+--------+
+     * h |  |0,0   |        |       |      |        |
+     *   |  |      |        |       |      |        |
+     *   +--|------+        |       +------+        |
+     *    w |               |       |               |
+     *      |               |       |               |
+     *      +---------------+       +---------------+ 
+     *
+     */
+    if (x1 < 0) {		
+        x2 += x1;
+        x1 = 0;
+    }
+    if (y1 < 0) {
+        y2 += y2;
+        y1 = 0;
+    }
+    /* 
+     * Check that the given area does not extend beyond the end of the
+     * picture.
+     * 
+     *   0,0                        0,0
+     *    +-----------------+	     +-----------------+	  	
+     *    |		    |        |                 |
+     *    |        x,y      |	     |        x,y      |	  	
+     *    |         +---------+      |         +-------+
+     *    |         |       | |      |         |       |
+     *    |         |       | | w    |         |       |
+     *    +---------|-------+ |      +---------+-------+
+     * 	            +---------+   	           
+     *                   h
+     *                                                    
+     * Clip the end of the area if it's too big.
+     */
+    if ((x2 - x1) > Blt_PictureWidth(picture)) {
+	x2 = x1 + Blt_PictureWidth(picture);
+    }
+    if ((y2 - y1) > Blt_PictureHeight(picture)) {
+	y2 = y1 + Blt_PictureHeight(picture);
+    }
+    /* Check that there's still something to paint. */
+    if (((x2 - x1) <= 0) || ((y2 - y1) <= 0)) {
+	return TRUE;
+    }
+    return PaintPictureWithBlend(painter, drawable, picture, x1, y1, x2 - x1, 
+		y2 - y1, dx, dy, flags, alpha);
 }
 
 /*

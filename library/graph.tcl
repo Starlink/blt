@@ -1,14 +1,36 @@
 
 namespace eval ::blt::legend {
-    variable Priv 
-    array set Priv {
+    variable _private 
+    array set _private {
 	afterId ""
-	set scroll 0
-	set space   off
-	set x 0
-	set y 0
+	scroll 0
+	space off
+	drag 0
+	x 0
+	y 0
     }
 }
+
+namespace eval ::blt::ZoomStack {
+    variable _private
+    array set _private {
+	afterId ""
+	scroll 0
+	space off
+	drag 0
+	x 0
+	y 0
+    }
+}
+
+option add *zoomOutline.dashes		4	
+option add *zoomOutline.lineWidth	2
+option add *zoomOutline.xor		yes
+option add *zoomTitle.anchor		nw
+option add *zoomTitle.coords		"-Inf Inf"
+option add *zoomTitle.font		"Arial 14"
+option add *zoomTitle.foreground	yellow3
+option add *zoomTitle.shadow		yellow4
 
 # ----------------------------------------------------------------------
 #
@@ -48,7 +70,7 @@ proc blt::LegendSelections { w } {
     
     $w legend bind all <ButtonPress-1> { 	
 	blt::legend::SetSelectionAnchor %W current
-	set blt::legend::Priv(scroll) 1
+	set blt::legend::_private(scroll) 1
     }
 
     #
@@ -58,8 +80,8 @@ proc blt::LegendSelections { w } {
     #	pointer for auto-scrolling.  Resets the selection mark.  
     #
     $w legend bind all <B1-Motion> { 
-	set blt::legend::Priv(x) %x
-	set blt::legend::Priv(y) %y
+	set blt::legend::_private(x) %x
+	set blt::legend::_private(y) %y
 	set elem [%W legend get @%x,%y]
 	if { $elem != "" } {
 	    if { [%W legend cget -selectmode] == "multiple" } {
@@ -79,8 +101,8 @@ proc blt::LegendSelections { w } {
 	if { [%W legend cget -selectmode] == "multiple" } {
 	    %W legend selection anchor current
 	}
-	after cancel $blt::legend::Priv(afterId)
-	set blt::legend::Priv(scroll) 0
+	after cancel $blt::legend::_private(afterId)
+	set blt::legend::_private(scroll) 0
     }
 
     #
@@ -109,8 +131,8 @@ proc blt::LegendSelections { w } {
 	# do nothing
     }
     $w legend bind all <Shift-ButtonRelease-1> { 
-	after cancel $blt::legend::Priv(afterId)
-	set blt::legend::Priv(scroll) 0
+	after cancel $blt::legend::_private(afterId)
+	set blt::legend::_private(scroll) 0
     }
 
     #
@@ -134,8 +156,8 @@ proc blt::LegendSelections { w } {
 	# do nothing
     }
     $w legend bind all <Control-ButtonRelease-1> { 
-	after cancel $blt::legend::Priv(afterId)
-	set blt::legend::Priv(scroll) 0
+	after cancel $blt::legend::_private(afterId)
+	set blt::legend::_private(scroll) 0
     }
 
     $w legend bind all <Control-Shift-ButtonPress-1> { 
@@ -162,25 +184,25 @@ proc blt::LegendSelections { w } {
     }
     $w legend bind all <KeyPress-Up> {
 	blt::legend::MoveFocus %W previous.row
-	if { $blt::legend::Priv(space) } {
+	if { $blt::legend::_private(space) } {
 	    %W legend selection toggle focus
 	}
     }
     $w legend bind all <KeyPress-Down> {
 	blt::legend::MoveFocus %W next.row
-	if { $blt::legend::Priv(space) } {
+	if { $blt::legend::_private(space) } {
 	    %W legend selection toggle focus
 	}
     }
     $w legend bind all <KeyPress-Left> {
 	blt::legend::MoveFocus %W previous.column
-	if { $blt::legend::Priv(space) } {
+	if { $blt::legend::_private(space) } {
 	    %W legend selection toggle focus
 	}
     }
     $w legend bind all <KeyPress-Right> {
 	blt::legend::MoveFocus %W next.column
-	if { $blt::legend::Priv(space) } {
+	if { $blt::legend::_private(space) } {
 	    %W legend selection toggle focus
 	}
     }
@@ -195,18 +217,18 @@ proc blt::LegendSelections { w } {
 	} else {
 	    %W legend selection toggle focus
 	}
-	set blt::legend::Priv(space) on
+	set blt::legend::_private(space) on
     }
 
     $w legend bind all <KeyRelease-space> { 
-	set blt::legend::Priv(space) off
+	set blt::legend::_private(space) off
     }
     $w legend bind all <KeyPress-Return> {
 	blt::legend::MoveFocus %W focus
-	set blt::legend::Priv(space) on
+	set blt::legend::_private(space) on
     }
     $w legend bind all <KeyRelease-Return> { 
-	set blt::legend::Priv(space) off
+	set blt::legend::_private(space) off
     }
     $w legend bind all <KeyPress-Home> {
 	blt::legend::MoveFocus %W first
@@ -247,30 +269,38 @@ proc blt::legend::MoveFocus { w elem } {
 }
 
 
-proc Blt_ActiveLegend { graph } {
-    $graph legend bind all <Enter> [list blt::ActivateLegend $graph ]
-    $graph legend bind all <Leave> [list blt::DeactivateLegend $graph]
-    $graph legend bind all <ButtonPress-1> [list blt::HighlightLegend $graph]
+proc Blt_ActiveLegend { g } {
+    $g legend bind all <Enter> [list blt::ActivateLegend $g ]
+    $g legend bind all <Leave> [list blt::DeactivateLegend $g]
+    $g legend bind all <ButtonPress-1> [list blt::HighlightLegend $g]
 }
 
-proc Blt_Crosshairs { graph } {
-    blt::Crosshairs $graph 
+proc Blt_Crosshairs { g } {
+    blt::Crosshairs $g 
 }
 
-proc Blt_ResetCrosshairs { graph state } {
-    blt::Crosshairs $graph "Any-Motion" $state
+proc Blt_ResetCrosshairs { g state } {
+    blt::Crosshairs $g "Any-Motion" $state
 }
 
-proc Blt_ZoomStack { graph } {
-    blt::ZoomStack $graph
+proc Blt_ZoomStack { g args } {
+    array set params {
+	-mode click
+    }
+    array set params $args
+    if { $params(-mode) == "click" } {
+	blt::ZoomStack::ClickClick $g
+    } else {
+	blt::ZoomStack::ClickRelease $g
+    }	
 }
 
-proc Blt_PrintKey { graph } {
-    blt::PrintKey $graph
+proc Blt_PrintKey { g } {
+    blt::PrintKey $g
 }
 
-proc Blt_ClosestPoint { graph } {
-    blt::ClosestPoint $graph
+proc Blt_ClosestPoint { g } {
+    blt::ClosestPoint $g
 }
 
 #
@@ -278,89 +308,58 @@ proc Blt_ClosestPoint { graph } {
 # supposed to be private.
 #
 
-proc blt::ActivateLegend { graph } {
-    set elem [$graph legend get current]
-    $graph legend activate $elem
+proc blt::ActivateLegend { g } {
+    set elem [$g legend get current]
+    $g legend activate $elem
 }
-proc blt::DeactivateLegend { graph } {
-    set elem [$graph legend get current]
-    $graph legend deactivate $elem
+proc blt::DeactivateLegend { g } {
+    set elem [$g legend get current]
+    $g legend deactivate $elem
 }
 
-proc blt::HighlightLegend { graph } {
-    set elem [$graph legend get current]
+proc blt::HighlightLegend { g } {
+    set elem [$g legend get current]
     if { $elem != ""  } {
-      set relief [$graph element cget $elem -labelrelief]
+      set relief [$g element cget $elem -labelrelief]
       if { $relief == "flat" } {
-	$graph element configure $elem -labelrelief raised
-	$graph element activate $elem
+	$g element configure $elem -labelrelief raised
+	$g element activate $elem
       } else {
-	$graph element configure $elem -labelrelief flat
-	$graph element deactivate $elem
+	$g element configure $elem -labelrelief flat
+	$g element deactivate $elem
       }
    }
 }
 
-proc blt::Crosshairs { graph {event "Any-Motion"} {state "on"}} {
-    $graph crosshairs $state
-    bind crosshairs-$graph <$event>   {
+proc blt::Crosshairs { g {event "Any-Motion"} {state "on"}} {
+    $g crosshairs $state
+    bind crosshairs-$g <$event>   {
 	%W crosshairs configure -position @%x,%y 
     }
-    bind crosshairs-$graph <Leave>   {
+    bind crosshairs-$g <Leave>   {
 	%W crosshairs off
     }
-    bind crosshairs-$graph <Enter>   {
+    bind crosshairs-$g <Enter>   {
 	%W crosshairs on
     }
-    $graph crosshairs configure -color red
+    $g crosshairs configure -color red
     if { $state == "on" } {
-	blt::AddBindTag $graph crosshairs-$graph
+	blt::AddBindTag $g crosshairs-$g
     } elseif { $state == "off" } {
-	blt::RemoveBindTag $graph crosshairs-$graph
+	blt::RemoveBindTag $g crosshairs-$g
     }
 }
 
-proc blt::InitStack { graph } {
-    global zoomInfo
-    set zoomInfo($graph,interval) 100
-    set zoomInfo($graph,afterId) 0
-    set zoomInfo($graph,A,x) {}
-    set zoomInfo($graph,A,y) {}
-    set zoomInfo($graph,B,x) {}
-    set zoomInfo($graph,B,y) {}
-    set zoomInfo($graph,stack) {}
-    set zoomInfo($graph,corner) A
+proc blt::PrintKey { g {event "Shift-ButtonRelease-3"} } {
+    bind print-$g <$event>  { Blt_PostScriptDialog %W }
+    blt::AddBindTag $g print-$g
 }
 
-proc blt::ZoomStack { graph {start "ButtonPress-1"} {reset "ButtonPress-3"} } {
-    global zoomInfo zoomMod
-    
-    blt::InitStack $graph
-    
-    if { [info exists zoomMod] } {
-	set modifier $zoomMod
-    } else {
-	set modifier ""
-    }
-    bind zoom-$graph <${modifier}${start}> { blt::SetZoomPoint %W %x %y }
-    bind zoom-$graph <${modifier}${reset}> { 
-	if { [%W inside %x %y] } { 
-	    blt::ResetZoom %W 
-	}
-    }
-    blt::AddBindTag $graph zoom-$graph
-}
-
-proc blt::PrintKey { graph {event "Shift-ButtonRelease-3"} } {
-    bind print-$graph <$event>  { Blt_PostScriptDialog %W }
-    blt::AddBindTag $graph print-$graph
-}
-
-proc blt::ClosestPoint { graph {event "Control-ButtonPress-2"} } {
-    bind closest-point-$graph <$event>  {
+proc blt::ClosestPoint { g {event "Control-ButtonPress-2"} } {
+    bind closest-point-$g <$event>  {
 	blt::FindElement %W %x %y
     }
-    blt::AddBindTag $graph closest-point-$graph
+    blt::AddBindTag $g closest-point-$g
 }
 
 proc blt::AddBindTag { widget tag } {
@@ -378,8 +377,8 @@ proc blt::RemoveBindTag { widget tag } {
     }
 }
 
-proc blt::FindElement { graph x y } {
-    array set info [$graph element closest $x $y -interpolate yes]
+proc blt::FindElement { g x y } {
+    array set info [$g element closest $x $y -interpolate yes]
     if { ![info exists info(name)] } {
 	beep
 	return
@@ -392,178 +391,218 @@ proc blt::FindElement { graph x y } {
     # find(dist)		- distance from sample coordinate
     # --------------------------------------------------------------
     set markerName "bltClosest_$info(name)"
-    catch { $graph marker delete $markerName }
-    $graph marker create text -coords { $info(x) $info(y) } \
+    catch { $g marker delete $markerName }
+    $g marker create text -coords { $info(x) $info(y) } \
 	-name $markerName \
 	-text "$info(name): $info(dist)\nindex $info(index)" \
 	-font "Arial 6" \
 	-anchor center -justify left \
 	-yoffset 0 -bg {} 
 
-    set coords [$graph invtransform $x $y]
+    set coords [$g invtransform $x $y]
     set nx [lindex $coords 0]
     set ny [lindex $coords 1]
 
-    $graph marker create line -coords "$nx $ny $info(x) $info(y)" \
+    $g marker create line -coords "$nx $ny $info(x) $info(y)" \
 	-name line.$markerName 
 
-    blt::FlashPoint $graph $info(name) $info(index) 10
-    blt::FlashPoint $graph $info(name) [expr $info(index) + 1] 10
+    blt::FlashPoint $g $info(name) $info(index) 10
+    blt::FlashPoint $g $info(name) [expr $info(index) + 1] 10
 }
 
-proc blt::FlashPoint { graph name index count } {
+proc blt::FlashPoint { g name index count } {
     if { $count & 1 } {
-        $graph element deactivate $name 
+        $g element deactivate $name 
     } else {
-        $graph element activate $name $index
+        $g element activate $name $index
     }
     incr count -1
     if { $count > 0 } {
-	after 200 blt::FlashPoint $graph $name $index $count
+	after 200 blt::FlashPoint $g $name $index $count
 	update
     } else {
-	eval $graph marker delete [$graph marker names "bltClosest_*"]
+	eval $g marker delete [$g marker names "bltClosest_*"]
     }
 }
 
-proc blt::GetCoords { graph x y index } {
-    global zoomInfo
-    if { [$graph cget -invertxy] } {
-	set zoomInfo($graph,$index,x) $y
-	set zoomInfo($graph,$index,y) $x
+
+proc blt::ZoomStack::Init { g } {
+    variable _private
+    set _private($g,interval) 100
+    set _private($g,afterId) 0
+    set _private($g,A,x) {}
+    set _private($g,A,y) {}
+    set _private($g,B,x) {}
+    set _private($g,B,y) {}
+    set _private($g,stack) {}
+    set _private($g,corner) A
+}
+
+proc blt::ZoomStack::ClickClick { g {start "ButtonPress-1"} {reset "ButtonPress-3"} } {
+    variable _private
+    
+    Init $g
+    
+    bind zoom-$g <Enter> "focus %W"
+    bind zoom-$g <KeyPress-Escape> { blt::ZoomStack::Reset %W }
+    bind zoom-$g <${start}> { blt::ZoomStack::SetPoint %W %x %y }
+    bind zoom-$g <${reset}> { 
+	if { [%W inside %x %y] } { 
+	    blt::ZoomStack::Reset %W 
+	}
+    }
+    blt::AddBindTag $g zoom-$g
+}
+
+proc blt::ZoomStack::ClickRelease { g } {
+    variable _private
+    
+    Init $g
+    bind zoom-$g <Enter> "focus %W"
+    bind zoom-$g <KeyPress-Escape> { blt::ZoomStack::Reset %W }
+    bind zoom-$g <ButtonPress-1> { blt::ZoomStack::DragStart %W %x %y }
+    bind zoom-$g <B1-Motion> { blt::ZoomStack::DragMotion %W %x %y }
+    bind zoom-$g <ButtonRelease-1> { blt::ZoomStack::DragFinish %W %x %y }
+    bind zoom-$g <ButtonPress-3> { 
+	if { [%W inside %x %y] } { 
+	    blt::ZoomStack::Reset %W 
+	}
+    }
+    blt::AddBindTag $g zoom-$g
+}
+
+proc blt::ZoomStack::GetCoords { g x y index } {
+    variable _private
+    if { [$g cget -invertxy] } {
+	set _private($g,$index,x) $y
+	set _private($g,$index,y) $x
     } else {
-	set zoomInfo($graph,$index,x) $x
-	set zoomInfo($graph,$index,y) $y
+	set _private($g,$index,x) $x
+	set _private($g,$index,y) $y
     }
 }
 
-proc blt::MarkPoint { graph index } {
-    global zoomInfo
-    if { [llength [$graph xaxis use]] > 0 } {
-	set x [$graph xaxis invtransform $zoomInfo($graph,$index,x)]
-    } else if { [llength [$graph x2axis use]] > 0 } {
-	set x [$graph x2axis invtransform $zoomInfo($graph,$index,x)]
+proc blt::ZoomStack::MarkPoint { g index } {
+    variable _private
+
+    if { [llength [$g xaxis use]] > 0 } {
+	set x [$g xaxis invtransform $_private($g,$index,x)]
+    } else if { [llength [$g x2axis use]] > 0 } {
+	set x [$g x2axis invtransform $_private($g,$index,x)]
     }
-    if { [llength [$graph yaxis use]] > 0 } {
-	set y [$graph yaxis invtransform $zoomInfo($graph,$index,y)]
-    } else if { [llength [$graph y2axis use]] > 0 } {
-	set y [$graph y2axis invtransform $zoomInfo($graph,$index,y)]
+    if { [llength [$g yaxis use]] > 0 } {
+	set y [$g yaxis invtransform $_private($g,$index,y)]
+    } else if { [llength [$g y2axis use]] > 0 } {
+	set y [$g y2axis invtransform $_private($g,$index,y)]
     }
     set marker "zoomText_$index"
     set text [format "x=%.4g\ny=%.4g" $x $y] 
 
-    if [$graph marker exists $marker] {
-     	$graph marker configure $marker -coords { $x $y } -text $text 
+    if [$g marker exists $marker] {
+     	$g marker configure $marker -coords { $x $y } -text $text 
     } else {
-    	$graph marker create text -coords { $x $y } -name $marker \
+    	$g marker create text -coords { $x $y } -name $marker \
    	    -font "mathmatica1 10" \
 	    -text $text -anchor center -bg {} -justify left
     }
 }
 
-proc blt::DestroyZoomTitle { graph } {
-    global zoomInfo
+proc blt::ZoomStack::DestroyTitle { g } {
+    variable _private
 
-    if { $zoomInfo($graph,corner) == "A" } {
-	catch { $graph marker delete "zoomTitle" }
+    if { $_private($g,corner) == "A" } {
+	catch { $g marker delete "zoomTitle" }
     }
 }
 
-proc blt::PopZoom { graph } {
-    global zoomInfo
+proc blt::ZoomStack::Pop { g } {
+    variable _private
 
-    set zoomStack $zoomInfo($graph,stack)
+    set zoomStack $_private($g,stack)
     if { [llength $zoomStack] > 0 } {
 	set cmd [lindex $zoomStack 0]
-	set zoomInfo($graph,stack) [lrange $zoomStack 1 end]
+	set _private($g,stack) [lrange $zoomStack 1 end]
 	eval $cmd
-	blt::ZoomTitleLast $graph
-	busy hold $graph
+	TitleLast $g
+	blt::busy hold $g
 	update
-	busy release $graph
-	after 2000 "blt::DestroyZoomTitle $graph"
+	blt::busy release $g
+	after 2000 [list blt::ZoomStack::DestroyTitle $g]
     } else {
-	catch { $graph marker delete "zoomTitle" }
+	catch { $g marker delete "zoomTitle" }
     }
 }
 
 # Push the old axis limits on the stack and set the new ones
 
-proc blt::PushZoom { graph } {
-    global zoomInfo
-    eval $graph marker delete [$graph marker names "zoom*"]
-    if { [info exists zoomInfo($graph,afterId)] } {
-	after cancel $zoomInfo($graph,afterId)
+proc blt::ZoomStack::Push { g } {
+    variable _private
+
+    eval $g marker delete [$g marker names "zoom*"]
+    if { [info exists _private($g,afterId)] } {
+	after cancel $_private($g,afterId)
     }
-    set x1 $zoomInfo($graph,A,x)
-    set y1 $zoomInfo($graph,A,y)
-    set x2 $zoomInfo($graph,B,x)
-    set y2 $zoomInfo($graph,B,y)
+    set x1 $_private($g,A,x)
+    set y1 $_private($g,A,y)
+    set x2 $_private($g,B,x)
+    set y2 $_private($g,B,y)
 
     if { ($x1 == $x2) || ($y1 == $y2) } { 
 	# No delta, revert to start
 	return
     }
     set cmd {}
-    foreach margin { xaxis yaxis x2axis y2axis } {
-	foreach axis [$graph $margin use] {
-	    set min [$graph axis cget $axis -min] 
-	    set max [$graph axis cget $axis -max]
-	    set logscale  [$graph axis cget $axis -logscale]
-	    # Save the current scale (log or linear) so that we can restore
-	    # it.  This is for the case where the user changes to logscale
-	    # while zooming.  A previously pushed axis limit could be
-	    # negative.  It seems better for popping the zoom stack to restore
-	    # a previous view (not convert the ranges).
-	    set c [list $graph axis configure $axis]
-	    lappend c -min $min -max $max -logscale $logscale
-	    append cmd "$c\n"
+    foreach axis [$g axis names] {
+	if { [$g axis cget $axis -hide] } {
+	    continue
 	}
+	set min [$g axis cget $axis -min] 
+	set max [$g axis cget $axis -max]
+	set logscale  [$g axis cget $axis -logscale]
+	# Save the current scale (log or linear) so that we can restore it.
+	# This is for the case where the user changes to logscale while
+	# zooming.  A previously pushed axis limit could be negative.  It
+	# seems better for popping the zoom stack to restore a previous view
+	# (not convert the ranges).
+	set c [list $g axis configure $axis]
+	lappend c -min $min -max $max -logscale $logscale
+	append cmd "$c\n"
     }
 
     # This effectively pushes the command to reset the graph to the current
     # zoom level onto the stack.  This is useful if the new axis ranges are
     # bad and we need to reset the zoom stack.
-    set zoomInfo($graph,stack) [linsert $zoomInfo($graph,stack) 0 $cmd]
-
-    foreach margin { xaxis x2axis } {
-	if { [$graph $margin cget -hide] } {
-	    continue;		# Don't set zoom on axes not displayed.
+    set _private($g,stack) [linsert $_private($g,stack) 0 $cmd]
+    foreach axis [$g axis names] {
+	if { [$g axis cget $axis -hide] } {
+	    continue;			# Don't set zoom on axes not displayed.
 	}
-	foreach axis [$graph $margin use] {
-	    set min [$graph axis invtransform $axis $x1]
-	    set max [$graph axis invtransform $axis $x2]
-	    if { ![SetAxisRanges $graph $axis $min $max] } {
-		blt::PopZoom $graph
-		bell
-		return
-	    }
+	set type [$g axis type $axis]
+	if { $type  == "x" } {
+	    set min [$g axis invtransform $axis $x1]
+	    set max [$g axis invtransform $axis $x2]
+	} elseif { $type == "y" } {
+	    set min [$g axis invtransform $axis $y1]
+	    set max [$g axis invtransform $axis $y2]
+	} else {
+	    continue;			# Axis is not bound to any margin.
 	}
-    }
-    foreach margin { yaxis y2axis } {
-	if { [$graph $margin cget -hide] } {
-	    continue;		# Don't set zoom on axes not displayed. 
-	}
-	foreach axis [$graph $margin use] {
-	    set min [$graph axis invtransform $axis $y1]
-	    set max [$graph axis invtransform $axis $y2]
-	    if { ![SetAxisRanges $graph $axis $min $max] } {
-		blt::PopZoom $graph
-		bell
-		return
-	    }
+	if { ![SetAxisRanges $g $axis $min $max] } {
+	    Pop $g
+	    bell
+	    return
 	}
     }
-    busy hold $graph 
+    blt::busy hold $g 
     update;				# This "update" redraws the graph
-    busy release $graph
+    blt::busy release $g
 }
 
-proc blt::SetAxisRanges { graph axis min max } {
+proc blt::ZoomStack::SetAxisRanges { g axis min max } {
     if { $min > $max } { 
 	set tmp $max; set max $min; set min $tmp
     }
-    if { [catch { $graph axis configure $axis -min $min -max $max }] != 0 } {
+    if { [catch { $g axis configure $axis -min $min -max $max }] != 0 } {
 	return 0
     }
     return 1
@@ -573,150 +612,170 @@ proc blt::SetAxisRanges { graph axis min max } {
 # This routine terminates either an existing zoom, or pops back to
 # the previous zoom level (if no zoom is in progress).
 #
+proc blt::ZoomStack::Reset { g } {
+    variable _private
 
-proc blt::ResetZoom { graph } {
-    global zoomInfo 
-
-    if { ![info exists zoomInfo($graph,corner)] } {
-	blt::InitStack $graph 
+    if { ![info exists _private($g,corner)] } {
+	Init $g 
     }
-    eval $graph marker delete [$graph marker names "zoom*"]
+    eval $g marker delete [$g marker names "zoom*"]
 
-    if { $zoomInfo($graph,corner) == "A" } {
+    if { $_private($g,corner) == "A" } {
 	# Reset the whole axis
-	blt::PopZoom $graph
+	Pop $g
     } else {
-	global zoomMod
-
-	if { [info exists zoomMod] } {
-	    set modifier $zoomMod
-	} else {
-	    set modifier "Any-"
-	}
-	set zoomInfo($graph,corner) A
-	blt::RemoveBindTag $graph select-region-$graph
+	set _private($g,corner) A
+	blt::RemoveBindTag $g select-region-$g
     }
 }
 
-option add *zoomTitle.font	  "Arial 14"
-option add *zoomTitle.shadow	  yellow4
-option add *zoomTitle.foreground  yellow1
-option add *zoomTitle.coords	  "-Inf Inf"
+proc blt::ZoomStack::TitleNext { g } {
+    variable _private
 
-proc blt::ZoomTitleNext { graph } {
-    global zoomInfo
-    set level [expr [llength $zoomInfo($graph,stack)] + 1]
-    if { [$graph cget -invertxy] } {
-	set coords "-Inf -Inf"
+    set level [expr [llength $_private($g,stack)] + 1]
+    if { [$g cget -invertxy] } {
+	set coords "Inf -Inf"
     } else {
 	set coords "-Inf Inf"
     }
-    $graph marker create text -name "zoomTitle" -text "Zoom #$level" \
+    $g marker create text -name "zoomTitle" -text "Zoom #$level" \
 	-coords $coords -bindtags "" -anchor nw
 }
 
-proc blt::ZoomTitleLast { graph } {
-    global zoomInfo
+proc blt::ZoomStack::TitleLast { g } {
+    variable _private
 
-    set level [llength $zoomInfo($graph,stack)]
+    set level [llength $_private($g,stack)]
     if { $level > 0 } {
-     	$graph marker create text -name "zoomTitle" -anchor nw \
+     	$g marker create text -name "zoomTitle" -anchor nw \
 	    -text "Zoom #$level" 
     }
 }
 
 
-proc blt::SetZoomPoint { graph x y } {
-    global zoomInfo zoomMod
-    if { ![info exists zoomInfo($graph,corner)] } {
-	blt::InitStack $graph
+proc blt::ZoomStack::SetPoint { g x y } {
+    variable _private
+    if { ![info exists _private($g,corner)] } {
+	Init $g
     }
-    blt::GetCoords $graph $x $y $zoomInfo($graph,corner)
-    if { [info exists zoomMod] } {
-	set modifier $zoomMod
-    } else {
-	set modifier "Any-"
+    GetCoords $g $x $y $_private($g,corner)
+    bind select-region-$g <Motion> { 
+	blt::ZoomStack::GetCoords %W %x %y B
+	#blt::ZoomStack::MarkPoint $g B
+	blt::ZoomStack::Box %W
     }
-    bind select-region-$graph <${modifier}Motion> { 
-	blt::GetCoords %W %x %y B
-	#blt::MarkPoint $graph B
-	blt::Box %W
-    }
-    if { $zoomInfo($graph,corner) == "A" } {
-	if { ![$graph inside $x $y] } {
+    if { $_private($g,corner) == "A" } {
+	if { ![$g inside $x $y] } {
 	    return
 	}
 	# First corner selected, start watching motion events
 
-	#blt::MarkPoint $graph A
-	blt::ZoomTitleNext $graph 
+	#MarkPoint $g A
+	TitleNext $g 
 
-	blt::AddBindTag $graph select-region-$graph
-	set zoomInfo($graph,corner) B
+	blt::AddBindTag $g select-region-$g
+	set _private($g,corner) B
     } else {
 	# Delete the modal binding
-	blt::RemoveBindTag $graph select-region-$graph
-	blt::PushZoom $graph 
-	set zoomInfo($graph,corner) A
+	blt::RemoveBindTag $g select-region-$g
+	Push $g 
+	set _private($g,corner) A
     }
 }
 
-option add *zoomOutline.dashes		4	
-option add *zoomTitle.anchor		nw
-option add *zoomOutline.lineWidth	2
-option add *zoomOutline.xor		yes
+proc blt::ZoomStack::DragStart { g x y } {
+    variable _private
+    if { ![info exists _private($g,corner)] } {
+	Init $g
+    }
+    GetCoords $g $x $y A
+    if { ![$g inside $x $y] } {
+	return
+    }
+    set _private(drag) 1
+    TitleNext $g 
+}
 
-proc blt::MarchingAnts { graph offset } {
-    global zoomInfo
+proc blt::ZoomStack::DragMotion { g x y } {
+    variable _private 
+
+    if { $_private(drag) } {
+	GetCoords $g $x $y B
+	set dx [expr abs($_private($g,B,x) - $_private($g,A,x))]
+	set dy [expr abs($_private($g,B,y) - $_private($g,A,y))]
+	Box $g
+	if { $dy > 10 && $dx > 10 } {
+	    return 1
+	}	
+    }
+    return 0
+}
+
+proc blt::ZoomStack::DragFinish { g x y } {
+    variable _private 
+    if { [DragMotion $g $x $y] } {
+	Push $g 
+    } else {
+	eval $g marker delete [$g marker names "zoom*"]
+	if { [info exists _private($g,afterId)] } {
+	    after cancel $_private($g,afterId)
+	}
+    }
+    set _private(drag) 0
+}
+
+
+proc blt::ZoomStack::MarchingAnts { g offset } {
+    variable _private
 
     incr offset
     # wrap the counter after 2^16
     set offset [expr $offset & 0xFFFF]
-    if { [$graph marker exists zoomOutline] } {
-	$graph marker configure zoomOutline -dashoffset $offset 
-	set interval $zoomInfo($graph,interval)
-	set id [after $interval [list blt::MarchingAnts $graph $offset]]
-	set zoomInfo($graph,afterId) $id
+    if { [$g marker exists zoomOutline] } {
+	$g marker configure zoomOutline -dashoffset $offset 
+	set interval $_private($g,interval)
+	set id [after $interval [list blt::ZoomStack::MarchingAnts $g $offset]]
+	set _private($g,afterId) $id
     }
 }
 
-proc blt::Box { graph } {
-    global zoomInfo
+proc blt::ZoomStack::Box { g } {
+    variable _private
 
-    if { $zoomInfo($graph,A,x) > $zoomInfo($graph,B,x) } { 
-	set x1 [$graph xaxis invtransform $zoomInfo($graph,B,x)]
-	set y1 [$graph yaxis invtransform $zoomInfo($graph,B,y)]
-	set x2 [$graph xaxis invtransform $zoomInfo($graph,A,x)]
-	set y2 [$graph yaxis invtransform $zoomInfo($graph,A,y)]
+    if { $_private($g,A,x) > $_private($g,B,x) } { 
+	set x1 [$g xaxis invtransform $_private($g,B,x)]
+	set y1 [$g yaxis invtransform $_private($g,B,y)]
+	set x2 [$g xaxis invtransform $_private($g,A,x)]
+	set y2 [$g yaxis invtransform $_private($g,A,y)]
     } else {
-	set x1 [$graph xaxis invtransform $zoomInfo($graph,A,x)]
-	set y1 [$graph yaxis invtransform $zoomInfo($graph,A,y)]
-	set x2 [$graph xaxis invtransform $zoomInfo($graph,B,x)]
-	set y2 [$graph yaxis invtransform $zoomInfo($graph,B,y)]
+	set x1 [$g xaxis invtransform $_private($g,A,x)]
+	set y1 [$g yaxis invtransform $_private($g,A,y)]
+	set x2 [$g xaxis invtransform $_private($g,B,x)]
+	set y2 [$g yaxis invtransform $_private($g,B,y)]
     }
     set coords { $x1 $y1 $x2 $y1 $x2 $y2 $x1 $y2 $x1 $y1 }
-    if { [$graph marker exists "zoomOutline"] } {
-	$graph marker configure "zoomOutline" -coords $coords 
+    if { [$g marker exists "zoomOutline"] } {
+	$g marker configure "zoomOutline" -coords $coords 
     } else {
-	set X [lindex [$graph xaxis use] 0]
-	set Y [lindex [$graph yaxis use] 0]
-	$graph marker create line -coords $coords -name "zoomOutline" \
+	set X [lindex [$g xaxis use] 0]
+	set Y [lindex [$g yaxis use] 0]
+	$g marker create line -coords $coords -name "zoomOutline" \
 	    -mapx $X -mapy $Y
-	set interval $zoomInfo($graph,interval)
-	set id [after $interval [list blt::MarchingAnts $graph 0]]
-	set zoomInfo($graph,afterId) $id
+	set interval $_private($g,interval)
+	set id [after $interval [list blt::ZoomStack::MarchingAnts $g 0]]
+	set _private($g,afterId) $id
     }
 }
 
 
-proc Blt_PostScriptDialog { graph } {
-    set top $graph.top
+proc Blt_PostScriptDialog { g } {
+    set top $g.top
     toplevel $top
 
     foreach var { center landscape maxpect preview decorations padx 
 	pady paperwidth paperheight width height colormode } {
-	global $graph.$var
-	set $graph.$var [$graph postscript cget -$var]
+	global $g.$var
+	set $g.$var [$g postscript cget -$var]
     }
     set row 1
     set col 0
@@ -727,11 +786,11 @@ proc Blt_PostScriptDialog { graph } {
 	label $w -text "-$bool" -font "courier 12"
 	blt::table $top $row,$col $w -anchor e -pady { 2 0 } -padx { 0 4 }
 	set w $top.$bool-yes
-	global $graph.$bool
-	radiobutton $w -text "yes" -variable $graph.$bool -value 1
+	global $g.$bool
+	radiobutton $w -text "yes" -variable $g.$bool -value 1
 	blt::table $top $row,$col+1 $w -anchor w
 	set w $top.$bool-no
-	radiobutton $w -text "no" -variable $graph.$bool -value 0
+	radiobutton $w -text "no" -variable $g.$bool -value 0
 	blt::table $top $row,$col+2 $w -anchor w
 	incr row
     }
@@ -740,7 +799,7 @@ proc Blt_PostScriptDialog { graph } {
     set col 1
     foreach m { color greyscale } {
 	set w $top.$m
-	radiobutton $w -text $m -variable $graph.colormode -value $m
+	radiobutton $w -text $m -variable $g.colormode -value $m
 	blt::table $top $row,$col $w -anchor w
 	incr col
     }
@@ -753,8 +812,8 @@ proc Blt_PostScriptDialog { graph } {
 	label $w -text "-$value" -font "courier 12"
 	blt::table $top $row,$col $w -anchor e  -pady { 2 0 } -padx { 0 4 }
 	set w $top.$value-entry
-	global $graph.$value
-	entry $w -textvariable $graph.$value -width 8
+	global $g.$value
+	entry $w -textvariable $g.$value -width 8
 	blt::table $top $row,$col+1 $w -cspan 2 -anchor w -padx 8
 	incr row
     }
@@ -763,21 +822,21 @@ proc Blt_PostScriptDialog { graph } {
     blt::table $top $row,0 $top.cancel  -width 1i -pady 2 -cspan 3
     button $top.reset -text "Reset" -command "destroy $top"
     #blt::table $top $row,1 $top.reset  -width 1i
-    button $top.print -text "Print" -command "blt::ResetPostScript $graph"
+    button $top.print -text "Print" -command "blt::ResetPostScript $g"
     blt::table $top $row,4 $top.print  -width 1i -pady 2 -cspan 2
 }
 
-proc blt::ResetPostScript { graph } {
+proc blt::ResetPostScript { g } {
     foreach var { center landscape maxpect preview decorations padx 
 	pady paperwidth paperheight width height colormode } {
-	global $graph.$var
-	set old [$graph postscript cget -$var]
-	if { [catch {$graph postscript configure -$var [set $graph.$var]}] != 0 } {
-	    $graph postscript configure -$var $old
-	    set $graph.$var $old
+	global $g.$var
+	set old [$g postscript cget -$var]
+	if { [catch {$g postscript configure -$var [set $g.$var]}] != 0 } {
+	    $g postscript configure -$var $old
+	    set $g.$var $old
 	}
     }
-    $graph postscript output "out.ps"
+    $g postscript output "out.ps"
     puts stdout "wrote file \"out.ps\"."
     flush stdout
 }

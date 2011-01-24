@@ -72,9 +72,9 @@ proc Find { tree parent dir } {
 	} else {
 	    if 0 {
 	    if { $info(type) == "file" } {
-		set info(type) [list @::blt::tv::normalOpenFolder $name]
+		set info(type) [list @::blt::TreeView::openIcon $name]
 	    } else {
-		set info(type) "@::blt::tv::normalOpenFolder "
+		set info(type) "@::blt::TreeView::openIcon "
 	    }
 	    }
 	    set info(mtime) [clock format $info(mtime) -format "%b %d, %Y"]
@@ -152,7 +152,7 @@ blt::treeview .ss.t \
 .ss.t column configure size gid nlink uid ino dev -justify left -edit yes
 .ss.t column configure size type -justify left -edit yes
 .ss.t column configure treeView -hide no -edit yes \
-	-icon ::blt::tv::normalOpenFolder
+	-icon ::blt::TreeView::openIcon
 focus .ss.t
 
 
@@ -185,8 +185,7 @@ foreach column [.ss.t column names] {
     -onvalue 100 -offvalue "50" \
     -showvalue yes 
 
-.ss.t style combobox combo  \
-	-icon ::blt::tv::normalOpenFolder
+.ss.t style combobox combo -icon ::blt::TreeView::openIcon
 
 .ss.t column configure uid -style combo 
 .ss.t column configure gid -style check

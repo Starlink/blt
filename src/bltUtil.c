@@ -6,27 +6,24 @@
  *
  *	Copyright 1991-2004 George A Howlett.
  *
- *	Permission is hereby granted, free of charge, to any person
- *	obtaining a copy of this software and associated documentation
- *	files (the "Software"), to deal in the Software without
- *	restriction, including without limitation the rights to use,
- *	copy, modify, merge, publish, distribute, sublicense, and/or
- *	sell copies of the Software, and to permit persons to whom the
- *	Software is furnished to do so, subject to the following
- *	conditions:
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
  *	The above copyright notice and this permission notice shall be
- *	included in all copies or substantial portions of the
- *	Software.
+ *	included in all copies or substantial portions of the Software.
  *
- *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
- *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
- *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
- *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
- *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
- *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "bltInt.h"
@@ -336,6 +333,97 @@ Tcl_GetVar2Ex(
 
 #endif
 
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_GetDoubleFromString --
+ *
+ *      Converts a string into a double precision number.  This differs from
+ *	Tcl's version in that it also allows NaN and +/-Inf.  There are 
+ *	cases where NaNs are used to indicate holes in the data. 
+ *
+ * Results:
+ *      Returns a standard Tcl result.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Blt_GetDoubleFromString(Tcl_Interp *interp, const char *s, double *valuePtr)
+{
+    char *end;
+    double d;
+    
+    errno = 0;
+    d = strtod(s, &end); /* INTL: Tcl source. */
+    if (end == s) {
+	badDouble:
+        if (interp != (Tcl_Interp *) NULL) {
+            Tcl_AppendResult(interp,
+		"expected floating-point number but got \"", s, "\"", 
+		(char *) NULL);
+        }
+	return TCL_ERROR;
+    }
+    if (errno != 0 && (d == HUGE_VAL || d == -HUGE_VAL || d == 0)) {
+        if (interp != (Tcl_Interp *) NULL) {
+	    char msg[64 + TCL_INTEGER_SPACE];
+	
+	    sprintf(msg, "unknown floating-point error, errno = %d", errno);
+	    Tcl_AppendToObj(Tcl_GetObjResult(interp), msg, -1);
+	    Tcl_SetErrorCode(interp, "ARITH", "UNKNOWN", msg, (char *) NULL);
+        }
+	return TCL_ERROR;
+    }
+    while ((*end != 0) && isspace(UCHAR(*end))) { /* INTL: ISO space. */
+	end++;
+    }
+    if (*end != 0) {
+	goto badDouble;
+    }
+    *valuePtr = d;
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_GetDoubleFromString --
+ *
+ *      Converts a Tcl_Obj into a double precision number.  This differs from
+ *	Tcl's version in that it also allows NaN and +/-Inf.  There are 
+ *	cases where NaNs are used to indicate holes in the data. 
+ *
+ * Results:
+ *      Returns a standard Tcl result.
+ *
+ * Side Effects:
+ *	tclDoubleType is no longer available (in 8.5) as a global variable.
+ *	We have to get a double obj and save its type pointer.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Blt_GetDoubleFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, double *valuePtr)
+{
+    const char *string;
+    static Tcl_ObjType *tclDoubleTypePtr = NULL;
+
+    if (tclDoubleTypePtr == NULL) {
+	Tcl_Obj *objPtr;
+	
+	objPtr = Tcl_NewDoubleObj(0.0);
+	tclDoubleTypePtr = objPtr->typePtr;
+	Tcl_DecrRefCount(objPtr);
+    }
+    if (objPtr->typePtr == tclDoubleTypePtr) {
+	*valuePtr = objPtr->internalRep.doubleValue;
+	return TCL_OK;
+    }
+    string = Tcl_GetString(objPtr);
+    return Blt_GetDoubleFromString(interp, string, valuePtr);
+}
+
 /*
  *---------------------------------------------------------------------------
  *
@@ -371,11 +459,10 @@ Blt_DictionaryCompare(const char *left, const char *right)
     for(;;) {
 	if ((isdigit(UCHAR(*right))) && (isdigit(UCHAR(*left)))) { 
 	    /*
-	     * There are decimal numbers embedded in the two
-	     * strings.  Compare them as numbers, rather than
-	     * strings.  If one number has more leading zeros than
-	     * the other, the number with more leading zeros sorts
-	     * later, but only as a secondary choice.
+	     * There are decimal numbers embedded in the two strings.  Compare
+	     * them as numbers, rather than strings.  If one number has more
+	     * leading zeros than the other, the number with more leading
+	     * zeros sorts later, but only as a secondary choice.
 	     */
 
 	    zeros = 0;
@@ -392,10 +479,10 @@ Blt_DictionaryCompare(const char *left, const char *right)
 	    }
 
 	    /*
-	     * The code below compares the numbers in the two
-	     * strings without ever converting them to integers.  It
-	     * does this by first comparing the lengths of the
-	     * numbers and then comparing the digit values.
+	     * The code below compares the numbers in the two strings without
+	     * ever converting them to integers.  It does this by first
+	     * comparing the lengths of the numbers and then comparing the
+	     * digit values.
 	     */
 
 	    diff = 0;
@@ -486,11 +573,10 @@ Blt_DictionaryCompare(const char *left, const char *right)
     while (1) {
 	if (isdigit(UCHAR(*right)) && isdigit(UCHAR(*left))) {
 	    /*
-	     * There are decimal numbers embedded in the two
-	     * strings.  Compare them as numbers, rather than
-	     * strings.  If one number has more leading zeros than
-	     * the other, the number with more leading zeros sorts
-	     * later, but only as a secondary choice.
+	     * There are decimal numbers embedded in the two strings.  Compare
+	     * them as numbers, rather than strings.  If one number has more
+	     * leading zeros than the other, the number with more leading
+	     * zeros sorts later, but only as a secondary choice.
 	     */
 
 	    zeros = 0;
@@ -507,10 +593,10 @@ Blt_DictionaryCompare(const char *left, const char *right)
 	    }
 
 	    /*
-	     * The code below compares the numbers in the two
-	     * strings without ever converting them to integers.  It
-	     * does this by first comparing the lengths of the
-	     * numbers and then comparing the digit values.
+	     * The code below compares the numbers in the two strings without
+	     * ever converting them to integers.  It does this by first
+	     * comparing the lengths of the numbers and then comparing the
+	     * digit values.
 	     */
 
 	    diff = 0;
@@ -747,8 +833,8 @@ Blt_GlobalEvalListObj(Tcl_Interp *interp, Tcl_Obj *cmdObjPtr)
  *
  * Blt_InitHexTable --
  *
- *	Table index for the hex values. Initialized once, first time.
- *	Used for translation value or delimiter significance lookup.
+ *	Table index for the hex values. Initialized once, first time.  Used
+ *	for translation value or delimiter significance lookup.
  *
  *	We build the table at run time for several reasons:
  *
@@ -790,18 +876,18 @@ Blt_InitHexTable(unsigned char *hexTable)
  *
  * Blt_GetPosition --
  *
- *	Convert a string representing a numeric position.
- *	A position can be in one of the following forms.
+ *	Convert a string representing a numeric position.  A position can be
+ *	in one of the following forms.
  *
  * 	  number	- number of the item in the hierarchy, indexed
  *			  from zero.
  *	  "end"		- last position in the hierarchy.
  *
  * Results:
- *	A standard TCL result.  If "string" is a valid index, then
- *	*indexPtr is filled with the corresponding numeric index.
- *	If "end" was selected then *indexPtr is set to -1.
- *	Otherwise an error message is left in interp->result.
+ *	A standard TCL result.  If "string" is a valid index, then *indexPtr
+ *	is filled with the corresponding numeric index.  If "end" was selected
+ *	then *indexPtr is set to -1.  Otherwise an error message is left in
+ *	interp->result.
  *
  * Side effects:
  *	None.
@@ -810,15 +896,16 @@ Blt_InitHexTable(unsigned char *hexTable)
  */
 int
 Blt_GetPosition(
-    Tcl_Interp *interp,		/* Interpreter to report results back
-				 * to. */
-    const char *string,		/* String representation of the index.
-				 * Can be an integer or "end" to refer
-				 * to the last index. */
-    long *indexPtr)		/* Holds the converted index. */
+    Tcl_Interp *interp,			/* Interpreter to report results back
+					 * to. */
+    const char *string,			/* String representation of the index.
+					 * Can be an integer or "end" to refer
+					 * to the last index. */
+    long *indexPtr)			/* Holds the converted index. */
 {
     if ((string[0] == 'e') && (strcmp(string, "end") == 0)) {
-	*indexPtr = -1;		/* Indicates last position in hierarchy. */
+	*indexPtr = -1;			/* Indicates last position in
+					 * hierarchy. */
     } else {
 	long position;
 
@@ -839,8 +926,8 @@ int
 Blt_GetCountFromObj(
     Tcl_Interp *interp,
     Tcl_Obj *objPtr,
-    int check,			/* Can be COUNT_POS, COUNT_NNEG,
-				 * or COUNT_ANY, */
+    int check,				/* Can be COUNT_POS, COUNT_NNEG,
+					 * or COUNT_ANY, */
     long *valuePtr)
 {
     long count;
@@ -901,7 +988,7 @@ static int uidInitialized = 0;
  *---------------------------------------------------------------------------
  */
 Blt_Uid
-Blt_GetUid(const char *string)	/* String to convert. */
+Blt_GetUid(const char *string)		/* String to convert. */
 {
     Blt_HashEntry *hPtr;
     int isNew;
@@ -938,7 +1025,7 @@ Blt_GetUid(const char *string)	/* String to convert. */
  *---------------------------------------------------------------------------
  */
 void
-Blt_FreeUid(Blt_Uid uid)	/* Identifier to release. */
+Blt_FreeUid(Blt_Uid uid)		/* Identifier to release. */
 {
     Blt_HashEntry *hPtr;
 
@@ -975,7 +1062,7 @@ Blt_FreeUid(Blt_Uid uid)	/* Identifier to release. */
  *---------------------------------------------------------------------------
  */
 Blt_Uid
-Blt_FindUid(const char *string)	/* String to find. */
+Blt_FindUid(const char *string)		/* String to find. */
 {
     Blt_HashEntry *hPtr;
 
@@ -1042,10 +1129,10 @@ BinaryOpSearch(Blt_OpSpec *specs, int nSpecs, const char *string, int length)
 	} else if (compare > 0) {
 	    low = median + 1;
 	} else {
-	    return median;	/* Op found. */
+	    return median;		/* Op found. */
 	}
     }
-    return -1;			/* Can't find operation */
+    return -1;				/* Can't find operation */
 }
 
 
@@ -1088,12 +1175,12 @@ LinearOpSearch(Blt_OpSpec *specs, int nSpecs, const char *string, int length)
 	}
     }
     if (nMatches > 1) {
-	return -2;		/* Ambiguous operation name */
+	return -2;			/* Ambiguous operation name */
     } 
     if (nMatches == 0) {
-	return -1;		/* Can't find operation */
+	return -1;			/* Can't find operation */
     } 
-    return last;		/* Op found. */
+    return last;			/* Op found. */
 }
 
 /*
@@ -1113,13 +1200,15 @@ LinearOpSearch(Blt_OpSpec *specs, int nSpecs, const char *string, int length)
  */
 void *
 Blt_GetOpFromObj(
-    Tcl_Interp *interp,		/* Interpreter to report errors to */
-    int nSpecs,			/* Number of specifications in array */
-    Blt_OpSpec *specs,		/* Op specification array */
-    int operPos,		/* Position of operation in argument list. */
-    int objc,			/* Number of arguments in the argument vector.
-				 * This includes any prefixed arguments */
-    Tcl_Obj *const *objv,	/* Argument vector */
+    Tcl_Interp *interp,			/* Interpreter to report errors to */
+    int nSpecs,				/* # of specifications in array */
+    Blt_OpSpec *specs,			/* Op specification array */
+    int operPos,			/* Position of operation in argument
+					 * list. */
+    int objc,				/* # of arguments in the argument *
+					 * vector.  This includes any
+					 * prefixed arguments */
+    Tcl_Obj *const *objv,		/* Argument vector */
     int flags)
 {
     Blt_OpSpec *specPtr;
@@ -1127,7 +1216,7 @@ Blt_GetOpFromObj(
     int length;
     int n;
 
-    if (objc <= operPos) {	/* No operation argument */
+    if (objc <= operPos) {		/* No operation argument */
 	Tcl_AppendResult(interp, "wrong # args: ", (char *)NULL);
       usage:
 	Tcl_AppendResult(interp, "should be one of...", (char *)NULL);
@@ -1172,7 +1261,7 @@ Blt_GetOpFromObj(
 	}
 	return NULL;
 
-    } else if (n == -1) {	/* Can't find operation, display help */
+    } else if (n == -1) {	      /* Can't find operation, display help */
 	Tcl_AppendResult(interp, "bad", (char *)NULL);
 	if (operPos > 2) {
 	    Tcl_AppendResult(interp, " ", Tcl_GetString(objv[operPos - 1]), 
@@ -1201,11 +1290,8 @@ Blt_GetOpFromObj(
 #if (_TCL_VERSION >= _VERSION(8,4,0)) 
 /*ARGSUSED*/
 int
-Blt_LoadLibrary(
-    Tcl_Interp *interp,
-    const char *libPath, 
-    const char *initProcName, 
-    const char *safeProcName)
+Blt_LoadLibrary(Tcl_Interp *interp, const char *libPath, 
+		const char *initProcName, const char *safeProcName)
 {
     Tcl_FSUnloadFileProc *unLoadProcPtr = NULL;
     Tcl_LoadHandle loadHandle;
@@ -1229,8 +1315,8 @@ Blt_LoadLibrary(
     if (Tcl_IsSafe(interp)) {
         if (safeProc == NULL) {
             Tcl_AppendResult(interp, 
-		"can't use package in a safe interpreter: ", "no ", 
-		safeProcName, " procedure", (char *) NULL);
+		"can't use package in a safe interpreter: no ", safeProcName, 
+		" procedure", (char *) NULL);
 	    result = TCL_ERROR;
             goto done;
 	}
@@ -1250,11 +1336,8 @@ Blt_LoadLibrary(
 }
 #else 
 int
-Blt_LoadLibrary(
-    Tcl_Interp *interp,
-    const char *libPath, 
-    const char *initProcName, 
-    const char *safeProcName)
+Blt_LoadLibrary(Tcl_Interp *interp, const char *libPath, 
+		const char *initProcName, const char *safeProcName)
 {
     ClientData loadData;
     Tcl_PackageInitProc *initProc, *safeProc;

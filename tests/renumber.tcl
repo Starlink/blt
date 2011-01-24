@@ -9,7 +9,7 @@ set f [open $outfile "w"]
 set count 1
 set pattern [subst -nocommands {^test ${test}\.[a-z0-9]+ }]
 foreach line [split $data \n] {
-    if { [regsub $pattern $line "test tree.$count " line] } {
+    if { [regsub $pattern $line "test ${test}.${count} " line] } {
 	incr count
     }
     puts $f $line

@@ -26,7 +26,7 @@ option add *Button.padX			5
 option add *Radiobutton.relief		flat
 option add *Radiobutton.borderWidth     2
 option add *Radiobutton.highlightThickness 0
-
+option add *Radiobutton.font		"Arial 10 bold"
 option add *Htext.tileOffset		no
 
 option add *Barchart.title		"Comparison of Simulators"
@@ -67,7 +67,7 @@ blt::htext .title -text {\
 blt::htext .header -text {
     %%
     blt::tk::radiobutton .header.stacked -text stacked -variable barMode \
-	-anchor w -value "stacked" -selectcolor red -command {
+	-anchor w -value "stacked" -command {
             .graph configure -barmode $barMode
         } 
     .header append .header.stacked -width 1.0i -anchor w
@@ -75,21 +75,21 @@ blt::htext .header -text {
                                                    sum of the y-coordinates. 
     %% 
     blt::tk::radiobutton .header.aligned -text aligned -variable barMode \
-	-anchor w -value "aligned" -selectcolor yellow -command {
+	-anchor w -value "aligned" -command {
             .graph configure -barmode $barMode
         }
     .header append .header.aligned -width 1.0i -fill x
     %%      Bars are drawn side-by-side at a fraction of their normal width. 
     %%
     blt::tk::radiobutton .header.overlap -text "overlap" -variable barMode \
-	-anchor w -value "overlap" -selectcolor green -command {
+	-anchor w -value "overlap" -command {
             .graph configure -barmode $barMode
         } 
     .header append .header.overlap -width 1.0i -fill x
     %%      Bars overlap slightly. 
     %%
     blt::tk::radiobutton .header.normal -text "normal" -variable barMode \
-	-anchor w -value "normal" -selectcolor blue -command {
+	-anchor w -value "normal" -command {
             .graph configure -barmode $barMode
         } 
     .header append .header.normal -width 1.0i -fill x
@@ -117,7 +117,7 @@ set style [blt::bgpattern create gradient -high grey60 -low grey85 \
 	       -xorigin 0 -yorigin 0 -relativeto self -logscale yes]
 }
 
-blt::barchart .graph -bg $style
+blt::barchart .graph -bg $style  -barwidth 0.9
 
 blt::vector X Y0 Y1 Y2 Y3 Y4
 

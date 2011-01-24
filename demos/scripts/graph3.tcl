@@ -59,6 +59,7 @@ $s2 blank 0x00000000
 $s2 draw circle 12 12 5 -shadow 0 -linewidth 1 \
 	-fill 0x900000F0 -antialias yes \
 	-outline orange
+set s2 splus
 $graph element create line2 \
     -label "cos(x)" \
     -color yellow4 \
@@ -83,6 +84,5 @@ $graph marker create bitmap \
 	-rotate 45
 #    -rotate 45
 $graph postscript configure \
-    -maxpect yes \
     -landscape yes
 

@@ -177,6 +177,7 @@ DoSwitch(
 	    break;
 
 	case BLT_SWITCH_OBJ:
+	    Tcl_IncrRefCount(objPtr);
 	    *(Tcl_Obj **)ptr = objPtr;
 	    break;
 
@@ -264,6 +265,17 @@ DoSwitch(
 
 	case BLT_SWITCH_STRING: 
 	    {
+		char *value;
+		
+		value = Tcl_GetString(objPtr);
+		value =  (*value == '\0') ?  NULL : Blt_AssertStrdup(value);
+		if (*(char **)ptr != NULL) {
+		    Blt_Free(*(char **)ptr);
+		}
+		*(char **)ptr = value;
+	    }
+#ifdef notdef
+	    {
 		char *old, *new, **strPtr;
 		char *string;
 
@@ -277,6 +289,7 @@ DoSwitch(
 		}
 		*strPtr = new;
 	    }
+#endif
 	    break;
 
 	case BLT_SWITCH_CUSTOM:
@@ -377,7 +390,7 @@ Blt_ParseSwitches(
 
 	    ptr = (char *)record + sp->offset;
 	    *((int *)ptr) |= sp->mask;
-	} else if (sp->type == BLT_SWITCH_BITMASK_NEG) {
+	} else if (sp->type == BLT_SWITCH_BITMASK_INVERT) {
 	    char *ptr;
 	    
 	    ptr = (char *)record + sp->offset;
@@ -443,6 +456,13 @@ Blt_FreeSwitches(
 		if (*((char **) ptr) != NULL) {
 		    Blt_Free(*((char **) ptr));
 		    *((char **) ptr) = NULL;
+		}
+		break;
+
+	    case BLT_SWITCH_OBJ:
+		if (*((Tcl_Obj **) ptr) != NULL) {
+		    Tcl_DecrRefCount(*((Tcl_Obj **)ptr));
+		    *((Tcl_Obj **) ptr) = NULL;
 		}
 		break;
 

@@ -63,7 +63,7 @@ static Blt_PictureProcs mmxPictureProcs = {
     SelectPixels,
     AssociateColors,
     UnassociateColors,
-    FadePicture,
+    NULL, /*FadePicture*, */
     CopyPictureBits
 };
 

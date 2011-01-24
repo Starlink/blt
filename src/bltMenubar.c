@@ -89,9 +89,6 @@
 #define DEF_UNDERLINE		"-1"
 #define DEF_WIDTH		"0"
 
-#define SCREEN_HEIGHT(w)	HeightOfScreen(Tk_Screen(w))
-#define SCREEN_WIDTH(w)		WidthOfScreen(Tk_Screen(w))
-
 static Blt_OptionFreeProc FreeTextProc;
 static Blt_OptionParseProc ObjToTextProc;
 static Blt_OptionPrintProc TextToObjProc;
@@ -118,7 +115,7 @@ static Blt_CustomOption orientOption = {
     ObjToOrientProc, OrientToObjProc, NULL, (ClientData)0
 };
 
-static const char *emptyString = "";
+static const char emptyString[] = "";
 
 /*
  * Icon --
@@ -137,49 +134,41 @@ static const char *emptyString = "";
  */
 
 typedef struct Icon {
-    Tk_Image tkImage;		/* The Tk image being cached. */
-    short int width, height;	/* Dimensions of the cached image. */
+    Tk_Image tkImage;			/* The Tk image being cached. */
+    short int width, height;		/* Dimensions of the cached image. */
 } *Icon;
 
 #define IconHeight(i)	((i)->height)
 #define IconWidth(i)	((i)->width)
 #define IconImage(i)	((i)->tkImage)
-#define IconName(i)	(Blt_NameOfImage((i)->tkImage))
+#define IconName(i)	(Blt_Image_Name((i)->tkImage))
 
 typedef struct _Menubar Menubar;
 
 typedef struct  {
-    Menubar *mbarPtr;
-
+    Menubar *mbPtr;
     Blt_ChainLink link;
-
     Blt_HashEntry *hashPtr;
-
     unsigned int flags;
     /* 
      * The item contains optionally an icon and a text string. 
      */
-    Icon icon;			/* If non-NULL, image to be displayed in
-				 * item. */
-
-    Icon image;			/* If non-NULL, image to be displayed instead
-				 * of text in the item. */
-
-    const char *text;		/* Text string to be displayed in the item
-				 * if an image has no been designated. */
-
-    Tk_Justify justify;		/* Justification to use for text within the
-				 * item. */
-
-    short int textLen;		/* # bytes of text. */
-
-    short int underline;	/* Character index of character to be
-				 * underlined. If -1, no character is
-				 * underlined. */
-
-    Tcl_Obj *takeFocusObjPtr;	/* Value of -takefocus option; not used in the
-				 * C code, but used by keyboard traversal
-				 * scripts. */
+    Icon icon;				/* If non-NULL, image to be displayed
+					 * in item. */
+    Icon image;				/* If non-NULL, image to be displayed
+					 * instead of text in the item. */
+    const char *text;			/* Text string to be displayed in the
+					 * item if an image has no been
+					 * designated. */
+    Tk_Justify justify;			/* Justification to use for text
+					 * within the item. */
+    short int textLen;			/* # bytes of text. */
+    short int underline;		/* Character index of character to be
+					 * underlined. If -1, no character is
+					 * underlined. */
+    Tcl_Obj *takeFocusObjPtr;		/* Value of -takefocus option; not
+					 * used in the C code, but used by
+					 * keyboard traversal scripts. */
     short int iconWidth, iconHeight;
     short int entryWidth, entryHeight;
     short int textWidth, textHeight;
@@ -415,17 +404,17 @@ static Tcl_CmdDeleteProc MenubarInstCmdDeletedProc;
  *---------------------------------------------------------------------------
  */
 static void
-EventuallyRedraw(Menubar *mbarPtr) 
+EventuallyRedraw(Menubar *mbPtr) 
 {
-    if ((mbarPtr->tkwin != NULL) && ((mbarPtr->flags & REDRAW_PENDING) == 0)) {
-	mbarPtr->flags |= REDRAW_PENDING;
-	Tcl_DoWhenIdle(DisplayMenubar, mbarPtr);
+    if ((mbPtr->tkwin != NULL) && ((mbPtr->flags & REDRAW_PENDING) == 0)) {
+	mbPtr->flags |= REDRAW_PENDING;
+	Tcl_DoWhenIdle(DisplayMenubar, mbPtr);
     }
 }
 
 
 static void
-FreeIcon(Menubar *mbarPtr, Icon icon)
+FreeIcon(Menubar *mbPtr, Icon icon)
 {
     Tk_FreeImage(IconImage(icon));
     Blt_Free(icon);
@@ -461,14 +450,14 @@ IconChangedProc(
     int x, int y, int w, int h,      /* Not used. */
     int imageWidth, int imageHeight) /* Not used. */
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
 
-    mbarPtr->flags |= LAYOUT_PENDING;
-    EventuallyRedraw(mbarPtr);
+    mbPtr->flags |= LAYOUT_PENDING;
+    EventuallyRedraw(mbPtr);
 }
 
 static int
-GetIconFromObj(Tcl_Interp *interp, Menubar *mbarPtr, Tcl_Obj *objPtr, 
+GetIconFromObj(Tcl_Interp *interp, Menubar *mbPtr, Tcl_Obj *objPtr, 
 	       Icon *iconPtr)
 {
     Tk_Image tkImage;
@@ -479,8 +468,8 @@ GetIconFromObj(Tcl_Interp *interp, Menubar *mbarPtr, Tcl_Obj *objPtr,
 	*iconPtr = NULL;
 	return TCL_OK;
     }
-    tkImage = Tk_GetImage(interp, mbarPtr->tkwin, iconName, IconChangedProc, 
-	mbarPtr);
+    tkImage = Tk_GetImage(interp, mbPtr->tkwin, iconName, IconChangedProc, 
+	mbPtr);
     if (tkImage != NULL) {
 	struct Icon *ip;
 	int width, height;
@@ -516,32 +505,32 @@ GetIconFromObj(Tcl_Interp *interp, Menubar *mbarPtr, Tcl_Obj *objPtr,
 static void
 MenubarEventProc(ClientData clientData, XEvent *eventPtr)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
 
     if (eventPtr->type == Expose) {
 	if (eventPtr->xexpose.count == 0) {
-	    EventuallyRedraw(mbarPtr);
+	    EventuallyRedraw(mbPtr);
 	}
     } else if (eventPtr->type == ConfigureNotify) {
-	EventuallyRedraw(mbarPtr);
+	EventuallyRedraw(mbPtr);
     } else if ((eventPtr->type == FocusIn) || (eventPtr->type == FocusOut)) {
 	if (eventPtr->xfocus.detail == NotifyInferior) {
 	    return;
 	}
 	if (eventPtr->type == FocusIn) {
-	    mbarPtr->flags |= FOCUS;
+	    mbPtr->flags |= FOCUS;
 	} else {
-	    mbarPtr->flags &= ~FOCUS;
+	    mbPtr->flags &= ~FOCUS;
 	}
-	EventuallyRedraw(mbarPtr);
+	EventuallyRedraw(mbPtr);
     } else if (eventPtr->type == DestroyNotify) {
-	if (mbarPtr->tkwin != NULL) {
-	    mbarPtr->tkwin = NULL; 
+	if (mbPtr->tkwin != NULL) {
+	    mbPtr->tkwin = NULL; 
 	}
-	if (mbarPtr->flags & REDRAW_PENDING) {
-	    Tcl_CancelIdleCall(DisplayMenubar, mbarPtr);
+	if (mbPtr->flags & REDRAW_PENDING) {
+	    Tcl_CancelIdleCall(DisplayMenubar, mbPtr);
 	}
-	Tcl_EventuallyFree(mbarPtr, DestroyMenubar);
+	Tcl_EventuallyFree(mbPtr, DestroyMenubar);
     }
 }
 
@@ -580,14 +569,14 @@ ObjToStateProc(
     } else if (strcmp(string, "normal") == 0) {
 	flag = STATE_NORMAL;
     } else if (strcmp(string, "active") == 0) {
-	Menubar *mbarPtr;
+	Menubar *mbPtr;
 
-	mbarPtr = itemPtr->mbarPtr;
-	if (mbarPtr->activePtr != NULL) {
-	    mbarPtr->activePtr->flags &= ~STATE_ACTIVE;
+	mbPtr = itemPtr->mbPtr;
+	if (mbPtr->activePtr != NULL) {
+	    mbPtr->activePtr->flags &= ~STATE_ACTIVE;
 	}
 	flag = STATE_ACTIVE;
-	mbarPtr->activePtr = itemPtr;
+	mbPtr->activePtr = itemPtr;
     } else {
 	Tcl_AppendResult(interp, "unknown state \"", string, 
 	    "\": should be active, disabled, or normal.", (char *)NULL);
@@ -644,9 +633,9 @@ FreeIconProc(ClientData clientData, Display *display, char *widgRec, int offset)
     Icon icon = *(Icon *)(widgRec + offset);
 
     if (icon != NULL) {
-	Menubar *mbarPtr = (Menubar *)widgRec;
+	Menubar *mbPtr = (Menubar *)widgRec;
 
-	FreeIcon(mbarPtr, icon);
+	FreeIcon(mbPtr, icon);
     }
 }
 
@@ -674,7 +663,7 @@ ObjToOrientProc(
     int offset,			/* Offset to field in structure */
     int flags)	
 {
-    Menubar *mbarPtr = (Menubar *)(widgRec);
+    Menubar *mbPtr = (Menubar *)(widgRec);
     unsigned int *flagsPtr = (unsigned int *)(widgRec + offset);
     const char *string;
     int length;
@@ -690,7 +679,7 @@ ObjToOrientProc(
 	    "\": must be vertical or horizontal", (char *)NULL);
 	return TCL_ERROR;
     }
-    mbarPtr->flags |= LAYOUT_PENDING;
+    mbPtr->flags |= LAYOUT_PENDING;
     return TCL_OK;
 }
 
@@ -748,15 +737,15 @@ ObjToIconProc(
     int offset,			/* Offset to field in structure */
     int flags)	
 {
-    Menubar *mbarPtr = (Menubar *)widgRec;
+    Menubar *mbPtr = (Menubar *)widgRec;
     Icon *iconPtr = (Icon *)(widgRec + offset);
     Icon icon;
 
-    if (GetIconFromObj(interp, mbarPtr, objPtr, &icon) != TCL_OK) {
+    if (GetIconFromObj(interp, mbPtr, objPtr, &icon) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (*iconPtr != NULL) {
-	FreeIcon(mbarPtr, *iconPtr);
+	FreeIcon(mbPtr, *iconPtr);
     }
     *iconPtr = icon;
     return TCL_OK;
@@ -790,7 +779,7 @@ IconToObjProc(
     if (icon == NULL) {
 	objPtr = Tcl_NewStringObj("", 0);
     } else {
-	objPtr = Tcl_NewStringObj(Blt_NameOfImage(IconImage(icon)), -1);
+	objPtr = Tcl_NewStringObj(Blt_Image_Name(IconImage(icon)), -1);
     }
     return objPtr;
 }
@@ -803,9 +792,9 @@ FreeTextProc(ClientData clientData, Display *display, char *widgRec, int offset)
     Item *itemPtr = (Item *)(widgRec);
 
     if (itemPtr->hashPtr != NULL) {
-	Menubar *mbarPtr = itemPtr->mbarPtr;
+	Menubar *mbPtr = itemPtr->mbPtr;
 
-	Blt_DeleteHashEntry(&mbarPtr->itemTable, itemPtr->hashPtr);
+	Blt_DeleteHashEntry(&mbPtr->itemTable, itemPtr->hashPtr);
 	itemPtr->hashPtr = NULL;
     }
 }
@@ -834,24 +823,24 @@ ObjToTextProc(
     int flags)	
 {
     Item *itemPtr = (Item *)(widgRec);
-    Menubar *mbarPtr;
+    Menubar *mbPtr;
     int isNew;
     Blt_HashEntry *hPtr;
     const char *string;
 
-    mbarPtr = itemPtr->mbarPtr;
+    mbPtr = itemPtr->mbPtr;
     string = Tcl_GetString(objPtr);
-    hPtr = Blt_CreateHashEntry(&mbarPtr->itemTable, string, &isNew);
+    hPtr = Blt_CreateHashEntry(&mbPtr->itemTable, string, &isNew);
     if (!isNew) {
 	Tcl_AppendResult(interp, "item \"", string, "\" already exists in ",
-			 Tk_PathName(mbarPtr->tkwin), (char *)NULL);
+			 Tk_PathName(mbPtr->tkwin), (char *)NULL);
 	return TCL_ERROR;
     }
     if (itemPtr->hashPtr != NULL) {
-	Blt_DeleteHashEntry(&mbarPtr->itemTable, itemPtr->hashPtr);
+	Blt_DeleteHashEntry(&mbPtr->itemTable, itemPtr->hashPtr);
     }
     itemPtr->hashPtr = hPtr;
-    itemPtr->text = Blt_GetHashKey(&mbarPtr->itemTable, hPtr);
+    itemPtr->text = Blt_GetHashKey(&mbPtr->itemTable, hPtr);
     Blt_SetHashValue(hPtr, itemPtr);
     return TCL_OK;
 }
@@ -884,11 +873,11 @@ TextToObjProc(
 }
 
 static INLINE Item *
-FirstItem(Menubar *mbarPtr)
+FirstItem(Menubar *mbPtr)
 {
     Blt_ChainLink link;
 
-    for (link = Blt_Chain_FirstLink(mbarPtr->chain); link != NULL;
+    for (link = Blt_Chain_FirstLink(mbPtr->chain); link != NULL;
 	 link = Blt_Chain_NextLink(link)) {
 	Item *itemPtr;
 
@@ -901,11 +890,11 @@ FirstItem(Menubar *mbarPtr)
 }
 
 static INLINE Item *
-LastItem(Menubar *mbarPtr)
+LastItem(Menubar *mbPtr)
 {
     Blt_ChainLink link;
 
-    for (link = Blt_Chain_LastLink(mbarPtr->chain); link != NULL;
+    for (link = Blt_Chain_LastLink(mbPtr->chain); link != NULL;
 	 link = Blt_Chain_PrevLink(link)) {
 	Item *itemPtr;
 
@@ -969,11 +958,11 @@ PrevItem(Item *itemPtr)
  *---------------------------------------------------------------------------
  */
 static Item *
-SearchForItem(Menubar *mbarPtr, int x, int y)
+SearchForItem(Menubar *mbPtr, int x, int y)
 {
     Item *itemPtr;
 
-    for (itemPtr = FirstItem(mbarPtr); itemPtr != NULL;
+    for (itemPtr = FirstItem(mbPtr); itemPtr != NULL;
 	 itemPtr = NextItem(itemPtr)) {
 
 	if ((x >= itemPtr->x) && (x < (itemPtr->x + itemPtr->width))) {
@@ -1000,23 +989,23 @@ SearchForItem(Menubar *mbarPtr, int x, int y)
  */
 /*ARGSUSED*/
 static Item *
-NearestItem(Menubar *mbarPtr, int x, int y, int selectOne)
+NearestItem(Menubar *mbPtr, int x, int y, int selectOne)
 {
     Item *itemPtr;
 
-    if ((x < 0) || (x >= Tk_Width(mbarPtr->tkwin)) || 
-	(y < 0) || (y >= Tk_Height(mbarPtr->tkwin))) {
+    if ((x < 0) || (x >= Tk_Width(mbPtr->tkwin)) || 
+	(y < 0) || (y >= Tk_Height(mbPtr->tkwin))) {
 	return NULL;		/* Screen coordinates are outside of menu. */
     }
-    itemPtr = SearchForItem(mbarPtr, x, y);
+    itemPtr = SearchForItem(mbPtr, x, y);
     if (itemPtr == NULL) {
 	if (!selectOne) {
 	    return NULL;
 	}
-	if (x < mbarPtr->borderWidth) {
-	    return FirstItem(mbarPtr);
+	if (x < mbPtr->borderWidth) {
+	    return FirstItem(mbPtr);
 	}
-	return LastItem(mbarPtr);
+	return LastItem(mbPtr);
     }
     return itemPtr;
 }
@@ -1046,14 +1035,14 @@ NearestItem(Menubar *mbarPtr, int x, int y, int selectOne)
 static void
 ComputeItemGeometry(Item *itemPtr)
 {
-    Menubar *mbarPtr = itemPtr->mbarPtr;
+    Menubar *mbPtr = itemPtr->mbPtr;
 
     /* Determine the height of the item.  It's the maximum height of all
      * it's components: icon, label, and item. */
     itemPtr->iconWidth = itemPtr->iconHeight = 0;
     itemPtr->entryWidth = itemPtr->entryHeight = 0;
     itemPtr->textWidth = itemPtr->textHeight = 0;
-    itemPtr->inset = mbarPtr->highlightWidth;
+    itemPtr->inset = mbPtr->highlightWidth;
 
     if (itemPtr->icon != NULL) {
 	itemPtr->iconWidth  = IconWidth(itemPtr->icon);
@@ -1069,7 +1058,7 @@ ComputeItemGeometry(Item *itemPtr)
     } else if (itemPtr->text != NULL) {
 	unsigned int w, h;
 
-	Blt_GetTextExtents(mbarPtr->font, 0, itemPtr->text, itemPtr->textLen, 
+	Blt_GetTextExtents(mbPtr->font, 0, itemPtr->text, itemPtr->textLen, 
 		&w, &h);
 	itemPtr->textWidth  = w + 2 * IPAD;
 	itemPtr->textHeight = h;
@@ -1089,17 +1078,16 @@ ComputeItemGeometry(Item *itemPtr)
 }
 
 static void
-ComputeMenubarGeometry(Menubar *mbarPtr)
+ComputeMenubarGeometry(Menubar *mbPtr)
 {
     Blt_ChainLink link;
-    int w, h;
     int maxWidth, maxHeight;
     int totalWidth, totalHeight;
 
-    mbarPtr->width = mbarPtr->height = 0;
-    mbarPtr->inset = mbarPtr->borderWidth + mbarPtr->highlightWidth;
-    if (mbarPtr->flags & LAYOUT_PENDING) {
-	for (link = Blt_Chain_FirstLink(mbarPtr->chain); link != NULL;
+    mbPtr->width = mbPtr->height = 0;
+    mbPtr->inset = mbPtr->borderWidth + mbPtr->highlightWidth;
+    if (mbPtr->flags & LAYOUT_PENDING) {
+	for (link = Blt_Chain_FirstLink(mbPtr->chain); link != NULL;
 	     link = Blt_Chain_NextLink(link)) {
 	    Item *itemPtr;
 	    
@@ -1109,7 +1097,7 @@ ComputeMenubarGeometry(Menubar *mbarPtr)
     }
     totalWidth = totalHeight = 0;
     maxWidth = maxHeight = 0;
-    for (link = Blt_Chain_FirstLink(mbarPtr->chain); link != NULL;
+    for (link = Blt_Chain_FirstLink(mbPtr->chain); link != NULL;
 	 link = Blt_Chain_NextLink(link)) {
 	Item *itemPtr;
 
@@ -1124,90 +1112,90 @@ ComputeMenubarGeometry(Menubar *mbarPtr)
 	totalWidth  += itemPtr->width + IPAD;
 	totalHeight += itemPtr->height + IPAD;
     }
-    if (mbarPtr->flags & VERTICAL) {
-	mbarPtr->height = totalHeight;
-	mbarPtr->width = maxWidth;
+    if (mbPtr->flags & VERTICAL) {
+	mbPtr->height = totalHeight;
+	mbPtr->width = maxWidth;
     } else {
-	mbarPtr->height = totalHeight;
-	mbarPtr->width = maxWidth;
+	mbPtr->height = totalHeight;
+	mbPtr->width = maxWidth;
     }
-    if (mbarPtr->reqHeight > 0) {
-	mbarPtr->width = mbarPtr->reqHeight;
+    if (mbPtr->reqHeight > 0) {
+	mbPtr->width = mbPtr->reqHeight;
     } 
-    if (mbarPtr->reqWidth > 0) {
-	mbarPtr->height = mbarPtr->reqWidth;
+    if (mbPtr->reqWidth > 0) {
+	mbPtr->height = mbPtr->reqWidth;
     }
-    mbarPtr->height += 2 * mbarPtr->inset;
-    mbarPtr->width += 2 * mbarPtr->inset;
-    if ((mbarPtr->width != Tk_ReqWidth(mbarPtr->tkwin)) || 
-	(mbarPtr->height != Tk_ReqHeight(mbarPtr->tkwin))) {
-	Tk_GeometryRequest(mbarPtr->tkwin, mbarPtr->width, mbarPtr->height);
+    mbPtr->height += 2 * mbPtr->inset;
+    mbPtr->width += 2 * mbPtr->inset;
+    if ((mbPtr->width != Tk_ReqWidth(mbPtr->tkwin)) || 
+	(mbPtr->height != Tk_ReqHeight(mbPtr->tkwin))) {
+	Tk_GeometryRequest(mbPtr->tkwin, mbPtr->width, mbPtr->height);
     }
-    mbarPtr->flags &= ~LAYOUT_PENDING;
+    mbPtr->flags &= ~LAYOUT_PENDING;
 }
 
 static int
-ConfigureMenubar(Tcl_Interp *interp, Menubar *mbarPtr, int objc, 
+ConfigureMenubar(Tcl_Interp *interp, Menubar *mbPtr, int objc, 
 		 Tcl_Obj *const *objv, int flags)
 {
     unsigned int gcMask;
     XGCValues gcValues;
     GC newGC;
 
-    if (Blt_ConfigureWidgetFromObj(interp, mbarPtr->tkwin, menubarSpecs, objc, 
-		objv, (char *)mbarPtr, flags) != TCL_OK) {
+    if (Blt_ConfigureWidgetFromObj(interp, mbPtr->tkwin, menubarSpecs, objc, 
+		objv, (char *)mbPtr, flags) != TCL_OK) {
 	return TCL_ERROR;
     }
     gcMask = GCForeground | GCFont;
-    gcValues.font = Blt_FontId(mbarPtr->font);
+    gcValues.font = Blt_FontId(mbPtr->font);
     /* Text GCs. */
-    gcValues.foreground = mbarPtr->textNormalColor->pixel;
-    newGC = Tk_GetGC(mbarPtr->tkwin, gcMask, &gcValues);
-    if (mbarPtr->textNormalGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->textNormalGC);
+    gcValues.foreground = mbPtr->textNormalColor->pixel;
+    newGC = Tk_GetGC(mbPtr->tkwin, gcMask, &gcValues);
+    if (mbPtr->textNormalGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->textNormalGC);
     }
-    mbarPtr->textNormalGC = newGC;
+    mbPtr->textNormalGC = newGC;
 
-    gcValues.foreground = mbarPtr->textActiveColor->pixel;
-    newGC = Tk_GetGC(mbarPtr->tkwin, gcMask, &gcValues);
-    if (mbarPtr->textActiveGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->textActiveGC);
+    gcValues.foreground = mbPtr->textActiveColor->pixel;
+    newGC = Tk_GetGC(mbPtr->tkwin, gcMask, &gcValues);
+    if (mbPtr->textActiveGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->textActiveGC);
     }
-    mbarPtr->textActiveGC = newGC;
+    mbPtr->textActiveGC = newGC;
 
-    gcValues.foreground = mbarPtr->textPostedColor->pixel;
-    newGC = Tk_GetGC(mbarPtr->tkwin, gcMask, &gcValues);
-    if (mbarPtr->textPostedGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->textPostedGC);
+    gcValues.foreground = mbPtr->textPostedColor->pixel;
+    newGC = Tk_GetGC(mbPtr->tkwin, gcMask, &gcValues);
+    if (mbPtr->textPostedGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->textPostedGC);
     }
-    mbarPtr->textPostedGC = newGC;
+    mbPtr->textPostedGC = newGC;
 
-    gcValues.foreground = mbarPtr->textDisabledColor->pixel;
-    newGC = Tk_GetGC(mbarPtr->tkwin, gcMask, &gcValues);
-    if (mbarPtr->textDisabledGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->textDisabledGC);
+    gcValues.foreground = mbPtr->textDisabledColor->pixel;
+    newGC = Tk_GetGC(mbPtr->tkwin, gcMask, &gcValues);
+    if (mbPtr->textDisabledGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->textDisabledGC);
     }
-    mbarPtr->textDisabledGC = newGC;
+    mbPtr->textDisabledGC = newGC;
 
     /* Focus highlight GCs */
     gcMask = GCForeground;
-    gcValues.foreground = mbarPtr->highlightColor->pixel;
-    newGC = Tk_GetGC(mbarPtr->tkwin, gcMask, &gcValues);
-    if (mbarPtr->highlightGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->highlightGC);
+    gcValues.foreground = mbPtr->highlightColor->pixel;
+    newGC = Tk_GetGC(mbPtr->tkwin, gcMask, &gcValues);
+    if (mbPtr->highlightGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->highlightGC);
     }
-    mbarPtr->highlightGC = newGC;
-    if (mbarPtr->highlightBgColor != NULL) {
-	gcValues.foreground = mbarPtr->highlightBgColor->pixel;
-	newGC = Tk_GetGC(mbarPtr->tkwin, gcMask, &gcValues);
+    mbPtr->highlightGC = newGC;
+    if (mbPtr->highlightBgColor != NULL) {
+	gcValues.foreground = mbPtr->highlightBgColor->pixel;
+	newGC = Tk_GetGC(mbPtr->tkwin, gcMask, &gcValues);
     } else {
 	newGC = NULL;
     }
-    if (mbarPtr->highlightBgGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->highlightBgGC);
+    if (mbPtr->highlightBgGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->highlightBgGC);
     }
-    mbarPtr->highlightBgGC = newGC;
-    ComputeMenubarGeometry(mbarPtr);
+    mbPtr->highlightBgGC = newGC;
+    ComputeMenubarGeometry(mbPtr);
     return TCL_OK;
 }
 
@@ -1231,29 +1219,30 @@ ConfigureMenubar(Tcl_Interp *interp, Menubar *mbarPtr, int objc,
 static void
 DestroyMenubar(DestroyData dataPtr)	/* Pointer to the widget record. */
 {
-    Menubar *mbarPtr = (Menubar *)dataPtr;
+    Menubar *mbPtr = (Menubar *)dataPtr;
 
-    Blt_FreeOptions(menubarSpecs, (char *)mbarPtr, mbarPtr->display, 0);
-    if (mbarPtr->textNormalGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->textNormalGC);
+    iconOption.clientData = mbPtr;
+    Blt_FreeOptions(menubarSpecs, (char *)mbPtr, mbPtr->display, 0);
+    if (mbPtr->textNormalGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->textNormalGC);
     }
-    if (mbarPtr->textActiveGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->textActiveGC);
+    if (mbPtr->textActiveGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->textActiveGC);
     }
-    if (mbarPtr->textDisabledGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->textDisabledGC);
+    if (mbPtr->textDisabledGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->textDisabledGC);
     }
-    if (mbarPtr->textPostedGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->textPostedGC);
+    if (mbPtr->textPostedGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->textPostedGC);
     }
-    if (mbarPtr->highlightGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->highlightGC);
+    if (mbPtr->highlightGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->highlightGC);
     }
-    if (mbarPtr->highlightBgGC != NULL) {
-	Tk_FreeGC(mbarPtr->display, mbarPtr->highlightBgGC);
+    if (mbPtr->highlightBgGC != NULL) {
+	Tk_FreeGC(mbPtr->display, mbPtr->highlightBgGC);
     }
-    Tcl_DeleteCommandFromToken(mbarPtr->interp, mbarPtr->cmdToken);
-    Blt_Free(mbarPtr);
+    Tcl_DeleteCommandFromToken(mbPtr->interp, mbPtr->cmdToken);
+    Blt_Free(mbPtr);
 }
 
 /*
@@ -1266,41 +1255,41 @@ DestroyMenubar(DestroyData dataPtr)	/* Pointer to the widget record. */
 static Menubar *
 NewMenubar(Tcl_Interp *interp, Tk_Window tkwin)
 {
-    Menubar *mbarPtr;
+    Menubar *mbPtr;
 
-    mbarPtr = Blt_AssertCalloc(1, sizeof(Menubar));
+    mbPtr = Blt_AssertCalloc(1, sizeof(Menubar));
 
-    mbarPtr->borderWidth = 1;
-    mbarPtr->display = Tk_Display(tkwin);
-    mbarPtr->flags = (LAYOUT_PENDING | STATE_NORMAL);
-    mbarPtr->highlightWidth = 2;
-    mbarPtr->interp = interp;
-    mbarPtr->relief = TK_RELIEF_RAISED;
-    mbarPtr->postedRelief = TK_RELIEF_FLAT;
-    mbarPtr->activeRelief = TK_RELIEF_RAISED;
-    mbarPtr->tkwin = tkwin;
-    mbarPtr->parent = Tk_Parent(tkwin);
-    return mbarPtr;
+    mbPtr->borderWidth = 1;
+    mbPtr->display = Tk_Display(tkwin);
+    mbPtr->flags = (LAYOUT_PENDING | STATE_NORMAL);
+    mbPtr->highlightWidth = 2;
+    mbPtr->interp = interp;
+    mbPtr->relief = TK_RELIEF_RAISED;
+    mbPtr->postedRelief = TK_RELIEF_FLAT;
+    mbPtr->activeRelief = TK_RELIEF_RAISED;
+    mbPtr->tkwin = tkwin;
+    mbPtr->parent = Tk_Parent(tkwin);
+    return mbPtr;
 }
 
 static INLINE Item *
-FindItemByIndex(Menubar *mbarPtr, long index)
+FindItemByIndex(Menubar *mbPtr, long index)
 {
     Blt_ChainLink link;
 
-    if ((index < 1) || (index > Blt_Chain_GetLength(mbarPtr->chain))) {
+    if ((index < 1) || (index > Blt_Chain_GetLength(mbPtr->chain))) {
 	return NULL;
     }
-    link = Blt_Chain_GetNthLink(mbarPtr->chain, index - 1);
+    link = Blt_Chain_GetNthLink(mbPtr->chain, index - 1);
     return Blt_Chain_GetValue(link);
 }
 
 static INLINE Item *
-FindItemByLabel(Menubar *mbarPtr, const char *string)
+FindItemByLabel(Menubar *mbPtr, const char *string)
 {
     Blt_HashEntry *hPtr;
 
-    hPtr = Blt_FindHashEntry(&mbarPtr->itemTable, string);
+    hPtr = Blt_FindHashEntry(&mbPtr->itemTable, string);
     if (hPtr != NULL) {
 	return Blt_GetHashValue(hPtr);
     }
@@ -1334,7 +1323,7 @@ FindItemByLabel(Menubar *mbarPtr, const char *string)
  *---------------------------------------------------------------------------
  */
 static int 
-GetItemFromObj(Tcl_Interp *interp, Menubar *mbarPtr, Tcl_Obj *objPtr,
+GetItemFromObj(Tcl_Interp *interp, Menubar *mbPtr, Tcl_Obj *objPtr,
 		 Item **itemPtrPtr)
 {
     Item *itemPtr;
@@ -1342,8 +1331,8 @@ GetItemFromObj(Tcl_Interp *interp, Menubar *mbarPtr, Tcl_Obj *objPtr,
     char c;
     long lval;
 
-    if (mbarPtr->flags & LAYOUT_PENDING) {
-	ComputeMenubarGeometry(mbarPtr);
+    if (mbPtr->flags & LAYOUT_PENDING) {
+	ComputeMenubarGeometry(mbPtr);
     }
     string = Tcl_GetString(objPtr);
     c = string[0];
@@ -1355,7 +1344,7 @@ GetItemFromObj(Tcl_Interp *interp, Menubar *mbarPtr, Tcl_Obj *objPtr,
 	if (lval < 0) {
 	    itemPtr = NULL;
 	} else {
-	    itemPtr = FindItemByIndex(mbarPtr, (long)lval);
+	    itemPtr = FindItemByIndex(mbPtr, (long)lval);
 	}
 	if (itemPtr == NULL) {
 	    if (interp != NULL) {
@@ -1365,42 +1354,42 @@ GetItemFromObj(Tcl_Interp *interp, Menubar *mbarPtr, Tcl_Obj *objPtr,
 	    return TCL_ERROR;
 	}		
     } else if ((c == 'a') && (strcmp(string, "active") == 0)) {
-	itemPtr = mbarPtr->activePtr;
+	itemPtr = mbPtr->activePtr;
     } else if ((c == 'n') && (strcmp(string, "next") == 0)) {
-	itemPtr = NextItem(mbarPtr->activePtr);
+	itemPtr = NextItem(mbPtr->activePtr);
 	if (itemPtr == NULL) {
-	    itemPtr = mbarPtr->activePtr;
+	    itemPtr = mbPtr->activePtr;
 	}
     } else if ((c == 'p') && (strcmp(string, "item_previous") == 0)) {
-	itemPtr = PrevItem(mbarPtr->activePtr);
+	itemPtr = PrevItem(mbPtr->activePtr);
 	if (itemPtr == NULL) {
-	    itemPtr = mbarPtr->activePtr;
+	    itemPtr = mbPtr->activePtr;
 	}
     } else if ((c == 'e') && (strcmp(string, "end") == 0)) {
-	itemPtr = LastItem(mbarPtr);
+	itemPtr = LastItem(mbPtr);
     } else if ((c == 'f') && (strcmp(string, "first") == 0)) {
-	itemPtr = FirstItem(mbarPtr);
+	itemPtr = FirstItem(mbPtr);
     } else if ((c == 'l') && (strcmp(string, "last") == 0)) {
-	itemPtr = LastItem(mbarPtr);
+	itemPtr = LastItem(mbPtr);
     } else if ((c == 'n') && (strcmp(string, "none") == 0)) {
 	itemPtr = NULL;
     } else if (c == '@') {
 	int x, y;
 
-	if (Blt_GetXY(mbarPtr->interp, mbarPtr->tkwin, string, &x, &y) 
+	if (Blt_GetXY(mbPtr->interp, mbPtr->tkwin, string, &x, &y) 
 	    != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	itemPtr = NearestItem(mbarPtr, x, y, TRUE);
+	itemPtr = NearestItem(mbPtr, x, y, TRUE);
 	if ((itemPtr != NULL) && (itemPtr->flags & STATE_DISABLED)) {
 	    itemPtr = NextItem(itemPtr);
 	}
     } else {
-	itemPtr = FindItemByLabel(mbarPtr, string);
+	itemPtr = FindItemByLabel(mbPtr, string);
 	if (itemPtr == NULL) {
 	    if (interp != NULL) {
 		Tcl_AppendResult(interp, "can't find item \"", string,
-			"\" in \"", Tk_PathName(mbarPtr->tkwin), "\"", 
+			"\" in \"", Tk_PathName(mbPtr->tkwin), "\"", 
 		(char *)NULL);
 	    }
 	    return TCL_ERROR;
@@ -1411,12 +1400,12 @@ GetItemFromObj(Tcl_Interp *interp, Menubar *mbarPtr, Tcl_Obj *objPtr,
 }
 
 static void
-RenumberItems(Menubar *mbarPtr) 
+RenumberItems(Menubar *mbPtr) 
 {
     int count = 0;
     Blt_ChainLink link;
 
-    for (link = Blt_Chain_FirstLink(mbarPtr->chain); link != NULL;
+    for (link = Blt_Chain_FirstLink(mbPtr->chain); link != NULL;
 	 link = Blt_Chain_NextLink(link)) {
 	Item *itemPtr;
 
@@ -1427,7 +1416,7 @@ RenumberItems(Menubar *mbarPtr)
 }
 
 static Item *
-NewItem(Menubar *mbarPtr, int type)
+NewItem(Menubar *mbPtr, int type)
 {
     Item *itemPtr;
     Blt_ChainLink link;
@@ -1440,16 +1429,16 @@ NewItem(Menubar *mbarPtr, int type)
     do {
 	char string[200];
 
-	sprintf(string, "item%d", mbarPtr->nextId++);
-	hPtr = Blt_CreateHashEntry(&mbarPtr->itemTable, string, &isNew);
+	sprintf(string, "item%d", mbPtr->nextId++);
+	hPtr = Blt_CreateHashEntry(&mbPtr->itemTable, string, &isNew);
     } while (!isNew);
     itemPtr->hashPtr = hPtr;
-    itemPtr->text = Blt_GetHashKey(&mbarPtr->itemTable, hPtr);
+    itemPtr->text = Blt_GetHashKey(&mbPtr->itemTable, hPtr);
     itemPtr->textLen = strlen(itemPtr->text);
-    itemPtr->mbarPtr = mbarPtr;
+    itemPtr->mbPtr = mbPtr;
     itemPtr->flags = STATE_NORMAL | type;
     itemPtr->link = link;
-    itemPtr->index = Blt_Chain_GetLength(mbarPtr->chain) + 1;
+    itemPtr->index = Blt_Chain_GetLength(mbPtr->chain) + 1;
     itemPtr->menuAnchor = TK_ANCHOR_SW;
     itemPtr->underline = -1;
     return itemPtr;
@@ -1475,21 +1464,22 @@ NewItem(Menubar *mbarPtr, int type)
 static void
 DestroyItem(Item *itemPtr)
 {
-    Menubar *mbarPtr = itemPtr->mbarPtr;
+    Menubar *mbPtr = itemPtr->mbPtr;
 
-    Blt_FreeOptions(itemSpecs, (char *)itemPtr, mbarPtr->display, 0);
-    Blt_Chain_DeleteLink(mbarPtr->chain, itemPtr->link);
+    iconOption.clientData = mbPtr;
+    Blt_FreeOptions(itemSpecs, (char *)itemPtr, mbPtr->display, 0);
+    Blt_Chain_DeleteLink(mbPtr->chain, itemPtr->link);
 }
 
 static int
 ConfigureItem(Tcl_Interp *interp, Item *itemPtr, int objc, 
 		Tcl_Obj *const *objv, int flags)
 {
-    Menubar *mbarPtr;
+    Menubar *mbPtr;
 
-    mbarPtr = itemPtr->mbarPtr;
-    iconOption.clientData = mbarPtr;
-    if (Blt_ConfigureWidgetFromObj(interp, mbarPtr->tkwin, itemSpecs, 
+    mbPtr = itemPtr->mbPtr;
+    iconOption.clientData = mbPtr;
+    if (Blt_ConfigureWidgetFromObj(interp, mbPtr->tkwin, itemSpecs, 
 	objc, objv, (char *)itemPtr, flags) != TCL_OK) {
 	return TCL_ERROR;
     }
@@ -1502,11 +1492,11 @@ PostMenu(Item *itemPtr)
 {
     const char *menuName;
     Tk_Window menuWin;
-    Menubar *mbarPtr;
+    Menubar *mbPtr;
     Tcl_Interp *interp;
 
-    mbarPtr = itemPtr->mbarPtr;
-    interp = itemPtr->mbarPtr->interp;
+    mbPtr = itemPtr->mbPtr;
+    interp = itemPtr->mbPtr->interp;
     if (itemPtr->menuObjPtr == NULL) {
 	return TCL_OK;
     }
@@ -1515,13 +1505,13 @@ PostMenu(Item *itemPtr)
 	return TCL_OK;
     }
     menuName = Tcl_GetString(itemPtr->menuObjPtr);
-    menuWin = Tk_NameToWindow(interp, menuName, mbarPtr->tkwin);
+    menuWin = Tk_NameToWindow(interp, menuName, mbPtr->tkwin);
     if (menuWin == NULL) {
 	return TCL_ERROR;
     }
-    if (Tk_Parent(menuWin) != mbarPtr->tkwin) {
+    if (Tk_Parent(menuWin) != mbPtr->tkwin) {
 	Tcl_AppendResult(interp, "can't post \"", Tk_PathName(menuWin), 
-		"\": it isn't a descendant of ", Tk_PathName(mbarPtr->tkwin),
+		"\": it isn't a descendant of ", Tk_PathName(mbPtr->tkwin),
 		(char *)NULL);
 	return TCL_ERROR;
     }
@@ -1538,11 +1528,11 @@ PostMenu(Item *itemPtr)
 	    return TCL_ERROR;
 	}
     }
-    if (Tk_IsMapped(mbarPtr->tkwin)) {
+    if (Tk_IsMapped(mbPtr->tkwin)) {
 	Tcl_Obj *cmd[2];
 	int result;
 
-	Tcl_Preserve(mbarPtr);
+	Tcl_Preserve(mbPtr);
 	cmd[0] = itemPtr->menuObjPtr;
 	cmd[1] = Tcl_NewStringObj("post", 4);
 	Tcl_IncrRefCount(cmd[0]);
@@ -1550,13 +1540,13 @@ PostMenu(Item *itemPtr)
 	result = Tcl_EvalObjv(interp, 2, cmd, 0);
 	Tcl_DecrRefCount(cmd[1]);
 	Tcl_DecrRefCount(cmd[0]);
-	Tcl_Release(mbarPtr);
+	Tcl_Release(mbPtr);
 	if (result == TCL_OK) {
 	    itemPtr->flags &= ~STATE_MASK;
 	    itemPtr->flags |= STATE_POSTED;
-	    mbarPtr->postedPtr = itemPtr;
+	    mbPtr->postedPtr = itemPtr;
 	}
-	EventuallyRedraw(mbarPtr);
+	EventuallyRedraw(mbPtr);
 	return result;
     }
     return TCL_OK;
@@ -1567,25 +1557,25 @@ UnpostMenu(Item *itemPtr)
 {
     const char *menuName;
     Tk_Window menuWin;
-    Menubar *mbarPtr;
+    Menubar *mbPtr;
     Tcl_Interp *interp;
 
     if ((itemPtr->menuObjPtr == NULL) || 
 	((itemPtr->flags & STATE_POSTED) == 0)) {
 	return TCL_OK;
     }
-    mbarPtr = itemPtr->mbarPtr;
-    interp = mbarPtr->interp;
+    mbPtr = itemPtr->mbPtr;
+    interp = mbPtr->interp;
     itemPtr->flags &= ~STATE_MASK;
     itemPtr->flags |= STATE_NORMAL;
     menuName = Tcl_GetString(itemPtr->menuObjPtr);
-    menuWin = Tk_NameToWindow(interp, menuName, mbarPtr->tkwin);
+    menuWin = Tk_NameToWindow(interp, menuName, mbPtr->tkwin);
     if (menuWin == NULL) {
 	return TCL_ERROR;
     }
-    if (Tk_Parent(menuWin) != mbarPtr->tkwin) {
+    if (Tk_Parent(menuWin) != mbPtr->tkwin) {
 	Tcl_AppendResult(interp, "can't unpost \"", Tk_PathName(menuWin), 
-		"\": it isn't a descendant of ", Tk_PathName(mbarPtr->tkwin), 
+		"\": it isn't a descendant of ", Tk_PathName(mbPtr->tkwin), 
 		(char *)NULL);
 	return TCL_ERROR;
     }
@@ -1598,34 +1588,34 @@ UnpostMenu(Item *itemPtr)
 
 
 static void
-DestroyFloat(Menubar *mbarPtr)
+DestroyFloat(Menubar *mbPtr)
 {
-    if (mbarPtr->floatWin != NULL) {
-	if (mbarPtr->flags & REDRAW_PENDING) {
-	    Tcl_CancelIdleCall(DisplayMenubar, mbarPtr);
+    if (mbPtr->floatWin != NULL) {
+	if (mbPtr->flags & REDRAW_PENDING) {
+	    Tcl_CancelIdleCall(DisplayMenubar, mbPtr);
 	}
-	Tk_DeleteEventHandler(mbarPtr->floatWin, StructureNotifyMask, 
-			      FloatEventProc, mbarPtr);
-	if (mbarPtr->tkwin != NULL) {
+	Tk_DeleteEventHandler(mbPtr->floatWin, StructureNotifyMask, 
+			      FloatEventProc, mbPtr);
+	if (mbPtr->tkwin != NULL) {
 
-	    Blt_RelinkWindow(mbarPtr->tkwin, mbarPtr->parent, 0, 0);
-	    Tk_MoveResizeWindow(mbarPtr->tkwin, 
-				mbarPtr->region.x, mbarPtr->region.y, 
-				mbarPtr->region.width, mbarPtr->region.height);
-	    if (!Tk_IsMapped(mbarPtr->tkwin)) {
-		Tk_MapWindow(mbarPtr->tkwin);
+	    Blt_RelinkWindow(mbPtr->tkwin, mbPtr->parent, 0, 0);
+	    Tk_MoveResizeWindow(mbPtr->tkwin, 
+				mbPtr->region.x, mbPtr->region.y, 
+				mbPtr->region.width, mbPtr->region.height);
+	    if (!Tk_IsMapped(mbPtr->tkwin)) {
+		Tk_MapWindow(mbPtr->tkwin);
 	    }
 	}
-	Tk_DestroyWindow(mbarPtr->floatWin);
-	mbarPtr->floatWin = NULL;
+	Tk_DestroyWindow(mbPtr->floatWin);
+	mbPtr->floatWin = NULL;
     }
 }
 
 static void
 FreeFloatProc(DestroyData dataPtr)
 {
-    Menubar *mbarPtr = (Menubar *)dataPtr;
-    DestroyFloat(mbarPtr);
+    Menubar *mbPtr = (Menubar *)dataPtr;
+    DestroyFloat(mbPtr);
 }
 
 /*
@@ -1648,26 +1638,26 @@ FreeFloatProc(DestroyData dataPtr)
 static void
 FloatEventProc(ClientData clientData, XEvent *eventPtr)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
 
-    if ((mbarPtr == NULL) || (mbarPtr->tkwin == NULL) ||
-	(mbarPtr->floatWin == NULL)) {
+    if ((mbPtr == NULL) || (mbPtr->tkwin == NULL) ||
+	(mbPtr->floatWin == NULL)) {
 	return;
     }
     switch (eventPtr->type) {
     case Expose:
 	if (eventPtr->xexpose.count == 0) {
-	    EventuallyRedraw(mbarPtr);
+	    EventuallyRedraw(mbPtr);
 	}
 	break;
 
     case ConfigureNotify:
-	EventuallyRedraw(mbarPtr);
+	EventuallyRedraw(mbPtr);
 	break;
 
     case DestroyNotify:
-	DestroyFloat(mbarPtr);
-	mbarPtr->floatWin = NULL;
+	DestroyFloat(mbPtr);
+	mbPtr->floatWin = NULL;
 	break;
 
     }
@@ -1695,26 +1685,26 @@ FloatEventProc(ClientData clientData, XEvent *eventPtr)
 static void
 FloatCustodyProc(ClientData clientData, Tk_Window tkwin)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
 
-    if ((mbarPtr == NULL) || (mbarPtr->tkwin == NULL)) {
+    if ((mbPtr == NULL) || (mbPtr->tkwin == NULL)) {
 	return;
     }
-    if (mbarPtr->floatWin != NULL) {
-	Tcl_EventuallyFree(mbarPtr, FreeFloatProc);
+    if (mbPtr->floatWin != NULL) {
+	Tcl_EventuallyFree(mbPtr, FreeFloatProc);
     }
     /*
      * Mark the floating dock as deleted by dereferencing the Tk window
      * pointer.
      */
-    if (mbarPtr->tkwin != NULL) {
-	if (Tk_IsMapped(mbarPtr->tkwin)) {
-	    mbarPtr->flags |= LAYOUT_PENDING;
-	    EventuallyRedraw(mbarPtr);
+    if (mbPtr->tkwin != NULL) {
+	if (Tk_IsMapped(mbPtr->tkwin)) {
+	    mbPtr->flags |= LAYOUT_PENDING;
+	    EventuallyRedraw(mbPtr);
 	}
-	Tk_DeleteEventHandler(mbarPtr->floatWin, StructureNotifyMask, 
-		FloatEventProc, mbarPtr);
-	mbarPtr->floatWin = NULL;
+	Tk_DeleteEventHandler(mbPtr->floatWin, StructureNotifyMask, 
+		FloatEventProc, mbPtr);
+	mbPtr->floatWin = NULL;
     }
 }
 
@@ -1739,72 +1729,72 @@ FloatCustodyProc(ClientData clientData, Tk_Window tkwin)
 static void
 FloatGeometryProc(ClientData clientData, Tk_Window tkwin)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
 
-    if ((mbarPtr == NULL) || (mbarPtr->tkwin == NULL)) {
+    if ((mbPtr == NULL) || (mbPtr->tkwin == NULL)) {
 	fprintf(stderr, "%s: line %d \"tkwin is null\"", __FILE__, __LINE__);
 	return;
     }
-    mbarPtr->flags |= LAYOUT_PENDING;
-    EventuallyRedraw(mbarPtr);
+    mbPtr->flags |= LAYOUT_PENDING;
+    EventuallyRedraw(mbPtr);
 }
 
 static void
 FloatMenubar(ClientData clientData)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
 
-    Blt_RelinkWindow(mbarPtr->tkwin, mbarPtr->floatWin, 0, 0);
-    Tk_MapWindow(mbarPtr->tkwin);
+    Blt_RelinkWindow(mbPtr->tkwin, mbPtr->floatWin, 0, 0);
+    Tk_MapWindow(mbPtr->tkwin);
 }
 
 static int
-CreateFloat(Menubar *mbarPtr, const char *name)
+CreateFloat(Menubar *mbPtr, const char *name)
 {
     Tk_Window tkwin;
     int width, height;
 
-    tkwin = Tk_CreateWindowFromPath(mbarPtr->interp, mbarPtr->tkwin, name,
+    tkwin = Tk_CreateWindowFromPath(mbPtr->interp, mbPtr->tkwin, name,
 	(char *)NULL);
     if (tkwin == NULL) {
 	return TCL_ERROR;
     }
-    mbarPtr->floatWin = tkwin;
+    mbPtr->floatWin = tkwin;
     if (Tk_WindowId(tkwin) == None) {
 	Tk_MakeWindowExist(tkwin);
     }
     Tk_SetClass(tkwin, "MenubarDock");
     Tk_CreateEventHandler(tkwin, (ExposureMask | StructureNotifyMask),
-	FloatEventProc, mbarPtr);
-    if (Tk_WindowId(mbarPtr->tkwin) == None) {
-	Tk_MakeWindowExist(mbarPtr->tkwin);
+	FloatEventProc, mbPtr);
+    if (Tk_WindowId(mbPtr->tkwin) == None) {
+	Tk_MakeWindowExist(mbPtr->tkwin);
     }
-    Tk_ManageGeometry(mbarPtr->tkwin, &menubarMgrInfo, mbarPtr);
-    mbarPtr->region.height = height = Tk_Height(mbarPtr->tkwin);
-    mbarPtr->region.width = width = Tk_Width(mbarPtr->tkwin);
-    mbarPtr->region.x = Tk_X(mbarPtr->tkwin);
-    mbarPtr->region.y = Tk_Y(mbarPtr->tkwin);
+    Tk_ManageGeometry(mbPtr->tkwin, &menubarMgrInfo, mbPtr);
+    mbPtr->region.height = height = Tk_Height(mbPtr->tkwin);
+    mbPtr->region.width = width = Tk_Width(mbPtr->tkwin);
+    mbPtr->region.x = Tk_X(mbPtr->tkwin);
+    mbPtr->region.y = Tk_Y(mbPtr->tkwin);
     if (width < 2) {
-	width = (mbarPtr->reqWidth > 0)
-	    ? mbarPtr->reqWidth : Tk_ReqWidth(mbarPtr->tkwin);
+	width = (mbPtr->reqWidth > 0)
+	    ? mbPtr->reqWidth : Tk_ReqWidth(mbPtr->tkwin);
     }
-    width += 2 * Tk_Changes(mbarPtr->tkwin)->border_width;
-    width += 2 * mbarPtr->inset;
+    width += 2 * Tk_Changes(mbPtr->tkwin)->border_width;
+    width += 2 * mbPtr->inset;
 
     if (height < 2) {
-	height = (mbarPtr->reqHeight > 0)
-	    ? mbarPtr->reqHeight : Tk_ReqHeight(mbarPtr->tkwin);
+	height = (mbPtr->reqHeight > 0)
+	    ? mbPtr->reqHeight : Tk_ReqHeight(mbPtr->tkwin);
     }
-    height += 2 * Tk_Changes(mbarPtr->tkwin)->border_width;
-    height += 2 * mbarPtr->inset;
+    height += 2 * Tk_Changes(mbPtr->tkwin)->border_width;
+    height += 2 * mbPtr->inset;
     Tk_GeometryRequest(tkwin, width, height);
-    /* Tk_MoveWindow(mbarPtr->tkwin, 0, 0); */
-    Tcl_SetStringObj(Tcl_GetObjResult(mbarPtr->interp), Tk_PathName(tkwin), -1);
-    Tk_UnmapWindow(mbarPtr->tkwin);
+    /* Tk_MoveWindow(mbPtr->tkwin, 0, 0); */
+    Tcl_SetStringObj(Tcl_GetObjResult(mbPtr->interp), Tk_PathName(tkwin), -1);
+    Tk_UnmapWindow(mbPtr->tkwin);
 #ifdef WIN32
-    FloatMenubar(mbarPtr);
+    FloatMenubar(mbPtr);
 #else
-    Tcl_DoWhenIdle(FloatMenubar, mbarPtr);
+    Tcl_DoWhenIdle(FloatMenubar, mbPtr);
 #endif
     return TCL_OK;
 }
@@ -1834,28 +1824,28 @@ DrawLabel(Item *itemPtr, Drawable drawable, int x, int y, int w, int h)
 		x + IPAD, y);
     } else {
 	GC gc;
-	Menubar *mbarPtr;
+	Menubar *mbPtr;
 	TextLayout *layoutPtr;
 	TextStyle ts;
 
-	mbarPtr = itemPtr->mbarPtr;
+	mbPtr = itemPtr->mbPtr;
 	Blt_Ts_InitStyle(ts);
-	Blt_Ts_SetFont(ts, mbarPtr->font);
+	Blt_Ts_SetFont(ts, mbPtr->font);
 	Blt_Ts_SetAnchor(ts, TK_ANCHOR_NW);
 	Blt_Ts_SetJustify(ts, itemPtr->justify);
 	Blt_Ts_SetUnderline(ts, itemPtr->underline);
 	layoutPtr = Blt_Ts_CreateLayout(itemPtr->text, -1, &ts);
 	if (itemPtr->flags & STATE_POSTED) {
-	    gc = mbarPtr->textPostedGC;
+	    gc = mbPtr->textPostedGC;
 	} else if (itemPtr->flags & STATE_ACTIVE) {
-	    gc = mbarPtr->textActiveGC;
+	    gc = mbPtr->textActiveGC;
 	} else if (itemPtr->flags & STATE_DISABLED) {
-	    gc = mbarPtr->textDisabledGC;
+	    gc = mbPtr->textDisabledGC;
 	} else {
-	    gc = mbarPtr->textNormalGC;
+	    gc = mbPtr->textNormalGC;
 	}
-	Blt_DrawLayout(mbarPtr->tkwin, drawable, gc, mbarPtr->font, 
-		Tk_Depth(mbarPtr->tkwin), 0.0f, x + IPAD, y, layoutPtr, w);
+	Blt_DrawLayout(mbPtr->tkwin, drawable, gc, mbPtr->font, 
+		Tk_Depth(mbPtr->tkwin), 0.0f, x + IPAD, y, layoutPtr, w);
 	Blt_Free(layoutPtr);
     }
 }
@@ -1863,7 +1853,7 @@ DrawLabel(Item *itemPtr, Drawable drawable, int x, int y, int w, int h)
 static void
 DrawSeparator(Item *itemPtr, Drawable drawable, int x, int y, int w, int h)
 {
-    Menubar *mbarPtr = itemPtr->mbarPtr;
+    Menubar *mbPtr = itemPtr->mbPtr;
     XPoint points[2];
     Tk_3DBorder border;
 
@@ -1871,15 +1861,15 @@ DrawSeparator(Item *itemPtr, Drawable drawable, int x, int y, int w, int h)
     points[0].y = y + YPAD;
     points[1].y = h - 2 * YPAD;
 
-    border = Blt_BackgroundBorder(mbarPtr->normalBg);
-    Tk_Draw3DPolygon(mbarPtr->tkwin, drawable, border, points, 2, 1, 
+    border = Blt_BackgroundBorder(mbPtr->normalBg);
+    Tk_Draw3DPolygon(mbPtr->tkwin, drawable, border, points, 2, 1, 
 		     TK_RELIEF_SUNKEN);
 }
 
 static void
 DrawItem(Item *itemPtr, Drawable drawable)
 {
-    Menubar *mbarPtr = itemPtr->mbarPtr;
+    Menubar *mbPtr = itemPtr->mbPtr;
     Blt_Background bg;
     int relief;
     int x, y, w, h;
@@ -1890,7 +1880,7 @@ DrawItem(Item *itemPtr, Drawable drawable)
     x = itemPtr->x;
     y = itemPtr->y;
     w = itemPtr->width;
-    h = mbarPtr->height;
+    h = mbPtr->height;
 
     if (itemPtr->flags & ITEM_SEPARATOR) {
 	DrawSeparator(itemPtr, drawable, x, y, w, h);
@@ -1900,16 +1890,16 @@ DrawItem(Item *itemPtr, Drawable drawable)
     /* Menubar background (just inside of focus highlight ring). */
 
     if (itemPtr->flags & STATE_POSTED) {
-	bg = mbarPtr->postedBg;
+	bg = mbPtr->postedBg;
     } else if (itemPtr->flags & STATE_ACTIVE) {
-	bg = mbarPtr->activeBg;
+	bg = mbPtr->activeBg;
     } else if (itemPtr->flags & STATE_DISABLED) {
-	bg = mbarPtr->disabledBg;
+	bg = mbPtr->disabledBg;
     } else {
-	bg = mbarPtr->normalBg;
+	bg = mbPtr->normalBg;
     }
-    Blt_FillBackgroundRectangle(mbarPtr->tkwin, drawable, bg, 0, 0,
-	itemPtr->width, mbarPtr->height, mbarPtr->borderWidth, 
+    Blt_FillBackgroundRectangle(mbPtr->tkwin, drawable, bg, 0, 0,
+	itemPtr->width, mbPtr->height, mbPtr->borderWidth, 
 	TK_RELIEF_FLAT);
 
     /* Label: includes icon and text. */
@@ -1946,52 +1936,52 @@ DrawItem(Item *itemPtr, Drawable drawable)
 	DrawLabel(itemPtr, drawable, tx, ty, tw, th);
     }
     /* Draw focus highlight ring. */
-    if (mbarPtr->highlightWidth > 0) {
+    if (mbPtr->highlightWidth > 0) {
 	GC gc;
 
 	if (itemPtr->flags & FOCUS) {
-	    gc = mbarPtr->highlightGC;
+	    gc = mbPtr->highlightGC;
 	} else {
-	    gc = mbarPtr->highlightBgGC;
+	    gc = mbPtr->highlightBgGC;
 	}
 	if (gc == NULL) {
-	    Blt_DrawFocusBackground(mbarPtr->tkwin, bg, 
-		mbarPtr->highlightWidth, drawable);
+	    Blt_DrawFocusBackground(mbPtr->tkwin, bg, 
+		mbPtr->highlightWidth, drawable);
 	} else {
-	    Tk_DrawFocusHighlight(mbarPtr->tkwin, gc, mbarPtr->highlightWidth,
+	    Tk_DrawFocusHighlight(mbPtr->tkwin, gc, mbPtr->highlightWidth,
 		 drawable);
 	}	    
     }
     if (itemPtr->flags & STATE_POSTED) {
-	relief = mbarPtr->postedRelief;
+	relief = mbPtr->postedRelief;
     } else if (itemPtr->flags & STATE_ACTIVE) {
-	relief = mbarPtr->activeRelief;
+	relief = mbPtr->activeRelief;
     } else {
-	relief = mbarPtr->relief;
+	relief = mbPtr->relief;
     }
     if (relief != TK_RELIEF_FLAT) {
-	Blt_DrawBackgroundRectangle(mbarPtr->tkwin, drawable, bg, 
-		mbarPtr->highlightWidth, mbarPtr->highlightWidth,
-		itemPtr->width  - 2 * mbarPtr->highlightWidth,
-		itemPtr->height - 2 * mbarPtr->highlightWidth,
-		mbarPtr->borderWidth, relief);
+	Blt_DrawBackgroundRectangle(mbPtr->tkwin, drawable, bg, 
+		mbPtr->highlightWidth, mbPtr->highlightWidth,
+		itemPtr->width  - 2 * mbPtr->highlightWidth,
+		itemPtr->height - 2 * mbPtr->highlightWidth,
+		mbPtr->borderWidth, relief);
     }
 }
 
 static void
-DrawItems(Menubar *mbarPtr, Drawable drawable)
+DrawItems(Menubar *mbPtr, Drawable drawable)
 {
     Blt_ChainLink link;
 
-    for (link = Blt_Chain_FirstLink(mbarPtr->chain); link != NULL;
+    for (link = Blt_Chain_FirstLink(mbPtr->chain); link != NULL;
 	 link = Blt_Chain_NextLink(link)) {
 	Item *itemPtr;
 	int x, y, w, h;
 
 	itemPtr = Blt_Chain_GetValue(link);
 	x = y = itemPtr->inset;
-	w = itemPtr->width  - (2 * mbarPtr->inset);
-	h = itemPtr->height - (2 * mbarPtr->inset);
+	w = itemPtr->width  - (2 * mbPtr->inset);
+	h = itemPtr->height - (2 * mbPtr->inset);
 	DrawItem(itemPtr, drawable);
 	x += itemPtr->width + IPAD;
     }
@@ -2019,10 +2009,10 @@ static int
 ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc, 
 	   Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Item *itemPtr;
 
-    if (GetItemFromObj(interp, mbarPtr, objv[2], &itemPtr) != TCL_OK) {
+    if (GetItemFromObj(interp, mbPtr, objv[2], &itemPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if ((itemPtr == NULL) || ((itemPtr->flags & ITEM_BUTTON) == 0)) {
@@ -2033,9 +2023,9 @@ ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
     }
     itemPtr->flags |= STATE_ACTIVE;
  done:
-    mbarPtr->activePtr->flags &= ~STATE_ACTIVE;
-    mbarPtr->activePtr = itemPtr;
-    EventuallyRedraw(mbarPtr);
+    mbPtr->activePtr->flags &= ~STATE_ACTIVE;
+    mbPtr->activePtr = itemPtr;
+    EventuallyRedraw(mbPtr);
     return TCL_OK;
 }
 
@@ -2056,7 +2046,7 @@ ActivateOp(ClientData clientData, Tcl_Interp *interp, int objc,
 static int
 AddOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Item *itemPtr;
     int length, type;
     char c;
@@ -2075,13 +2065,13 @@ AddOp(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 	type = ITEM_FILLER;
 	objc--, objv--;
     }
-    itemPtr = NewItem(mbarPtr, type);
+    itemPtr = NewItem(mbPtr, type);
     if (ConfigureItem(interp, itemPtr, objc - 2, objv + 2, 0) != TCL_OK) {
 	DestroyItem(itemPtr);
 	return TCL_ERROR;	/* Error configuring the entry. */
     }
-    EventuallyRedraw(mbarPtr);
-    Blt_Chain_LinkAfter(mbarPtr->chain, itemPtr->link, NULL);
+    EventuallyRedraw(mbPtr);
+    Blt_Chain_LinkAfter(mbPtr->chain, itemPtr->link, NULL);
     Tcl_SetLongObj(Tcl_GetObjResult(interp), itemPtr->index);
     return TCL_OK;
 }
@@ -2106,10 +2096,10 @@ static int
 CgetOp(ClientData clientData, Tcl_Interp *interp, int objc, 
        Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
-    iconOption.clientData = mbarPtr;
-    return Blt_ConfigureValueFromObj(interp, mbarPtr->tkwin, menubarSpecs,
-	(char *)mbarPtr, objv[2], BLT_CONFIG_OBJV_ONLY);
+    Menubar *mbPtr = clientData;
+    iconOption.clientData = mbPtr;
+    return Blt_ConfigureValueFromObj(interp, mbPtr->tkwin, menubarSpecs,
+	(char *)mbPtr, objv[2], BLT_CONFIG_OBJV_ONLY);
 }
 
 /*
@@ -2133,25 +2123,25 @@ ConfigureOp(ClientData clientData, Tcl_Interp *interp, int objc,
 	    Tcl_Obj *const *objv)
 {
     int result;
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
 
-    iconOption.clientData = mbarPtr;
+    iconOption.clientData = mbPtr;
     if (objc == 2) {
-	return Blt_ConfigureInfoFromObj(interp, mbarPtr->tkwin, menubarSpecs, 
-		(char *)mbarPtr, (Tcl_Obj *)NULL,  BLT_CONFIG_OBJV_ONLY);
+	return Blt_ConfigureInfoFromObj(interp, mbPtr->tkwin, menubarSpecs, 
+		(char *)mbPtr, (Tcl_Obj *)NULL,  BLT_CONFIG_OBJV_ONLY);
     } else if (objc == 3) {
-	return Blt_ConfigureInfoFromObj(interp, mbarPtr->tkwin, menubarSpecs, 
-		(char *)mbarPtr, objv[2], BLT_CONFIG_OBJV_ONLY);
+	return Blt_ConfigureInfoFromObj(interp, mbPtr->tkwin, menubarSpecs, 
+		(char *)mbPtr, objv[2], BLT_CONFIG_OBJV_ONLY);
     }
-    Tcl_Preserve(mbarPtr);
-    result = ConfigureMenubar(interp, mbarPtr, objc - 2, objv + 2, 
+    Tcl_Preserve(mbPtr);
+    result = ConfigureMenubar(interp, mbPtr, objc - 2, objv + 2, 
 	BLT_CONFIG_OBJV_ONLY);
-    Tcl_Release(mbarPtr);
+    Tcl_Release(mbPtr);
     if (result == TCL_ERROR) {
 	return TCL_ERROR;
     }
-    mbarPtr->flags |= LAYOUT_PENDING;
-    EventuallyRedraw(mbarPtr);
+    mbPtr->flags |= LAYOUT_PENDING;
+    EventuallyRedraw(mbPtr);
     return TCL_OK;
 }
 
@@ -2175,10 +2165,10 @@ static int
 DockOp(ClientData clientData, Tcl_Interp *interp, int objc, 
        Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
 
-    if (mbarPtr->floatWin == NULL) {
-	CreateFloat(mbarPtr, "dock");
+    if (mbPtr->floatWin == NULL) {
+	CreateFloat(mbPtr, "dock");
     }
     return TCL_OK;
 }
@@ -2203,17 +2193,17 @@ static int
 ItemCgetOp(ClientData clientData, Tcl_Interp *interp, int objc, 
 	     Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Item *itemPtr;
 
-    if (GetItemFromObj(interp, mbarPtr, objv[3], &itemPtr) != TCL_OK) {
+    if (GetItemFromObj(interp, mbPtr, objv[3], &itemPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (itemPtr == NULL) {
 	return TCL_OK;
     }
-    iconOption.clientData = mbarPtr;
-    return Blt_ConfigureValueFromObj(interp, mbarPtr->tkwin, itemSpecs,
+    iconOption.clientData = mbPtr;
+    return Blt_ConfigureValueFromObj(interp, mbPtr->tkwin, itemSpecs,
 	(char *)itemPtr, objv[4], BLT_CONFIG_OBJV_ONLY);
 }
 
@@ -2237,22 +2227,22 @@ static int
 ItemConfigureOp(ClientData clientData, Tcl_Interp *interp, int objc, 
 		  Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Item *itemPtr;
     int result;
 
-    if (GetItemFromObj(interp, mbarPtr, objv[3], &itemPtr) != TCL_OK) {
+    if (GetItemFromObj(interp, mbPtr, objv[3], &itemPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (itemPtr == NULL) {
 	return TCL_OK;
     }
-    iconOption.clientData = mbarPtr;
+    iconOption.clientData = mbPtr;
     if (objc == 4) {
-	return Blt_ConfigureInfoFromObj(interp, mbarPtr->tkwin, itemSpecs, 
+	return Blt_ConfigureInfoFromObj(interp, mbPtr->tkwin, itemSpecs, 
 		(char *)itemPtr, (Tcl_Obj *)NULL,  BLT_CONFIG_OBJV_ONLY);
     } else if (objc == 5) {
-	return Blt_ConfigureInfoFromObj(interp, mbarPtr->tkwin, itemSpecs, 
+	return Blt_ConfigureInfoFromObj(interp, mbPtr->tkwin, itemSpecs, 
 		(char *)itemPtr, objv[4], BLT_CONFIG_OBJV_ONLY);
     }
     Tcl_Preserve(itemPtr);
@@ -2262,8 +2252,8 @@ ItemConfigureOp(ClientData clientData, Tcl_Interp *interp, int objc,
     if (result == TCL_ERROR) {
 	return TCL_ERROR;
     }
-    mbarPtr->flags |= LAYOUT_PENDING;
-    EventuallyRedraw(mbarPtr);
+    mbPtr->flags |= LAYOUT_PENDING;
+    EventuallyRedraw(mbPtr);
     return TCL_OK;
 }
 
@@ -2296,7 +2286,7 @@ ItemOp(
     Tcl_Obj *const *objv)	/* Argument vector. */
 {
     Tcl_ObjCmdProc *proc;
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     int result;
 
     proc = Blt_GetOpFromObj(interp, nItemOps, itemOps, BLT_OP_ARG1, 
@@ -2304,9 +2294,9 @@ ItemOp(
     if (proc == NULL) {
 	return TCL_ERROR;
     }
-    Tcl_Preserve(mbarPtr);
+    Tcl_Preserve(mbPtr);
     result = (*proc) (clientData, interp, objc, objv);
-    Tcl_Release(mbarPtr);
+    Tcl_Release(mbPtr);
     return result;
 }
 
@@ -2331,23 +2321,23 @@ static int
 DeleteOp(ClientData clientData, Tcl_Interp *interp, int objc, 
 	 Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     int i;
 
     for (i = 2; i < objc; i++) {
 	Item *itemPtr;
 
-	if (GetItemFromObj(interp, mbarPtr, objv[i], &itemPtr) != TCL_OK) {
-	    RenumberItems(mbarPtr);
-	    EventuallyRedraw(mbarPtr);
+	if (GetItemFromObj(interp, mbPtr, objv[i], &itemPtr) != TCL_OK) {
+	    RenumberItems(mbPtr);
+	    EventuallyRedraw(mbPtr);
 	    return TCL_ERROR;
 	}
 	if (itemPtr != NULL) {
 	    DestroyItem(itemPtr);
 	}
     }
-    RenumberItems(mbarPtr);
-    EventuallyRedraw(mbarPtr);
+    RenumberItems(mbPtr);
+    EventuallyRedraw(mbPtr);
     return TCL_OK;
 }
 
@@ -2373,12 +2363,12 @@ static int
 IndexOp(ClientData clientData, Tcl_Interp *interp, int objc, 
 	Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Item *itemPtr;
     int index;
 
     index = -1;
-    if (GetItemFromObj(interp, mbarPtr, objv[2], &itemPtr) != TCL_OK) {
+    if (GetItemFromObj(interp, mbPtr, objv[2], &itemPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (itemPtr != NULL) {
@@ -2411,7 +2401,7 @@ InsertOp(ClientData clientData, Tcl_Interp *interp, int objc,
 {
     Blt_ChainLink before;
     Item *itemPtr;
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     char c;
     const char *string;
     int length, type;
@@ -2434,19 +2424,19 @@ InsertOp(ClientData clientData, Tcl_Interp *interp, int objc,
 	return TCL_ERROR;
     }
     if ((insertPos == -1) || 
-	(insertPos >= Blt_Chain_GetLength(mbarPtr->chain))) {
+	(insertPos >= Blt_Chain_GetLength(mbPtr->chain))) {
 	before = NULL;		/* Insert at end of list. */
     } else {
-	before =  Blt_Chain_GetNthLink(mbarPtr->chain, insertPos);
+	before =  Blt_Chain_GetNthLink(mbPtr->chain, insertPos);
     }
-    itemPtr = NewItem(mbarPtr, type);
+    itemPtr = NewItem(mbPtr, type);
     if (ConfigureItem(interp, itemPtr, objc - 3, objv + 3, 0) != TCL_OK) {
 	DestroyItem(itemPtr);
 	return TCL_ERROR;	/* Error configuring the entry. */
     }
-    EventuallyRedraw(mbarPtr);
-    Blt_Chain_LinkBefore(mbarPtr->chain, itemPtr->link, before);
-    RenumberItems(mbarPtr);
+    EventuallyRedraw(mbPtr);
+    Blt_Chain_LinkBefore(mbPtr->chain, itemPtr->link, before);
+    RenumberItems(mbPtr);
     Tcl_SetLongObj(Tcl_GetObjResult(interp), itemPtr->index);
     return TCL_OK;
 }
@@ -2471,11 +2461,11 @@ static int
 InvokeOp(ClientData clientData, Tcl_Interp *interp, int objc, 
 	 Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Item *itemPtr;
     int result;
 
-    if (GetItemFromObj(interp, mbarPtr, objv[2], &itemPtr) != TCL_OK) {
+    if (GetItemFromObj(interp, mbPtr, objv[2], &itemPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if ((itemPtr == NULL) || 
@@ -2509,14 +2499,14 @@ static int
 MoveOp(ClientData clientData, Tcl_Interp *interp, int objc, 
        Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Item *itemPtr, *b2Ptr;
     char c;
     const char *string;
     int isBefore;
     int length;
 
-    if (GetItemFromObj(interp, mbarPtr, objv[2], &itemPtr) != TCL_OK) {
+    if (GetItemFromObj(interp, mbPtr, objv[2], &itemPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (itemPtr == NULL) {
@@ -2533,20 +2523,20 @@ MoveOp(ClientData clientData, Tcl_Interp *interp, int objc,
 	    "\": should be \"after\" or \"before\"", (char *)NULL);
 	return TCL_ERROR;
     }
-    if (GetItemFromObj(interp, mbarPtr, objv[4], &b2Ptr) != TCL_OK) {
+    if (GetItemFromObj(interp, mbPtr, objv[4], &b2Ptr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (itemPtr == NULL) {
 	return TCL_OK;
     }
-    Blt_Chain_UnlinkLink(mbarPtr->chain, itemPtr->link);
+    Blt_Chain_UnlinkLink(mbPtr->chain, itemPtr->link);
     if (isBefore) {
-	Blt_Chain_LinkBefore(mbarPtr->chain, itemPtr->link, b2Ptr->link);
+	Blt_Chain_LinkBefore(mbPtr->chain, itemPtr->link, b2Ptr->link);
     } else {
-	Blt_Chain_LinkAfter(mbarPtr->chain, itemPtr->link, b2Ptr->link);
+	Blt_Chain_LinkAfter(mbPtr->chain, itemPtr->link, b2Ptr->link);
     }
-    RenumberItems(mbarPtr);
-    EventuallyRedraw(mbarPtr);
+    RenumberItems(mbPtr);
+    EventuallyRedraw(mbPtr);
     return TCL_OK;
 }
 
@@ -2571,7 +2561,7 @@ static int
 NamesOp(ClientData clientData, Tcl_Interp *interp, int objc, 
 	Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Tcl_Obj *listObjPtr;
     int i;
 
@@ -2581,7 +2571,7 @@ NamesOp(ClientData clientData, Tcl_Interp *interp, int objc,
 	Blt_ChainLink link;
 
 	pattern = Tcl_GetString(objv[i]);
-	for (link = Blt_Chain_FirstLink(mbarPtr->chain); link != NULL; 
+	for (link = Blt_Chain_FirstLink(mbPtr->chain); link != NULL; 
 	     link = Blt_Chain_NextLink(link)) {
 	    Item *itemPtr;
 	    Tcl_Obj *objPtr;
@@ -2589,7 +2579,7 @@ NamesOp(ClientData clientData, Tcl_Interp *interp, int objc,
 	    itemPtr = Blt_Chain_GetValue(link);
 	    if (Tcl_StringMatch(itemPtr->text, pattern)) {
 		if (itemPtr->text == emptyString) {
-		    objPtr = Blt_EmptyStringObj();
+		    objPtr = Tcl_NewStringObj("", -1);
 		} else {
 		    objPtr = Tcl_NewStringObj(itemPtr->text, -1);
 		}
@@ -2623,15 +2613,15 @@ static int
 PostOp(ClientData clientData, Tcl_Interp *interp, int objc, 
        Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Item *itemPtr;
 
-    if (GetItemFromObj(interp, mbarPtr, objv[2], &itemPtr) != TCL_OK) {
+    if (GetItemFromObj(interp, mbPtr, objv[2], &itemPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (itemPtr == NULL) {
-	if (mbarPtr->postedPtr != NULL) {
-	    UnpostMenu(mbarPtr->postedPtr);
+	if (mbPtr->postedPtr != NULL) {
+	    UnpostMenu(mbPtr->postedPtr);
 	}
 	return TCL_OK;
     }
@@ -2643,8 +2633,8 @@ PostOp(ClientData clientData, Tcl_Interp *interp, int objc,
     if (itemPtr->menuObjPtr == NULL) {
 	return TCL_OK;
     }
-    if (mbarPtr->postedPtr != NULL) {
-	UnpostMenu(mbarPtr->postedPtr);
+    if (mbPtr->postedPtr != NULL) {
+	UnpostMenu(mbPtr->postedPtr);
     }
     if (itemPtr != NULL) {
 	PostMenu(itemPtr);
@@ -2672,10 +2662,10 @@ static int
 UndockOp(ClientData clientData, Tcl_Interp *interp, int objc, 
        Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
 
-    if (mbarPtr->floatWin != NULL) {
-	DestroyFloat(mbarPtr);
+    if (mbPtr->floatWin != NULL) {
+	DestroyFloat(mbPtr);
     }
     return TCL_OK;
 }
@@ -2700,10 +2690,10 @@ static int
 UnpostOp(ClientData clientData, Tcl_Interp *interp, int objc, 
 	 Tcl_Obj *const *objv)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Item *itemPtr;
 
-    if (GetItemFromObj(interp, mbarPtr, objv[2], &itemPtr) != TCL_OK) {
+    if (GetItemFromObj(interp, mbPtr, objv[2], &itemPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     if (itemPtr == NULL) {
@@ -2767,7 +2757,7 @@ MenubarInstCmdProc(
     Tcl_Obj *const *objv)	/* Argument vector. */
 {
     Tcl_ObjCmdProc *proc;
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     int result;
 
     proc = Blt_GetOpFromObj(interp, nMenubarOps, menubarOps, BLT_OP_ARG1, 
@@ -2775,9 +2765,9 @@ MenubarInstCmdProc(
     if (proc == NULL) {
 	return TCL_ERROR;
     }
-    Tcl_Preserve(mbarPtr);
+    Tcl_Preserve(mbPtr);
     result = (*proc) (clientData, interp, objc, objv);
-    Tcl_Release(mbarPtr);
+    Tcl_Release(mbPtr);
     return result;
 }
 
@@ -2804,13 +2794,13 @@ MenubarInstCmdProc(
 static void
 MenubarInstCmdDeletedProc(ClientData clientData)
 {
-    Menubar *mbarPtr = clientData; /* Pointer to widget record. */
+    Menubar *mbPtr = clientData; /* Pointer to widget record. */
 
-    if (mbarPtr->tkwin != NULL) {
+    if (mbPtr->tkwin != NULL) {
 	Tk_Window tkwin;
 
-	tkwin = mbarPtr->tkwin;
-	mbarPtr->tkwin = NULL;
+	tkwin = mbPtr->tkwin;
+	mbPtr->tkwin = NULL;
 	Tk_DestroyWindow(tkwin);
     }
 }
@@ -2840,7 +2830,7 @@ MenubarCmd(
     int objc,			/* Number of arguments. */
     Tcl_Obj *const *objv)	/* Argument strings. */
 {
-    Menubar *mbarPtr;
+    Menubar *mbPtr;
     Tcl_CmdInfo cmdInfo;
     Tk_Window tkwin;
     char *path;
@@ -2875,15 +2865,15 @@ MenubarCmd(
     if (tkwin == NULL) {
 	return TCL_ERROR;
     }
-    mbarPtr = NewMenubar(interp, tkwin);
+    mbPtr = NewMenubar(interp, tkwin);
 #define EVENT_MASK	(ExposureMask|StructureNotifyMask|FocusChangeMask)
-    Tk_CreateEventHandler(tkwin, EVENT_MASK, MenubarEventProc, mbarPtr);
+    Tk_CreateEventHandler(tkwin, EVENT_MASK, MenubarEventProc, mbPtr);
     Tk_SetClass(tkwin, "Menubar");
-    mbarPtr->cmdToken = Tcl_CreateObjCommand(interp, path, 
-	MenubarInstCmdProc, mbarPtr, MenubarInstCmdDeletedProc);
-    Blt_SetWindowInstanceData(tkwin, mbarPtr);
-    if (ConfigureMenubar(interp, mbarPtr, objc-2, objv+2, 0) != TCL_OK) {
-	Tk_DestroyWindow(mbarPtr->tkwin);
+    mbPtr->cmdToken = Tcl_CreateObjCommand(interp, path, 
+	MenubarInstCmdProc, mbPtr, MenubarInstCmdDeletedProc);
+    Blt_SetWindowInstanceData(tkwin, mbPtr);
+    if (ConfigureMenubar(interp, mbPtr, objc-2, objv+2, 0) != TCL_OK) {
+	Tk_DestroyWindow(mbPtr->tkwin);
 	return TCL_ERROR;
     }
     Tcl_SetObjResult(interp, objv[1]);
@@ -2913,14 +2903,14 @@ Blt_MenubarInitProc(Tcl_Interp *interp)
  *---------------------------------------------------------------------------
  */
 static void
-DrawLabel(Menubar *mbarPtr, Drawable drawable, int x, int y, int w, int h) 
+DrawLabel(Menubar *mbPtr, Drawable drawable, int x, int y, int w, int h) 
 {
-    if (mbarPtr->image != NULL) {
+    if (mbPtr->image != NULL) {
 	int imgWidth, imgHeight;
 		
 	imgWidth = MIN(w, itemPtr->textWidth) - IPAD;
 	imgHeight = MIN(h, itemPtr->textHeight);
-	Tk_RedrawImage(IconImage(mbarPtr->image), 0, 0, imgWidth, imgHeight, 
+	Tk_RedrawImage(IconImage(mbPtr->image), 0, 0, imgWidth, imgHeight, 
 		drawable, x + IPAD, y);
     } else {
 	TextStyle ts;
@@ -2928,29 +2918,29 @@ DrawLabel(Menubar *mbarPtr, Drawable drawable, int x, int y, int w, int h)
 	GC gc;
 
 	Blt_Ts_InitStyle(ts);
-	Blt_Ts_SetFont(ts, mbarPtr->font);
+	Blt_Ts_SetFont(ts, mbPtr->font);
 	Blt_Ts_SetAnchor(ts, TK_ANCHOR_NW);
-	Blt_Ts_SetJustify(ts, mbarPtr->justify);
-	Blt_Ts_SetUnderline(ts, mbarPtr->underline);
-	layoutPtr = Blt_Ts_CreateLayout(mbarPtr->text, mbarPtr->textLen, &ts);
-	if (mbarPtr->flags & STATE_POSTED) {
-	    gc = mbarPtr->textPostedGC;
-	} else if (mbarPtr->flags & STATE_ACTIVE) {
-	    gc = mbarPtr->textActiveGC;
-	} else if (mbarPtr->flags & STATE_DISABLED) {
-	    gc = mbarPtr->textDisabledGC;
+	Blt_Ts_SetJustify(ts, mbPtr->justify);
+	Blt_Ts_SetUnderline(ts, mbPtr->underline);
+	layoutPtr = Blt_Ts_CreateLayout(mbPtr->text, mbPtr->textLen, &ts);
+	if (mbPtr->flags & STATE_POSTED) {
+	    gc = mbPtr->textPostedGC;
+	} else if (mbPtr->flags & STATE_ACTIVE) {
+	    gc = mbPtr->textActiveGC;
+	} else if (mbPtr->flags & STATE_DISABLED) {
+	    gc = mbPtr->textDisabledGC;
 	} else {
-	    gc = mbarPtr->textNormalGC;
+	    gc = mbPtr->textNormalGC;
 	}
-	Blt_DrawLayout(mbarPtr->tkwin, drawable, gc, mbarPtr->font, 
-		Tk_Depth(mbarPtr->tkwin), 0.0f, x + IPAD, y, layoutPtr, w);
+	Blt_DrawLayout(mbPtr->tkwin, drawable, gc, mbPtr->font, 
+		Tk_Depth(mbPtr->tkwin), 0.0f, x + IPAD, y, layoutPtr, w);
 	Blt_Free(layoutPtr);
     }
 }
 #endif
 
 static void
-DrawMenubar(Menubar *mbarPtr, Drawable drawable)
+DrawMenubar(Menubar *mbPtr, Drawable drawable)
 {
     Blt_Background bg;
     int x, y;
@@ -2958,24 +2948,24 @@ DrawMenubar(Menubar *mbarPtr, Drawable drawable)
 
     /* Menubar background (just inside of focus highlight ring). */
 
-    if (mbarPtr->flags & STATE_POSTED) {
-	bg = mbarPtr->postedBg;
-    } else if (mbarPtr->flags & STATE_ACTIVE) {
-	bg = mbarPtr->activeBg;
-    } else if (mbarPtr->flags & STATE_DISABLED) {
-	bg = mbarPtr->disabledBg;
+    if (mbPtr->flags & STATE_POSTED) {
+	bg = mbPtr->postedBg;
+    } else if (mbPtr->flags & STATE_ACTIVE) {
+	bg = mbPtr->activeBg;
+    } else if (mbPtr->flags & STATE_DISABLED) {
+	bg = mbPtr->disabledBg;
     } else {
-	bg = mbarPtr->normalBg;
+	bg = mbPtr->normalBg;
     }
-    Blt_FillBackgroundRectangle(mbarPtr->tkwin, drawable, bg, 0, 0,
-	Tk_Width(mbarPtr->tkwin), Tk_Height(mbarPtr->tkwin),
-	mbarPtr->borderWidth, TK_RELIEF_FLAT);
+    Blt_FillBackgroundRectangle(mbPtr->tkwin, drawable, bg, 0, 0,
+	Tk_Width(mbPtr->tkwin), Tk_Height(mbPtr->tkwin),
+	mbPtr->borderWidth, TK_RELIEF_FLAT);
 
-    x = y = mbarPtr->inset;
-    w  = Tk_Width(mbarPtr->tkwin)  - (2 * mbarPtr->inset);
-    h = Tk_Height(mbarPtr->tkwin) - (2 * mbarPtr->inset);
+    x = y = mbPtr->inset;
+    w  = Tk_Width(mbPtr->tkwin)  - (2 * mbPtr->inset);
+    h = Tk_Height(mbPtr->tkwin) - (2 * mbPtr->inset);
 
-    DrawItems(mbarPtr, drawable);
+    DrawItems(mbPtr, drawable);
 }
 
 /*
@@ -2996,29 +2986,29 @@ DrawMenubar(Menubar *mbarPtr, Drawable drawable)
 static void
 DisplayMenubar(ClientData clientData)
 {
-    Menubar *mbarPtr = clientData;
+    Menubar *mbPtr = clientData;
     Pixmap drawable;
     int ww, wh;			/* Window width and height. */
 
-    mbarPtr->flags &= ~REDRAW_PENDING;
-    if (mbarPtr->tkwin == NULL) {
+    mbPtr->flags &= ~REDRAW_PENDING;
+    if (mbPtr->tkwin == NULL) {
 	return;			/* Window destroyed (should not get here) */
     }
 #ifdef notdef
     fprintf(stderr, "Calling DisplayMenubar(%s)\n", 
-	    Tk_PathName(mbarPtr->tkwin));
+	    Tk_PathName(mbPtr->tkwin));
 #endif
-    ww = Tk_Width(mbarPtr->tkwin);
-    wh = Tk_Height(mbarPtr->tkwin);
+    ww = Tk_Width(mbPtr->tkwin);
+    wh = Tk_Height(mbPtr->tkwin);
     if ((ww <= 1) || (wh <=1)) {
 	/* Don't bother computing the layout until the window size is
 	 * something reasonable. */
 	return;
     }
-    if (mbarPtr->flags & LAYOUT_PENDING) {
-	ComputeMenubarGeometry(mbarPtr);
+    if (mbPtr->flags & LAYOUT_PENDING) {
+	ComputeMenubarGeometry(mbPtr);
     }
-    if (!Tk_IsMapped(mbarPtr->tkwin)) {
+    if (!Tk_IsMapped(mbPtr->tkwin)) {
 	/* The widget's window isn't displayed, so don't bother drawing
 	 * anything.  By getting this far, we've at least computed the
 	 * coordinates of the menubar's new layout.  */
@@ -3028,13 +3018,13 @@ DisplayMenubar(ClientData clientData)
     /*
      * Create a pixmap the size of the window for double buffering.
      */
-    drawable = Tk_GetPixmap(mbarPtr->display, Tk_WindowId(mbarPtr->tkwin),
-		ww, wh, Tk_Depth(mbarPtr->tkwin));
+    drawable = Tk_GetPixmap(mbPtr->display, Tk_WindowId(mbPtr->tkwin),
+		ww, wh, Tk_Depth(mbPtr->tkwin));
 #ifdef WIN32
     assert(drawable != None);
 #endif
-    DrawMenubar(mbarPtr, drawable);
-    XCopyArea(mbarPtr->display, drawable, Tk_WindowId(mbarPtr->tkwin),
-	mbarPtr->textNormalGC, 0, 0, ww, wh, 0, 0);
-    Tk_FreePixmap(mbarPtr->display, drawable);
+    DrawMenubar(mbPtr, drawable);
+    XCopyArea(mbPtr->display, drawable, Tk_WindowId(mbPtr->tkwin),
+	mbPtr->textNormalGC, 0, 0, ww, wh, 0, 0);
+    Tk_FreePixmap(mbPtr->display, drawable);
 }

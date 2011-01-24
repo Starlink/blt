@@ -2,11 +2,11 @@
 /* 
  * bltHash.c --
  *
- * This module implements an in-memory hash table for the BLT toolkit.
- * Built upon the TCL hash table, it adds pool allocation 64-bit
- * address handling, improved array hash function.
+ * This module implements an in-memory hash table for the BLT toolkit.  Built
+ * upon the TCL hash table, it adds pool allocation 64-bit address handling,
+ * improved array hash function.
  *
- *	Copyright 2001-2004 George A Howlett.
+ *	Copyright 2001 George A Howlett.
  *
  *	Permission is hereby granted, free of charge, to any person
  *	obtaining a copy of this software and associated documentation
@@ -35,8 +35,7 @@
  *	Bob Jenkins, 1996.  hash.c.  Public Domain.
  *	Bob Jenkins, 1997.  lookup8.c.  Public Domain.
  *
- * The hash table implementation is base upon the one in the Tcl
- * distribution.
+ * The hash table implementation is base upon the one in the Tcl distribution.
  *
  *	Copyright (c) 1991-1993 The Regents of the University of
  *	California.  
@@ -59,8 +58,8 @@
 #include "bltHash.h"
 
 /*
- * When there are this many entries per bucket, on average, rebuild
- * the hash table to make it larger.
+ * When there are this many entries per bucket, on average, rebuild the hash
+ * table to make it larger.
  */
 
 #define REBUILD_MULTIPLIER	3
@@ -72,11 +71,10 @@ static Blt_Hash HashOneWord(Blt_HashTable *tablePtr, const void *key);
 #else 
 
 /*
- * The following macro takes a preliminary integer hash value and
- * produces an index into a hash tables bucket list.  The idea is
- * to make it so that preliminary values that are arbitrarily similar
- * will end up in different buckets.  The hash function was taken
- * from a random-number generator.
+ * The following macro takes a preliminary integer hash value and produces an
+ * index into a hash tables bucket list.  The idea is to make it so that
+ * preliminary values that are arbitrarily similar will end up in different
+ * buckets.  The hash function was taken from a random-number generator.
  */
 #define RANDOM_INDEX(tablePtr, i) \
     (((((long) (i))*1103515245) >> (tablePtr)->downShift) & (tablePtr)->mask)
@@ -107,12 +105,11 @@ static Blt_HashEntry *OneWordCreate(Blt_HashTable *tablePtr, const void *key,
  *
  * HashString --
  *
- *	Compute a one-word summary of a text string, which can be
- *	used to generate a hash index.
+ *	Compute a one-word summary of a text string, which can be used to
+ *	generate a hash index.
  *
  * Results:
- *	The return value is a one-word summary of the information in
- *	string.
+ *	The return value is a one-word summary of the information in string.
  *
  * Side effects:
  *	None.
@@ -120,8 +117,8 @@ static Blt_HashEntry *OneWordCreate(Blt_HashTable *tablePtr, const void *key,
  *---------------------------------------------------------------------------
  */
 static Blt_Hash
-HashString(const char *string)	/* String from which to
-				 * compute hash value. */
+HashString(const char *string)		/* String from which to compute hash
+					 * value. */
 {
     Blt_Hash result;
     Blt_Hash c;
@@ -154,12 +151,12 @@ HashString(const char *string)	/* String from which to
  *
  * StringFind --
  *
- *	Given a hash table with string keys, and a string key, find
- *	the entry with a matching key.
+ *	Given a hash table with string keys, and a string key, find the entry
+ *	with a matching key.
  *
  * Results:
- *	The return value is a token for the matching entry in the
- *	hash table, or NULL if there was no matching entry.
+ *	The return value is a token for the matching entry in the hash table,
+ *	or NULL if there was no matching entry.
  *
  * Side effects:
  *	None.
@@ -168,8 +165,8 @@ HashString(const char *string)	/* String from which to
  */
 static Blt_HashEntry *
 StringFind(
-    Blt_HashTable *tablePtr,	/* Table in which to lookup entry. */
-    const void *key)		/* Key to use to find matching entry. */
+    Blt_HashTable *tablePtr,		/* Table in which to lookup entry. */
+    const void *key)			/* Key to find matching entry. */
 {
     Blt_Hash hval;
     Blt_HashEntry *hPtr;
@@ -203,15 +200,15 @@ StringFind(
  *
  * StringCreate --
  *
- *	Given a hash table with string keys, and a string key, find
- *	the entry with a matching key.  If there is no matching entry,
- *	then create a new entry that does match.
+ *	Given a hash table with string keys, and a string key, find the entry
+ *	with a matching key.  If there is no matching entry, then create a new
+ *	entry that does match.
  *
  * Results:
- *	The return value is a pointer to the matching entry.  If this
- *	is a newly-created entry, then *isNewPtr will be set to a non-zero
- *	value;  otherwise *isNewPtr will be set to 0.  If this is a new
- *	entry the value stored in the entry will initially be 0.
+ *	The return value is a pointer to the matching entry.  If this is a
+ *	newly-created entry, then *isNewPtr will be set to a non-zero value;
+ *	otherwise *isNewPtr will be set to 0.  If this is a new entry the
+ *	value stored in the entry will initially be 0.
  *
  * Side effects:
  *	A new entry may be added to the hash table.
@@ -220,11 +217,11 @@ StringFind(
  */
 static Blt_HashEntry *
 StringCreate(
-    Blt_HashTable *tablePtr,	/* Table in which to lookup entry. */
-    const void *key,		/* Key to use to find or create matching
-				 * entry. */
-    int *isNewPtr)		/* Store info here telling whether a new
-				 * entry was created. */
+    Blt_HashTable *tablePtr,		/* Table in which to lookup entry. */
+    const void *key,			/* Key to use to find or create
+					 * matching entry. */
+    int *isNewPtr)			/* Store info here telling whether a
+					 * new entry was created. */
 {
     Blt_Hash hval;
     Blt_HashEntry **bucketPtr;
@@ -234,9 +231,7 @@ StringCreate(
     hval = HashString(key);
     hindex = hval & tablePtr->mask;
 
-    /*
-     * Search all of the entries in this bucket.
-     */
+    /* Search all of the entries in this bucket. */
 
     for (hPtr = tablePtr->buckets[hindex]; hPtr != NULL;
 	    hPtr = hPtr->nextPtr) {
@@ -255,9 +250,7 @@ StringCreate(
 	}
     }
 
-    /*
-     * Entry not found.  Add a new one to the bucket.
-     */
+    /* Entry not found.  Add a new one to the bucket. */
 
     *isNewPtr = TRUE;
     size = sizeof(Blt_HashEntry) + strlen(key) - sizeof(Blt_HashKey) + 1;
@@ -275,8 +268,8 @@ StringCreate(
     tablePtr->numEntries++;
 
     /*
-     * If the table has exceeded a decent size, rebuild it with many
-     * more buckets.
+     * If the table has exceeded a decent size, rebuild it with many more
+     * buckets.
      */
 
     if (tablePtr->numEntries >= tablePtr->rebuildSize) {
@@ -291,17 +284,16 @@ StringCreate(
  *
  * HashOneWord --
  *
- *	Compute a one-word hash value of a 64-bit word, which then can
- *	be used to generate a hash index.
+ *	Compute a one-word hash value of a 64-bit word, which then can be used
+ *	to generate a hash index.
  *
- *	From Knuth, it's a multiplicative hash.  Multiplies an unsigned
- *	64-bit value with the golden ratio (sqrt(5) - 1) / 2.  The
- *	downshift value is 64 - n, when n is the log2 of the size of
- *	the hash table.
+ *	From Knuth, it's a multiplicative hash.  Multiplies an unsigned 64-bit
+ *	value with the golden ratio (sqrt(5) - 1) / 2.  The downshift value is
+ *	64 - n, where n is the log2 of the size of the hash table.
  *		
  * Results:
- *	The return value is a one-word summary of the information in
- *	64 bit word.
+ *	The return value is a one-word summary of the information in 64 bit
+ *	word.
  *
  * Side effects:
  *	None.
@@ -326,10 +318,10 @@ HashOneWord(
     y1 = a0 * 0x000000009e3779b9; 
     y2 = a1 * 0x000000007f4a7c13;
     y3 = a1 * 0x000000009e3779b9; 
-    y1 += y0 >> 32;		/* Can't carry */ 
-    y1 += y2;			/* Might carry */
+    y1 += y0 >> 32;			/* Can't carry */ 
+    y1 += y2;				/* Might carry */
     if (y1 < y2) {
-	y3 += (1LL << 32);	/* Propagate */ 
+	y3 += (1LL << 32);		/* Propagate */ 
     }
 
     /* 128-bit product: p1 = loword, p2 = hiword */
@@ -358,12 +350,12 @@ HashOneWord(
  *
  * OneWordFind --
  *
- *	Given a hash table with one-word keys, and a one-word key,
- *	find the entry with a matching key.
+ *	Given a hash table with one-word keys, and a one-word key, find the
+ *	entry with a matching key.
  *
  * Results:
- *	The return value is a token for the matching entry in the
- *	hash table, or NULL if there was no matching entry.
+ *	The return value is a token for the matching entry in the hash table,
+ *	or NULL if there was no matching entry.
  *
  * Side effects:
  *	None.
@@ -372,18 +364,15 @@ HashOneWord(
  */
 static Blt_HashEntry *
 OneWordFind(
-    Blt_HashTable *tablePtr,	/* Table where to lookup entry. */
-    const void *key)		/* Hash entry key that we're searching
-				 * for. */
+    Blt_HashTable *tablePtr,		/* Table where to lookup entry. */
+    const void *key)			/* Key that we're searching for. */
 {
     Blt_HashEntry *hPtr;
     size_t hindex;
 
     hindex = RANDOM_INDEX(tablePtr, key);
 
-    /*
-     * Search all of the entries in the appropriate bucket.
-     */
+    /* Search all of the entries in the appropriate bucket. */
     for (hPtr = tablePtr->buckets[hindex]; hPtr != NULL;
 	    hPtr = hPtr->nextPtr) {
 	if (hPtr->key.oneWordValue == key) {
@@ -398,15 +387,15 @@ OneWordFind(
  *
  * OneWordCreate --
  *
- *	Given a hash table with one-word keys, and a one-word key, find
- *	the entry with a matching key.  If there is no matching entry,
- *	then create a new entry that does match.
+ *	Given a hash table with one-word keys, and a one-word key, find the
+ *	entry with a matching key.  If there is no matching entry, then create
+ *	a new entry that does match.
  *
  * Results:
- *	The return value is a pointer to the matching entry.  If this
- *	is a newly-created entry, then *isNewPtr will be set to a non-zero
- *	value;  otherwise *isNewPtr will be set to 0.  If this is a new
- *	entry the value stored in the entry will initially be 0.
+ *	The return value is a pointer to the matching entry.  If this is a
+ *	newly-created entry, then *isNewPtr will be set to a non-zero value;
+ *	otherwise *isNewPtr will be set to 0.  If this is a new entry the value
+ *	stored in the entry will initially be 0.
  *
  * Side effects:
  *	A new entry may be added to the hash table.
@@ -415,11 +404,11 @@ OneWordFind(
  */
 static Blt_HashEntry *
 OneWordCreate(
-    Blt_HashTable *tablePtr,	/* Table in which to lookup entry. */
-    const void *key,		/* Key to use to find or create matching
-				 * entry. */
-    int *isNewPtr)		/* Store info here telling whether a new
-				 * entry was created. */
+    Blt_HashTable *tablePtr,		/* Table in which to lookup entry. */
+    const void *key,			/* Key to use to find or create
+					 * matching entry. */
+    int *isNewPtr)			/* Store info here telling whether a
+					 * new entry was created. */
 {
     Blt_HashEntry **bucketPtr;
     Blt_HashEntry *hPtr;
@@ -427,9 +416,8 @@ OneWordCreate(
 
     hindex = RANDOM_INDEX(tablePtr, key);
 
-    /*
-     * Search all of the entries in this bucket.
-     */
+    /* Search all of the entries in this bucket. */
+
     for (hPtr = tablePtr->buckets[hindex]; hPtr != NULL; hPtr = hPtr->nextPtr) {
 	if (hPtr->key.oneWordValue == key) {
 	    *isNewPtr = FALSE;
@@ -437,9 +425,7 @@ OneWordCreate(
 	}
     }
 
-    /*
-     * Entry not found.  Add a new one to the bucket.
-     */
+    /* Entry not found.  Add a new one to the bucket. */
 
     *isNewPtr = TRUE;
     if (tablePtr->hPool != NULL) {
@@ -451,13 +437,13 @@ OneWordCreate(
     hPtr->nextPtr = *bucketPtr;
     hPtr->hval = (Blt_Hash)key;
     hPtr->clientData = 0;
-    hPtr->key.oneWordValue = (void *)key;	/* const XXXX */
+    hPtr->key.oneWordValue = (void *)key; /* const XXXX */
     *bucketPtr = hPtr;
     tablePtr->numEntries++;
 
     /*
-     * If the table has exceeded a decent size, rebuild it with many
-     * more buckets.
+     * If the table has exceeded a decent size, rebuild it with many more
+     * buckets.
      */
 
     if (tablePtr->numEntries >= tablePtr->rebuildSize) {
@@ -475,16 +461,15 @@ OneWordCreate(
  *
  *      Bob Jenkins, 1996.  Public Domain.
  *
- *	Mix 3 32/64-bit values reversibly.  For every delta with one or
- *	two bit set, and the deltas of all three high bits or all
- *	three low bits, whether the original value of a,b,c is almost
- *	all zero or is uniformly distributed, If mix() is run
- *	forward or backward, at least 32 bits in a,b,c have at least
- *	1/4 probability of changing.  * If mix() is run forward, every
- *	bit of c will change between 1/3 and 2/3 of the time.  (Well,
- *	22/100 and 78/100 for some 2-bit deltas.)  mix() was built out
- *	of 36 single-cycle latency instructions in a structure that
- *	could supported 2x parallelism, like so:
+ *	Mix 3 32/64-bit values reversibly.  For every delta with one or two
+ *	bit set, and the deltas of all three high bits or all three low bits,
+ *	whether the original value of a,b,c is almost all zero or is uniformly
+ *	distributed, If mix() is run forward or backward, at least 32 bits in
+ *	a,b,c have at least 1/4 probability of changing.  * If mix() is run
+ *	forward, every bit of c will change between 1/3 and 2/3 of the time.
+ *	(Well, 22/100 and 78/100 for some 2-bit deltas.)  mix() was built out
+ *	of 36 single-cycle latency instructions in a structure that could
+ *	supported 2x parallelism, like so:
  *
  *		a -= b; 
  *		a -= c; x = (c>>13);
@@ -494,12 +479,11 @@ OneWordCreate(
  *		c -= b; x = (b>>13);
  *		...
  *
- *	 Unfortunately, superscalar Pentiums and Sparcs can't take
- *	 advantage of that parallelism.  They've also turned some of
- *	 those single-cycle latency instructions into multi-cycle
- *	 latency instructions.  Still, this is the fastest good hash I
- *	 could find.  There were about 2^^68 to choose from.  I only
- *	 looked at a billion or so.
+ *	 Unfortunately, superscalar Pentiums and Sparcs can't take advantage
+ *	 of that parallelism.  They've also turned some of those single-cycle
+ *	 latency instructions into multi-cycle latency instructions.  Still,
+ *	 this is the fastest good hash I could find.  There were about 2^^68
+ *	 to choose from.  I only looked at a billion or so.
  *
  * -------------------------------------------------------------------------- 
  */
@@ -523,8 +507,8 @@ OneWordCreate(
  *
  *      Bob Jenkins, 1996.  Public Domain.
  *
- *	This works on all machines.  Length has to be measured in
- *	unsigned longs instead of bytes.  It requires that
+ *	This works on all machines.  Length has to be measured in unsigned
+ *	longs instead of bytes.  It requires that
  *
  *	  o The key be an array of unsigned ints.
  *	  o All your machines have the same endianness
@@ -539,10 +523,10 @@ HashArray(const void *key, size_t length)
     uint32_t *arrayPtr = (uint32_t *)key;
     /* Set up the internal state */
     len = length;
-    a = b = GOLDEN_RATIO32;	/* An arbitrary value */
-    c = 0;			/* Previous hash value */
+    a = b = GOLDEN_RATIO32;		/* An arbitrary value */
+    c = 0;				/* Previous hash value */
 
-    while (len >= 3) {		/* Handle most of the key */
+    while (len >= 3) {			/* Handle most of the key */
 	a += arrayPtr[0];
 	b += arrayPtr[1];
 	c += arrayPtr[2];
@@ -570,26 +554,26 @@ HashArray(const void *key, size_t length)
  *
  * MIX64 --
  *
- *	Bob Jenkins, January 4 1997, Public Domain.  You can use
- *	this free for any purpose.  It has no warranty.
+ *	Bob Jenkins, January 4 1997, Public Domain.  You can use this free for
+ *	any purpose.  It has no warranty.
  *
- *	Returns a 64-bit value.  Every bit of the key affects every
- *	bit of the return value.  No funnels.  Every 1-bit and 2-bit
- *	delta achieves avalanche.  About 41+5len instructions.
+ *	Returns a 64-bit value.  Every bit of the key affects every bit of the
+ *	return value.  No funnels.  Every 1-bit and 2-bit delta achieves
+ *	avalanche.  About 41+5len instructions.
  *
- *	The best hash table sizes are powers of 2.  There is no need
- *	to do mod a prime (mod is sooo slow!).  If you need less than
- *	64 bits, use a bitmask.  For example, if you need only 10
- *	bits, do h = (h & hashmask(10)); In which case, the hash table
- *	should have hashsize(10) elements.
+ *	The best hash table sizes are powers of 2.  There is no need to do mod
+ *	a prime (mod is sooo slow!).  If you need less than 64 bits, use a
+ *	bitmask.  For example, if you need only 10 bits, do h = (h &
+ *	hashmask(10)); In which case, the hash table should have hashsize(10)
+ *	elements.
  *
- *	By Bob Jenkins, Jan 4 1997.  bob_jenkins@burtleburtle.net.
- *	You may use this code any way you wish, private, educational,
- *	or commercial, as long as this whole comment accompanies it.
+ *	By Bob Jenkins, Jan 4 1997.  bob_jenkins@burtleburtle.net.  You may
+ *	use this code any way you wish, private, educational, or commercial,
+ *	as long as this whole comment accompanies it.
  * 
- *	See http://burtleburtle.net/bob/hash/evahash.html
- *	Use for hash table lookup, or anything where one collision in
- *	2^^64 * is acceptable.  Do NOT use for cryptographic purposes.
+ *	See http://burtleburtle.net/bob/hash/evahash.html Use for hash table
+ *	lookup, or anything where one collision in 2^^64 * is acceptable.  Do
+ *	NOT use for cryptographic purposes.
  *
  *---------------------------------------------------------------------------
  */
@@ -615,11 +599,11 @@ HashArray(const void *key, size_t length)
  *
  * HashArray --
  *
- *	Bob Jenkins, January 4 1997, Public Domain.  You can use
- *	this free for any purpose.  It has no warranty.
+ *	Bob Jenkins, January 4 1997, Public Domain.  You can use this free for
+ *	any purpose.  It has no warranty.
  *
- *	This works on all machines.  The length has to be measured in
- *	64 bit words, instead of bytes.  It requires that
+ *	This works on all machines.  The length has to be measured in 64 bit
+ *	words, instead of bytes.  It requires that
  *
  *	  o The key be an array of 64 bit words (unsigned longs).
  *	  o All your machines have the same endianness.
@@ -639,11 +623,12 @@ HashArray(const void *key, size_t length)
 #define PACK(a,b)	((uint64_t)(a) | ((uint64_t)(b) << 32))
 #endif
     /* Set up the internal state */
-    len = length;		/* Length is the number of 64-bit words. */
-    a = b = GOLDEN_RATIO64;	/* An arbitrary value */
-    c = 0;			/* Previous hash value */
+    len = length;			/* Length is the number of 64-bit
+					 * words. */
+    a = b = GOLDEN_RATIO64;		/* An arbitrary value */
+    c = 0;				/* Previous hash value */
 
-    while (len >= 6) {		/* Handle most of the key */
+    while (len >= 6) {			/* Handle most of the key */
 	a += PACK(ip[0], ip[1]);
 	b += PACK(ip[2], ip[3]);
 	c += PACK(ip[4], ip[5]);
@@ -680,12 +665,12 @@ HashArray(const void *key, size_t length)
  *
  * ArrayFind --
  *
- *	Given a hash table with array-of-int keys, and a key, find
- *	the entry with a matching key.
+ *	Given a hash table with array-of-int keys, and a key, find the entry
+ *	with a matching key.
  *
  * Results:
- *	The return value is a token for the matching entry in the
- *	hash table, or NULL if there was no matching entry.
+ *	The return value is a token for the matching entry in the hash table,
+ *	or NULL if there was no matching entry.
  *
  * Side effects:
  *	None.
@@ -694,8 +679,8 @@ HashArray(const void *key, size_t length)
  */
 static Blt_HashEntry *
 ArrayFind(
-    Blt_HashTable *tablePtr,	/* Table in which to lookup entry. */
-    const void *key)		/* Key to use to find matching entry. */
+    Blt_HashTable *tablePtr,		/* Table in which to lookup entry. */
+    const void *key)			/* Key to use to find matching entry. */
 {
     Blt_Hash hval;
     Blt_HashEntry *hPtr;
@@ -703,10 +688,8 @@ ArrayFind(
 
     hval = HashArray(key, tablePtr->keyType);
     hindex = hval & tablePtr->mask;
-    /*
-     * Search all of the entries in the appropriate bucket.
-     */
 
+    /* Search all of the entries in the appropriate bucket. */
     for (hPtr = tablePtr->buckets[hindex]; hPtr != NULL;
 	    hPtr = hPtr->nextPtr) {
 	if (hPtr->hval == hval) {
@@ -732,15 +715,15 @@ ArrayFind(
  *
  * ArrayCreate --
  *
- *	Given a hash table with one-word keys, and a one-word key, find
- *	the entry with a matching key.  If there is no matching entry,
- *	then create a new entry that does match.
+ *	Given a hash table with one-word keys, and a one-word key, find the
+ *	entry with a matching key.  If there is no matching entry, then create a
+ *	new entry that does match.
  *
  * Results:
- *	The return value is a pointer to the matching entry.  If this
- *	is a newly-created entry, then *isNewPtr will be set to a non-zero
- *	value;  otherwise *isNewPtr will be set to 0.  If this is a new
- *	entry the value stored in the entry will initially be 0.
+ *	The return value is a pointer to the matching entry.  If this is a
+ *	newly-created entry, then *isNewPtr will be set to a non-zero value;
+ *	otherwise *isNewPtr will be set to 0.  If this is a new entry the value
+ *	stored in the entry will initially be 0.
  *
  * Side effects:
  *	A new entry may be added to the hash table.
@@ -749,11 +732,11 @@ ArrayFind(
  */
 static Blt_HashEntry *
 ArrayCreate(
-    Blt_HashTable *tablePtr,	/* Table in which to lookup entry. */
-    const void *key,		/* Key to use to find or create matching
-				 * entry. */
-    int *isNewPtr)		/* Store info here telling whether a new
-				 * entry was created. */
+    Blt_HashTable *tablePtr,		/* Table in which to lookup entry. */
+    const void *key,			/* Key to use to find or create
+					 * matching entry. */
+    int *isNewPtr)			/* Store info here telling whether a
+					 * new entry was created. */
 {
     Blt_Hash hval;
     Blt_HashEntry **bucketPtr;
@@ -765,9 +748,8 @@ ArrayCreate(
     hval = HashArray(key, tablePtr->keyType);
     hindex = hval & tablePtr->mask;
 
-    /*
-     * Search all of the entries in the appropriate bucket.
-     */
+    /* Search all of the entries in the appropriate bucket. */
+
     for (hPtr = tablePtr->buckets[hindex]; hPtr != NULL;
 	    hPtr = hPtr->nextPtr) {
 	if (hPtr->hval == hval) {
@@ -784,9 +766,8 @@ ArrayCreate(
 	}
     }
 
-    /*
-     * Entry not found.  Add a new one to the bucket.
-     */
+    /* Entry not found.  Add a new one to the bucket. */
+
     *isNewPtr = TRUE;
     /* We assume here that the size of the key is at least 2 words */
     size = sizeof(Blt_HashEntry) + tablePtr->keyType * sizeof(uint32_t) - 
@@ -809,8 +790,8 @@ ArrayCreate(
     tablePtr->numEntries++;
 
     /*
-     * If the table has exceeded a decent size, rebuild it with many
-     * more buckets.
+     * If the table has exceeded a decent size, rebuild it with many more
+     * buckets.
      */
     if (tablePtr->numEntries >= tablePtr->rebuildSize) {
 	RebuildTable(tablePtr);
@@ -823,12 +804,11 @@ ArrayCreate(
  *
  * BogusFind --
  *
- *	This procedure is invoked when an Blt_FindHashEntry is called
- *	on a table that has been deleted.
+ *	This procedure is invoked when an Blt_FindHashEntry is called on a
+ *	table that has been deleted.
  *
  * Results:
- *	If panic returns (which it shouldn't) this procedure returns
- *	NULL.
+ *	If panic returns (which it shouldn't) this procedure returns NULL.
  *
  * Side effects:
  *	Generates a panic.
@@ -838,8 +818,8 @@ ArrayCreate(
 /* ARGSUSED */
 static Blt_HashEntry *
 BogusFind(
-    Blt_HashTable *tablePtr,	/* Not used. */
-    const void *key)		/* Not used.*/
+    Blt_HashTable *tablePtr,		/* Not used. */
+    const void *key)			/* Not used.*/
 {
     Blt_Panic("called Blt_FindHashEntry on deleted table");
     return NULL;
@@ -850,12 +830,11 @@ BogusFind(
  *
  * BogusCreate --
  *
- *	This procedure is invoked when an Blt_CreateHashEntry is called
- *	on a table that has been deleted.
+ *	This procedure is invoked when an Blt_CreateHashEntry is called on a
+ *	table that has been deleted.
  *
  * Results:
- *	If panic returns (which it shouldn't) this procedure returns
- *	NULL.
+ *	If panic returns (which it shouldn't) this procedure returns NULL.
  *
  * Side effects:
  *	Generates a panic.
@@ -865,9 +844,9 @@ BogusFind(
 /* ARGSUSED */
 static Blt_HashEntry *
 BogusCreate(
-    Blt_HashTable *tablePtr,	/* Not used. */
-    const void *key,		/* Not used. */
-    int *isNewPtr)		/* Not used. */
+    Blt_HashTable *tablePtr,		/* Not used. */
+    const void *key,			/* Not used. */
+    int *isNewPtr)			/* Not used. */
 {
     Blt_Panic("called Blt_CreateHashEntry on deleted table");
     return NULL;
@@ -878,22 +857,20 @@ BogusCreate(
  *
  * RebuildTable --
  *
- *	This procedure is invoked when the ratio of entries to hash
- *	buckets becomes too large.  It creates a new table with a
- *	larger bucket array and moves all of the entries into the
- *	new table.
+ *	This procedure is invoked when the ratio of entries to hash buckets
+ *	becomes too large.  It creates a new table with a larger bucket array
+ *	and moves all of the entries into the new table.
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	Memory gets reallocated and entries get re-hashed to new
- *	buckets.
+ *	Memory gets reallocated and entries get re-hashed to new buckets.
  *
  *---------------------------------------------------------------------------
  */
 static void
-RebuildTable(Blt_HashTable *tablePtr) /* Table to enlarge. */
+RebuildTable(Blt_HashTable *tablePtr)	/* Table to enlarge. */
 {
     Blt_HashEntry **oldBuckets;
     int oldNumBuckets;
@@ -901,8 +878,8 @@ RebuildTable(Blt_HashTable *tablePtr) /* Table to enlarge. */
     oldBuckets = tablePtr->buckets;
     oldNumBuckets = tablePtr->numBuckets;
     /*
-     * Allocate and initialize the new bucket array, and set up
-     * hashing constants for new array size.
+     * Allocate and initialize the new bucket array, and set up hashing
+     * constants for new array size.
      */
     tablePtr->numBuckets <<= 2;
     tablePtr->buckets = Blt_AssertCalloc(tablePtr->numBuckets, 
@@ -912,16 +889,15 @@ RebuildTable(Blt_HashTable *tablePtr) /* Table to enlarge. */
     tablePtr->mask = tablePtr->numBuckets - 1;
 
     /*
-     * Move all of the existing entries into the new bucket array,
-     * based on their hash values.  
+     * Move all of the existing entries into the new bucket array, based on
+     * their hash values.
      */
     if (tablePtr->keyType == BLT_ONE_WORD_KEYS) {
 	Blt_HashEntry **hpp, **hend;
 
 	/* 
-	 * BLT_ONE_WORD_KEYS are handled slightly differently because
-	 * they use the current table size (number of buckets) to 
-	 * distribute the entries.
+	 * BLT_ONE_WORD_KEYS are handled slightly differently because they use
+	 * the current table size (number of buckets) to distribute the entries.
 	 */
 	for (hpp = oldBuckets, hend = hpp + oldNumBuckets; hpp < hend; hpp++) {
 	    Blt_HashEntry *hPtr, *nextPtr;
@@ -972,8 +948,8 @@ RebuildTable(Blt_HashTable *tablePtr) /* Table to enlarge. */
  *
  * Blt_InitHashTable --
  *
- *	Given storage for a hash table, set up the fields to prepare
- *	the hash table for use.
+ *	Given storage for a hash table, set up the fields to prepare the hash
+ *	table for use.
  *
  * Results:
  *	None.
@@ -999,24 +975,23 @@ Blt_InitHashTable(Blt_HashTable *tablePtr, size_t keyType)
     tablePtr->rebuildSize = BLT_SMALL_HASH_TABLE * REBUILD_MULTIPLIER;
     tablePtr->downShift = DOWNSHIFT_START;
 
-    /* The number of buckets is always a power of 2, so we can
-     * generate the mask by simply subtracting 1 from the number of
-     * buckets. */
+    /* The number of buckets is always a power of 2, so we can generate the mask
+     * by simply subtracting 1 from the number of buckets. */
     tablePtr->mask = (Blt_Hash)(tablePtr->numBuckets - 1);
     tablePtr->keyType = keyType;
 
     switch (keyType) {
-    case BLT_STRING_KEYS:	/* NUL terminated string keys. */
+    case BLT_STRING_KEYS:		/* NUL terminated string keys. */
 	tablePtr->findProc = StringFind;
 	tablePtr->createProc = StringCreate;
 	break;
 
-    case BLT_ONE_WORD_KEYS:	/* 32 or 64-bit atomic keys. */
+    case BLT_ONE_WORD_KEYS:		/* 32 or 64-bit atomic keys. */
 	tablePtr->findProc = OneWordFind;
 	tablePtr->createProc = OneWordCreate;
 	break;
 
-    default:			/* Structures/arrays. */
+    default:				/* Structures/arrays. */
 	if (keyType == 0) {
 	    Blt_Panic("Blt_InitHashTable: Key size can't be %d, must be > 0\n",
 		  keyType);
@@ -1033,11 +1008,11 @@ Blt_InitHashTable(Blt_HashTable *tablePtr, size_t keyType)
  *
  * Blt_InitHashTableWithPool --
  *
- *	Given storage for a hash table, set up the fields to prepare
- *	the hash table for use.  The only difference between this 
- *	routine and Blt_InitHashTable is that is uses a pool allocator
- *	to allocate memory for hash table entries.  The type of pool
- *	is either fixed or variable size (string) keys.
+ *	Given storage for a hash table, set up the fields to prepare the hash
+ *	table for use.  The only difference between this routine and
+ *	Blt_InitHashTable is that is uses a pool allocator to allocate memory
+ *	for hash table entries.  The type of pool is either fixed or variable
+ *	size (string) keys.
  *
  * Results:
  *	None.
@@ -1070,10 +1045,9 @@ Blt_InitHashTableWithPool(Blt_HashTable *tablePtr, size_t keyType)
  *	None.
  *
  * Side effects:
- *	The entry given by entryPtr is deleted from its table and
- *	should never again be used by the caller.  It is up to the
- *	caller to free the clientData field of the entry, if that
- *	is relevant.
+ *	The entry given by entryPtr is deleted from its table and should never
+ *	again be used by the caller.  It is up to the caller to free the
+ *	clientData field of the entry, if that is relevant.
  *
  *---------------------------------------------------------------------------
  */
@@ -1117,8 +1091,8 @@ Blt_DeleteHashEntry(Blt_HashTable *tablePtr, Blt_HashEntry *entryPtr)
  *
  * Blt_DeleteHashTable --
  *
- *	Free up everything associated with a hash table except for
- *	the record for the table itself.
+ *	Free up everything associated with a hash table except for the record
+ *	for the table itself.
  *
  * Results:
  *	None.
@@ -1131,9 +1105,7 @@ Blt_DeleteHashEntry(Blt_HashTable *tablePtr, Blt_HashEntry *entryPtr)
 void
 Blt_DeleteHashTable(Blt_HashTable *tablePtr)	/* Table to delete. */
 {
-    /*
-     * Free up all the entries in the table.
-     */
+    /* Free up all the entries in the table. */
     if (tablePtr->hPool != NULL) {
 	Blt_PoolDestroy(tablePtr->hPool);
 	tablePtr->hPool = NULL;
@@ -1154,18 +1126,14 @@ Blt_DeleteHashTable(Blt_HashTable *tablePtr)	/* Table to delete. */
 	}
     }
     
-    /*
-     * Free up the bucket array, if it was dynamically allocated.
-     */
+    /* Free up the bucket array, if it was dynamically allocated. */
     if (tablePtr->buckets != tablePtr->staticBuckets) {
 	Blt_Free(tablePtr->buckets);
     }
 
     /*
-     * Arrange for panics if the table is used again without
-     * re-initialization.
+     * Arrange for panics if the table is used again without re-initialization.
      */
-
     tablePtr->findProc = BogusFind;
     tablePtr->createProc = BogusCreate;
 }
@@ -1175,16 +1143,14 @@ Blt_DeleteHashTable(Blt_HashTable *tablePtr)	/* Table to delete. */
  *
  * Blt_FirstHashEntry --
  *
- *	Locate the first entry in a hash table and set up a record
- *	that can be used to step through all the remaining entries
- *	of the table.
+ *	Locate the first entry in a hash table and set up a record that can be
+ *	used to step through all the remaining entries of the table.
  *
  * Results:
- *	The return value is a pointer to the first entry in tablePtr,
- *	or NULL if tablePtr has no entries in it.  The memory at
- *	*searchPtr is initialized so that subsequent calls to
- *	Blt_NextHashEntry will return all of the entries in the table,
- *	one at a time.
+ *	The return value is a pointer to the first entry in tablePtr, or NULL
+ *	if tablePtr has no entries in it.  The memory at *searchPtr is
+ *	initialized so that subsequent calls to Blt_NextHashEntry will return
+ *	all of the entries in the table, one at a time.
  *
  * Side effects:
  *	None.
@@ -1209,12 +1175,12 @@ Blt_FirstHashEntry(
  * Blt_NextHashEntry --
  *
  *	Once a hash table enumeration has been initiated by calling
- *	Blt_FirstHashEntry, this procedure may be called to return
- *	successive elements of the table.
+ *	Blt_FirstHashEntry, this procedure may be called to return successive
+ *	elements of the table.
  *
  * Results:
- *	The return value is the next entry in the hash table being
- *	enumerated, or NULL if the end of the table is reached.
+ *	The return value is the next entry in the hash table being enumerated,
+ *	or NULL if the end of the table is reached.
  *
  * Side effects:
  *	None.
@@ -1244,13 +1210,12 @@ Blt_NextHashEntry(Blt_HashSearch *searchPtr)
  *
  * Blt_HashStats --
  *
- *	Return statistics describing the layout of the hash table
- *	in its hash buckets.
+ *	Return statistics describing the layout of the hash table in its hash
+ *	buckets.
  *
  * Results:
- *	The return value is a malloc-ed string containing information
- *	about tablePtr.  It is the caller's responsibility to free
- *	this string.
+ *	The return value is a malloc-ed string containing information about
+ *	tablePtr.  It is the caller's responsibility to free this string.
  *
  * Side effects:
  *	None.
@@ -1266,9 +1231,7 @@ Blt_HashStats(Blt_HashTable *tablePtr) /* Table for which to produce stats. */
 #define NUM_COUNTERS 10
     size_t count[NUM_COUNTERS], overflow, i, max;
 
-    /*
-     * Compute a histogram of bucket usage.
-     */
+    /* Compute a histogram of bucket usage. */
     for (i = 0; i < NUM_COUNTERS; i++) {
 	count[i] = 0;
     }
@@ -1297,9 +1260,7 @@ Blt_HashStats(Blt_HashTable *tablePtr) /* Table for which to produce stats. */
 	average += (tmp+1.0)*(tmp/tablePtr->numEntries)/2.0;
     }
 
-    /*
-     * Print out the histogram and a few other pieces of information.
-     */
+    /* Print out the histogram and a few other pieces of information. */
     result = Blt_AssertMalloc((unsigned) ((NUM_COUNTERS*60) + 300));
     sprintf(result, "%lu entries in table, %lu buckets\n",
 	    (unsigned long)tablePtr->numEntries, 

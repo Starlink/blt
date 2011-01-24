@@ -934,7 +934,8 @@ Blt_JPEGToPicture(interp, fileName)
 	goto error;
     }
     if (ijlFree(&jpgProps) != IJL_OK) {
-	Tcl_AppendResult(interp, "can't free Intel(R) JPEG library\n");
+	Tcl_AppendResult(interp, "can't free Intel(R) JPEG library.",
+			 (char *)NULL);
     }
     return pict;
 

@@ -688,6 +688,7 @@ ConfigureFrame(
     }
     Tk_SetInternalBorder(framePtr->tkwin,
 	framePtr->borderWidth + framePtr->highlightWidth);
+    
     if ((framePtr->width > 0) || (framePtr->height > 0)) {
 	Tk_GeometryRequest(framePtr->tkwin, framePtr->width,
 	    framePtr->height);

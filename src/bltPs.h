@@ -70,7 +70,7 @@ typedef struct  {
 
     int paperHeight;
     int paperWidth;
-
+    
 } PageSetup;
 
 #define PS_GREYSCALE	(1<<0)
@@ -120,7 +120,7 @@ BLT_EXTERN int Blt_Ps_GetPicaFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr,
 BLT_EXTERN int Blt_Ps_GetPadFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, 
 	Blt_Pad *padPtr);
 
-BLT_EXTERN int Blt_Ps_ComputeBoundingBox(PageSetup *setupPtr, int *w, int *h);
+BLT_EXTERN int Blt_Ps_ComputeBoundingBox(PageSetup *setupPtr, int w, int h);
 
 BLT_EXTERN void Blt_Ps_DrawPicture(Blt_Ps ps, Blt_Picture picture, 
 	double x, double y);
@@ -199,6 +199,16 @@ BLT_EXTERN void Blt_Ps_XSetJoinStyle(Blt_Ps ps, int joinStyle);
 BLT_EXTERN void Blt_Ps_PolylineFromXPoints(Blt_Ps ps, XPoint *points, int n);
 
 BLT_EXTERN void Blt_Ps_Polygon(Blt_Ps ps, Point2d *screenPts, int nScreenPts);
+
+BLT_EXTERN void Blt_Ps_SetPrinting(Blt_Ps ps, int value);
+BLT_EXTERN int Blt_Ps_IsPrinting(void);
+
+BLT_EXTERN int Blt_Ps_TextWidth(Blt_Font font, const char *string, int nBytes);
+
+BLT_EXTERN int Blt_Ps_GetFontMetrics(Blt_Font font, Blt_FontMetrics *fmPtr);
+
+BLT_EXTERN void Blt_Ps_FontName(const char *family, int flags, 
+	Tcl_DString *resultPtr);
 
 #endif /* _TK */
 

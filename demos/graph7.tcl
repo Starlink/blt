@@ -40,20 +40,16 @@ $s1 blank 0x00000000
 $s1 draw circle 12 12 5 -shadow 0 -linewidth 1 \
 	-fill 0x90FF0000 -antialias yes 
 
-set length 250000
+set length 2500000
 blt::graph $graph -title "Scatter Plot\n$length points"  -font Arial \
     -plotborderwidth 1 -plotrelief solid  -plotpadx 0 -plotpady 0
 $graph xaxis configure \
     -loose no \
-    -title "X Axis Label" \
-    -tickinterior yes 
+    -title "X Axis Label" 
 $graph yaxis configure \
-    -title "Y Axis Label"  \
-    -tickinterior yes 
+    -title "Y Axis Label" 
 $graph y2axis configure \
-    -title "Y2 Axis Label"  \
-    -tickinterior yes \
-    -hide no
+    -title "Y2 Axis Label"  
 $graph legend configure \
     -activerelief sunken \
     -background ""

@@ -938,9 +938,9 @@ test tree.185 {tree0 size 0 10 (extra arg)} {
     list [catch {tree0 size 0 10} msg] $msg
 } {1 {wrong # args: should be "tree0 size node"}}
 
-test tree.186 {tree0 delete (missing arg)} {
+test tree.186 {tree0 delete (no args)} {
     list [catch {tree0 delete} msg] $msg
-} {1 {wrong # args: should be "tree0 delete node ?node...?"}}
+} {0 {}}
 
 test tree.187 {tree0 delete 11} {
     list [catch {tree0 delete 11} msg] $msg
@@ -1256,7 +1256,7 @@ test tree.242 {tree0 tag badOp} {
   tree0 tag add tag ?node...?
   tree0 tag delete tag node...
   tree0 tag dump tag...
-  tree0 tag exists node tag...
+  tree0 tag exists tag ?node?
   tree0 tag forget tag...
   tree0 tag get node ?pattern...?
   tree0 tag names ?node...?
@@ -1288,6 +1288,26 @@ test tree.248 {tree0 tag add tag2 0 1 2 3 4} {
     list [catch {tree0 tag add tag2 0 1 2 3 4} msg] $msg
 } {0 {}}
 
+test tree.248 {tree0 tag exists tag2} {
+    list [catch {tree0 tag exists tag2} msg] $msg
+} {0 1}
+
+test tree.248 {tree0 tag exists tag2 0} {
+    list [catch {tree0 tag exists tag2 0} msg] $msg
+} {0 1}
+
+test tree.248 {tree0 tag exists tag2 5} {
+    list [catch {tree0 tag exists tag2 5} msg] $msg
+} {0 0}
+
+test tree.248 {tree0 tag exists badTag} {
+    list [catch {tree0 tag exists badTag} msg] $msg
+} {0 0}
+
+test tree.248 {tree0 tag exists badTag 1000} {
+    list [catch {tree0 tag exists badTag 1000} msg] $msg
+} {1 {can't find tag or id "1000" in ::tree0}}
+
 test tree.249 {tree0 tag add tag2 0 1 2 3 4 1000} {
     list [catch {tree0 tag add tag2 0 1 2 3 4 1000} msg] $msg
 } {1 {can't find tag or id "1000" in ::tree0}}
@@ -1317,8 +1337,9 @@ test tree.255 {tree0 tag nodes (missing arg)} {
 } {1 {wrong # args: should be "tree0 tag nodes tag ?tag...?"}}
 
 test tree.256 {tree0 tag nodes root badTag} {
+    # It's not an error to use bad tag.
     list [catch {tree0 tag nodes root badTag} msg] $msg
-} {1 {can't find a tag "badTag"}}
+} {0 {}}
 
 test tree.257 {tree0 tag nodes root tag2} {
     list [catch {tree0 tag nodes root tag2} msg] [lsort $msg]
@@ -1790,7 +1811,7 @@ test tree.342 {tree0 index root->firstchild->parent} {
 test tree.343 {tree0 trace} {
     list [catch {tree0 trace} msg] $msg
 } {1 {wrong # args: should be one of...
-  tree0 trace create node key how command
+  tree0 trace create node key how command ?-whenidle?
   tree0 trace delete id...
   tree0 trace info id
   tree0 trace names }}
@@ -1798,19 +1819,19 @@ test tree.343 {tree0 trace} {
 
 test tree.344 {tree0 trace create} {
     list [catch {tree0 trace create} msg] $msg
-} {1 {wrong # args: should be "tree0 trace create node key how command"}}
+} {1 {wrong # args: should be "tree0 trace create node key how command ?-whenidle?"}}
 
 test tree.345 {tree0 trace create root} {
     list [catch {tree0 trace create root} msg] $msg
-} {1 {wrong # args: should be "tree0 trace create node key how command"}}
+} {1 {wrong # args: should be "tree0 trace create node key how command ?-whenidle?"}}
 
 test tree.346 {tree0 trace create root * } {
     list [catch {tree0 trace create root * } msg] $msg
-} {1 {wrong # args: should be "tree0 trace create node key how command"}}
+} {1 {wrong # args: should be "tree0 trace create node key how command ?-whenidle?"}}
 
 test tree.347 {tree0 trace create root * rwuc} {
     list [catch {tree0 trace create root * rwuc} msg] $msg
-} {1 {wrong # args: should be "tree0 trace create node key how command"}}
+} {1 {wrong # args: should be "tree0 trace create node key how command ?-whenidle?"}}
 
 proc Doit args { global mylist; lappend mylist $args }
 
@@ -1820,7 +1841,7 @@ test tree.348 {tree0 trace create all newKey rwuc Doit} {
 
 test tree.349 {tree0 trace info trace0} {
     list [catch {tree0 trace info trace0} msg] $msg
-} {0 {all newKey {} Doit}}
+} {0 {all newKey rwuc Doit}}
 
 test tree.350 {test create trace} {
     list [catch {

@@ -17,6 +17,7 @@ proc OnEnter { widget args } {
 }
 
 proc OnMotion { widget args } {
+    puts stderr "OnMotion: args=$args"
     array set info $args
     set x1 [$widget cget -bd]
     set x1 20
@@ -25,10 +26,12 @@ proc OnMotion { widget args } {
     set y2 [expr [winfo height $widget] - $y1]
     if { ($info(x) >= $x1) && ($info(x) <= $x2) && 
 	 ($info(y) >= $y1) && ($info(y) <= $y2) } {
-	$widget configure -highlightbackground red
+	puts stderr "OnMotion: found args=$args"
+
+	$widget configure -highlightbackground red -relief sunken -highlightthickness 10
 	return 1
     }
-    $widget configure -highlightbackground grey
+    $widget configure -highlightbackground grey -relief raised
     return 0
 }
 
@@ -57,6 +60,7 @@ proc PackageSample { widget args } {
 }
 
 proc ShowResult { widget args } {
+    puts stderr args=$args
     array set info $args
     puts "drop transaction($info(timestamp)) completed: result was $info(action)" 
 } 

@@ -348,11 +348,8 @@ PadSwitchProc(
  * --------------------------------------------------------------------------
  */
 static int
-PostScriptPreamble(
-    Tcl_Interp *interp,
-    Picture *srcPtr,
-    PsExportSwitches *switchesPtr,
-    Blt_Ps ps)
+PostScriptPreamble(Tcl_Interp *interp, Picture *srcPtr, 
+		   PsExportSwitches *switchesPtr, Blt_Ps ps)
 {
     PageSetup *setupPtr = &switchesPtr->setup;
     time_t ticks;
@@ -1012,7 +1009,7 @@ PictureToPs(Tcl_Interp *interp, Blt_Picture original, Blt_Ps ps,
 
     srcPtr = original;
     w = srcPtr->width, h = srcPtr->height;
-    Blt_Ps_ComputeBoundingBox(&switchesPtr->setup, &w, &h);
+    Blt_Ps_ComputeBoundingBox(&switchesPtr->setup, w, h);
     if (PostScriptPreamble(interp, srcPtr, switchesPtr, ps) != TCL_OK) {
 	return TCL_ERROR;
     }
@@ -1074,13 +1071,12 @@ ReadPs(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer)
 }
 
 static Tcl_Obj *
-WritePs(Tcl_Interp *interp, Blt_Chain chain)
+WritePs(Tcl_Interp *interp, Blt_Picture picture)
 {
     Blt_Ps ps;
     PsExportSwitches switches;
     Tcl_Obj *objPtr;
     int result;
-    Blt_Picture picture;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
@@ -1093,11 +1089,6 @@ WritePs(Tcl_Interp *interp, Blt_Chain chain)
     switches.setup.yPad.side1 = 72;
     switches.setup.yPad.side2 = 72;
     switches.setup.flags = 0;
-
-    picture = Blt_GetNthPicture(chain, 0);
-    if (picture == NULL) {
-	return Blt_EmptyStringObj();
-    }
     ps = Blt_Ps_Create(interp, &switches.setup);
     result = PictureToPs(interp, picture, ps, &switches);
     objPtr = NULL;
@@ -1160,7 +1151,8 @@ ImportPs(
 }
 
 static int
-ExportPs(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
+ExportPs(Tcl_Interp *interp, unsigned int index, Blt_Chain chain, int objc, 
+	 Tcl_Obj *const *objv)
 {
     PsExportSwitches switches;
     Blt_Ps ps;
@@ -1177,6 +1169,7 @@ ExportPs(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
     switches.setup.yPad.side1 = 72;
     switches.setup.yPad.side2 = 72;
     switches.setup.flags = 0;
+    switches.index = index;
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, 
 	&switches, BLT_SWITCH_DEFAULTS) < 0) {
 	Blt_FreeSwitches(exportSwitches, (char *)&switches, 0);

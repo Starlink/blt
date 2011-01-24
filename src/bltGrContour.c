@@ -129,7 +129,7 @@ typedef struct {
 				 * sub-labels for each contour range/value. */
     unsigned short row, col;  	/* Position of the entry in the legend. */
 
-    int labelRelief;		/* Relief of label in legend. */
+    int legendRelief;		/* Relief of label in legend. */
 
     Axis2d axes;		/* X-axis and Y-axis mapping the element */
 
@@ -252,7 +252,7 @@ typedef struct {
 
     char *label;		/* Label displayed in legend */
 
-    int labelRelief;		/* Relief of label in legend. */
+    int legendRelief;		/* Relief of label in legend. */
 
     Axis2d axes;		/* X-axis and Y-axis mapping the element */
 
@@ -444,8 +444,8 @@ static Blt_ConfigSpec contourElemConfigSpecs[] =
 	BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_STRING, "-label", "label", "Label", (char *)NULL, 
 	Blt_Offset(ContourElement, label), BLT_CONFIG_NULL_OK},
-    {BLT_CONFIG_RELIEF, "-labelrelief", "labelRelief", "LabelRelief",
-	DEF_CONTOUR_LABEL_RELIEF, Blt_Offset(ContourElement, labelRelief),
+    {BLT_CONFIG_RELIEF, "-legendrelief", "legendRelief", "LegendRelief",
+	DEF_CONTOUR_LABEL_RELIEF, Blt_Offset(ContourElement, legendRelief),
 	BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BITMASK, "-hide", "hide", "Hide", DEF_CONTOUR_HIDE, 
          Blt_Offset(ContourElement, flags), BLT_CONFIG_DONT_SET_DEFAULT,
@@ -784,7 +784,7 @@ Blt_ContourPen(char *penName)
 static void
 CheckStacks(Graph *graphPtr, Axis2d *pairPtr, double *minPtr, double *maxPtr)
 {
-    FreqInfo *infoPtr;
+    BarGroup *stackPtr;
     int i;
 
     if ((graphPtr->mode != MODE_STACKED) || (graphPtr->nStacks == 0)) {
@@ -2207,7 +2207,7 @@ Blt_ContourElement(Graph *graphPtr, char *name, ClassId classId)
     elemPtr = Blt_AssertCalloc(1, sizeof(ContourElement));
     elemPtr->procsPtr = &barProcs;
     elemPtr->configSpecs = contourElemConfigSpecs;
-    elemPtr->labelRelief = TK_RELIEF_FLAT;
+    elemPtr->legendRelief = TK_RELIEF_FLAT;
     Blt_GraphSetObjectClass(&elemPtr->object, classId);
     elemPtr->obj.name = Blt_AssertStrdup(name);
     elemPtr->obj.graphPtr = graphPtr;
@@ -2421,7 +2421,7 @@ Blt_ComputeStacks(Graph *graphPtr)
 }
 
 void
-Blt_ResetStacks(Graph *graphPtr)
+Blt_ResetBarGroups(Graph *graphPtr)
 {
     FreqInfo *fp, *fend;
 

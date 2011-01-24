@@ -43,7 +43,7 @@
 #  include <memory.h>
 #endif /* HAVE_MEMORY_H */
 
-DLLEXPORT extern Tcl_AppInitProc Blt_DataTable_MysqlInit;
+DLLEXPORT extern Tcl_AppInitProc Blt_Table_MysqlInit;
 
 /*
  * Format	Import		Export
@@ -138,32 +138,33 @@ static Blt_SwitchSpec exportSwitches[] =
     {BLT_SWITCH_END}
 };
 
-static Blt_DataTable_ExportProc ExportMysqlProc;
+static Blt_TableExportProc ExportMysqlProc;
 #endif
 
 #define DEF_CLIENT_FLAGS (CLIENT_MULTI_STATEMENTS|CLIENT_MULTI_RESULTS)
 
-static Blt_DataTable_ImportProc ImportMysqlProc;
+static Blt_TableImportProc ImportMysqlProc;
 
-static int
+static Blt_TableColumnType
 MySqlFieldToColumnType(int type) 
 {
     switch (type) {
+    case FIELD_TYPE_LONG:
+    case FIELD_TYPE_LONGLONG:
+	return TABLE_COLUMN_TYPE_LONG;
     case FIELD_TYPE_DECIMAL:
     case FIELD_TYPE_TINY:
     case FIELD_TYPE_SHORT:
-    case FIELD_TYPE_LONG:
-    case FIELD_TYPE_LONGLONG:
     case FIELD_TYPE_INT24:
-	return DT_COLUMN_INTEGER;
+	return TABLE_COLUMN_TYPE_INT;
     case FIELD_TYPE_FLOAT:
     case FIELD_TYPE_DOUBLE:
-	return DT_COLUMN_DOUBLE;
+	return TABLE_COLUMN_TYPE_DOUBLE;
     case FIELD_TYPE_TINY_BLOB:
     case FIELD_TYPE_MEDIUM_BLOB:
     case FIELD_TYPE_LONG_BLOB:
     case FIELD_TYPE_BLOB:
-	return DT_COLUMN_BINARY;
+	return TABLE_COLUMN_TYPE_UNKNOWN;
     case FIELD_TYPE_NULL:
     case FIELD_TYPE_TIMESTAMP:
     case FIELD_TYPE_DATE:
@@ -176,26 +177,27 @@ MySqlFieldToColumnType(int type)
     case FIELD_TYPE_VAR_STRING:
     case FIELD_TYPE_STRING:
     default:
-	return DT_COLUMN_STRING;
+	return TABLE_COLUMN_TYPE_STRING;
     }
 }
 
 static int
-MySqlImportLabels(Tcl_Interp *interp, Blt_DataTable table, MYSQL_RES *myResults, 
-		  size_t nCols, Blt_DataTableColumn *cols) 
+MySqlImportLabels(Tcl_Interp *interp, Blt_Table table, MYSQL_RES *myResults, 
+		  size_t nCols, Blt_TableColumn *cols) 
 {
     size_t i;
 
     for (i = 0; i < nCols; i++) {
 	MYSQL_FIELD *fp;
-	int type;
+	Blt_TableColumnType type;
 
 	fp = mysql_fetch_field(myResults);
-	if (Blt_DataTable_SetColumnLabel(interp, table, cols[i], fp->name) != TCL_OK) {
+	if (Blt_Table_SetColumnLabel(interp, table, cols[i], fp->name) 
+	    != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	type = MySqlFieldToColumnType(fp->type);
-	if (Blt_DataTable_SetColumnType(cols[i], type) != TCL_OK) {
+	if (Blt_Table_SetColumnType(table, cols[i], type) != TCL_OK) {
 	    return TCL_ERROR;
 	}
     }
@@ -203,24 +205,24 @@ MySqlImportLabels(Tcl_Interp *interp, Blt_DataTable table, MYSQL_RES *myResults,
 }
 
 static int
-MySqlImportRows(Tcl_Interp *interp, Blt_DataTable table, MYSQL_RES *myResults, 
-		size_t nCols, Blt_DataTableColumn *cols) 
+MySqlImportRows(Tcl_Interp *interp, Blt_Table table, MYSQL_RES *myResults, 
+		size_t nCols, Blt_TableColumn *cols) 
 {
     size_t nRows;
     size_t i;
 
     nRows = mysql_num_rows(myResults);
-    if (nRows > Blt_DataTable_NumRows(table)) {
+    if (nRows > Blt_Table_NumRows(table)) {
 	size_t needed;
 
 	/* Add the number of rows needed */
-	needed = nRows - Blt_DataTable_NumRows(table);
-	if (Blt_DataTable_ExtendRows(interp, table, needed, NULL) != TCL_OK) {
+	needed = nRows - Blt_Table_NumRows(table);
+	if (Blt_Table_ExtendRows(interp, table, needed, NULL) != TCL_OK) {
 	    return TCL_ERROR;
 	}
     }
     for (i = 1; /*empty*/; i++) {
-	Blt_DataTableRow row;
+	Blt_TableRow row;
 	size_t j;
 	MYSQL_ROW myRow;
 	unsigned long *fieldLengths;
@@ -235,13 +237,20 @@ MySqlImportRows(Tcl_Interp *interp, Blt_DataTable table, MYSQL_RES *myResults,
 	    break;
 	}
 	fieldLengths = mysql_fetch_lengths(myResults);
-	row = Blt_DataTable_GetRowByIndex(table, i);
+	row = Blt_Table_FindRowByIndex(table, i);
 	for (j = 0; j < nCols; j++) {
+	    int result;
 	    Tcl_Obj *objPtr;
 
+	    if (myRow[j] == NULL) {
+		continue;		/* Empty value. */
+	    }
 	    objPtr = Tcl_NewByteArrayObj((unsigned char *)myRow[j], 
 					 (int)fieldLengths[j]);
-	    if (Blt_DataTable_SetValue(table, row, cols[j], objPtr) != TCL_OK) {
+	    Tcl_IncrRefCount(objPtr);
+	    result = Blt_Table_SetObj(table, row, cols[j], objPtr);
+	    Tcl_DecrRefCount(objPtr);
+	    if (result != TCL_OK) {
 		return TCL_ERROR;
 	    }
 	}
@@ -340,14 +349,14 @@ MySqlConnect(Tcl_Interp *interp, const char *host, const char *user,
 }
 
 static int
-ImportMysqlProc(Blt_DataTable table, Tcl_Interp *interp, int objc, 
+ImportMysqlProc(Blt_Table table, Tcl_Interp *interp, int objc, 
 		Tcl_Obj *const *objv)
 {
     ImportSwitches switches;
     MYSQL *cp;
     MYSQL_RES *myResults;
     long nCols;
-    Blt_DataTableColumn *cols;
+    Blt_TableColumn *cols;
 
     myResults = NULL;
     cp = NULL;
@@ -372,8 +381,8 @@ ImportMysqlProc(Blt_DataTable table, Tcl_Interp *interp, int objc,
     }
     /* Step 1. Create columns to hold the new values.  Label
      *	       the columns using the title. */
-    cols = Blt_AssertMalloc(nCols * sizeof(Blt_DataTableColumn));
-    if (Blt_DataTable_ExtendColumns(interp, table, nCols, cols) != TCL_OK) {
+    cols = Blt_AssertMalloc(nCols * sizeof(Blt_TableColumn));
+    if (Blt_Table_ExtendColumns(interp, table, nCols, cols) != TCL_OK) {
 	goto error;
     }
     if (MySqlImportLabels(interp, table, myResults, nCols, cols) != TCL_OK) {
@@ -404,7 +413,7 @@ ImportMysqlProc(Blt_DataTable table, Tcl_Interp *interp, int objc,
 
 #ifdef EXPORT_MYSQL
 static int
-ExportMysqlProc(Blt_DataTable table, Tcl_Interp *interp, int objc, 
+ExportMysqlProc(Blt_Table table, Tcl_Interp *interp, int objc, 
 		Tcl_Obj *const *objv)
 {
     return TCL_OK;
@@ -412,7 +421,7 @@ ExportMysqlProc(Blt_DataTable table, Tcl_Interp *interp, int objc,
 #endif
 
 int 
-Blt_DataTable_MysqlInit(Tcl_Interp *interp)
+Blt_Table_MysqlInit(Tcl_Interp *interp)
 {
 #ifdef USE_TCL_STUBS
     if (Tcl_InitStubs(interp, TCL_VERSION, 1) == NULL) {
@@ -425,7 +434,7 @@ Blt_DataTable_MysqlInit(Tcl_Interp *interp)
     if (Tcl_PkgProvide(interp, "blt_datatable_mysql", BLT_VERSION) != TCL_OK) { 
 	return TCL_ERROR;
     }
-    return Blt_DataTable_RegisterFormat(interp,
+    return Blt_Table_RegisterFormat(interp,
         "mysql",		/* Name of format. */
 	ImportMysqlProc,	/* Import procedure. */
 	NULL);			/* Export procedure. */

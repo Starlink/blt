@@ -198,7 +198,7 @@ RedrawTile(Tk_Window tkwin, Tile *tilePtr)
 	tilePtr->mask = None;
     }
     photo = Tk_FindPhoto(tilePtr->interp, 
-		  Blt_NameOfImage(tilePtr->tkImage));
+		  Blt_Image_Name(tilePtr->tkImage));
     if (photo != NULL) {
 	Tk_PhotoImageBlock src;
 
@@ -229,7 +229,7 @@ UpdateTile(ClientData clientData)
     Blt_ChainLink link;
 
     tilePtr->flags &= ~NOTIFY_PENDING;
-    if (Blt_ImageIsDeleted(tilePtr->tkImage)) {
+    if (Blt_Image_IsDeleted(tilePtr->tkImage)) {
 	if (tilePtr->pixmap != None) {
 	    Tk_FreePixmap(tilePtr->display, tilePtr->pixmap);
 	}

@@ -577,7 +577,7 @@ PipeInit(void)
 {
     initialized = TRUE;
     InitializeCriticalSection(&pipeCriticalSection);
-    Blt_ChainInit(&pipeChain);
+    Blt_Chain_Init(&pipeChain);
     Tcl_CreateEventSource(SetupHandlers, CheckHandlers, &pipeChain);
 }
 

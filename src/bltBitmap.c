@@ -675,7 +675,7 @@ ParseStructData(Tcl_Interp *interp, Tcl_Obj *objPtr, int *widthPtr,
 		break;
 	    } else {
 		Tcl_AppendResult(interp, "unknown bitmap format \"", line, 
-		     "\": obsolete X10 bitmap file?", (char *) NULL);
+		     "\": obsolete X10 bitmap file?", (char *)NULL);
 		goto error;
 	    }
 	}
@@ -955,7 +955,7 @@ ComposeOp(
 
     string = Tcl_GetStringFromObj(objv[3], &nBytes);
     textPtr = Blt_Ts_CreateLayout(string, nBytes, &ts);
-    bitmap = Blt_Ts_Bitmap(dataPtr->tkMain, textPtr, &ts, &width, &height, -1);
+    bitmap = Blt_Ts_Bitmap(dataPtr->tkMain, textPtr, &ts, &width, &height);
     Blt_Free(textPtr);
     if (bitmap == None) {
 	Tcl_AppendResult(interp, "can't create bitmap", (char *)NULL);

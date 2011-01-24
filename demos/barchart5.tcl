@@ -7,19 +7,7 @@ source scripts/stipples.tcl
 option add *graph.x.Title "X Axis Label"
 option add *graph.y.Title "Y Axis Label"
 option add *graph.title "A Simple Barchart"
-option add *graph.Axis.tickFont { Courier 10 } 
 option add *graph.Element.Relief raised
-
-set visual [winfo screenvisual .] 
-if { $visual != "staticgray" && $visual != "grayscale" } {
-    option add *graph.LineMarker.color yellow
-    option add *graph.Element.Background white
-    option add *graph.Legend.activeForeground pink
-    option add *print.background yellow
-    option add *quit.background red
-    option add *graph.background palegreen
-    option add *graph.plotBackground lightblue
-}
 
 blt::htext .htext -text \
 {   This is an example of the barchart widget.  The barchart has 
@@ -35,11 +23,7 @@ blt::htext .htext -text \
 %%
 
     set graph [blt::barchart .htext.graph]
-    $graph configure \
-	-relief raised \
-	-bd 2
-    $graph xaxis configure \
-	-stepsize 0 
+    $graph xaxis configure -stepsize 0 
     $w append $graph -fill both -padx 4
 
 %%
@@ -54,17 +38,6 @@ blt::htext .htext -text \
     $w append $w.logo -padx 20
 
 %% }
-
-set names { One Two Three Four Five Six Seven Eight }
-if { $visual == "staticgray" || $visual == "grayscale" } {
-    set fgcolors { white white white white white white white white }
-    set bgcolors { black black black black black black black black }
-} else {
-    set fgcolors { yellow orange red magenta purple blue cyan green }
-    set bgcolors { yellow4 orange4 red4 magenta4 purple4 blue4 cyan4 green4 }
-}
-
-set numColors [llength $names]
 
 set tcl_precision 15
 blt::vector create x

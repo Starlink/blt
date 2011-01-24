@@ -866,7 +866,7 @@ static EventInfo events[] = {
 #define KEY_BUTTON_MOTION_VIRTUAL	(KEY|BUTTON|MOTION|VIRTUAL)
 #define KEY_BUTTON_MOTION_CROSSING	(KEY|BUTTON|MOTION|CROSSING|VIRTUAL)
 
-static int flagArray[TK_LASTEVENT] = {
+static int flagArray[TK_LASTEVENT+1] = {
    /* Not used */		0,
    /* Not used */		0,
    /* KeyPress */		KEY,
@@ -1141,7 +1141,7 @@ ParseEventDescription(Tcl_Interp *interp, const char **eventStringPtr,
 	    patPtr->detail.keySym = XStringToKeysym(field);
 	    if (patPtr->detail.keySym == NoSymbol) {
 		Tcl_AppendResult(interp, "bad event type or keysym \"",
-			field, "\"", (char *) NULL);
+			field, "\"", (char *)NULL);
 		count = 0;
 		goto done;
 	    }
@@ -1150,7 +1150,7 @@ ParseEventDescription(Tcl_Interp *interp, const char **eventStringPtr,
 		eventMask = KeyPressMask;
 	    } else if ((eventFlags & KEY) == 0) {
 		Tcl_AppendResult(interp, "specified keysym \"", field,
-			"\" for non-key event", (char *) NULL);
+			"\" for non-key event", (char *)NULL);
 		count = 0;
 		goto done;
 	    }
@@ -1401,7 +1401,7 @@ SendEventCmd(ClientData clientData, Tcl_Interp *interp, int objc,
 
 	    Tcl_AppendResult(interp, "value for \"",
 		    Tcl_GetStringFromObj(optionPtr, NULL), "\" missing",
-		    (char *) NULL);
+		    (char *)NULL);
 	    return TCL_ERROR;
 	}
 
@@ -1544,14 +1544,14 @@ SendEventCmd(ClientData clientData, Tcl_Interp *interp, int objc,
 	    keysym = TkStringToKeysym(value);
 	    if (keysym == NoSymbol) {
 		Tcl_AppendResult(interp, "unknown keysym \"", value, "\"",
-				 (char *) NULL);
+				 (char *)NULL);
 		return TCL_ERROR;
 	    }
 	    
 	    TkpSetKeycodeAndState(tkwin, keysym, &event);
 	    if (event.xkey.keycode == 0) {
 		Tcl_AppendResult(interp, "no keycode for keysym \"", value,
-				 "\"", (char *) NULL);
+				 "\"", (char *)NULL);
 		return TCL_ERROR;
 	    }
 	    if (!(flags & KEY) || (event.xkey.type == MouseWheelEvent)) {
@@ -1805,7 +1805,8 @@ SendEventCmd(ClientData clientData, Tcl_Interp *interp, int objc,
 	
 	badopt:
 	Tcl_AppendResult(interp, name, " event doesn't accept \"",
-		Tcl_GetStringFromObj(optionPtr, NULL), "\" option", NULL);
+		Tcl_GetStringFromObj(optionPtr, NULL), "\" option", 
+		(char *)NULL);
 	return TCL_ERROR;
     }
     if (!XSendEvent(display, window, False, pat.eventType, &event)) {

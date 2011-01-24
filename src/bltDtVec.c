@@ -5,27 +5,24 @@
  *
  *	Copyright 1998-2005 George A Howlett.
  *
- *	Permission is hereby granted, free of charge, to any person
- *	obtaining a copy of this software and associated documentation
- *	files (the "Software"), to deal in the Software without
- *	restriction, including without limitation the rights to use,
- *	copy, modify, merge, publish, distribute, sublicense, and/or
- *	sell copies of the Software, and to permit persons to whom the
- *	Software is furnished to do so, subject to the following
- *	conditions:
+ *	Permission is hereby granted, free of charge, to any person obtaining
+ *	a copy of this software and associated documentation files (the
+ *	"Software"), to deal in the Software without restriction, including
+ *	without limitation the rights to use, copy, modify, merge, publish,
+ *	distribute, sublicense, and/or sell copies of the Software, and to
+ *	permit persons to whom the Software is furnished to do so, subject to
+ *	the following conditions:
  *
  *	The above copyright notice and this permission notice shall be
- *	included in all copies or substantial portions of the
- *	Software.
+ *	included in all copies or substantial portions of the Software.
  *
- *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
- *	KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
- *	WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
- *	PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
- *	OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
- *	OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- *	OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *	EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *	MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *	NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ *	LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ *	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ *	WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include <blt.h>
@@ -38,8 +35,10 @@
 #include <bltVector.h>
 
 extern double Blt_NaN(void);
+extern int Blt_GetDoubleFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, 
+	double *valuePtr);
 
-DLLEXPORT extern Tcl_AppInitProc Blt_DataTable_VectorInit;
+DLLEXPORT extern Tcl_AppInitProc Blt_Table_VectorInit;
 
 /*
  * Format	Import		Export
@@ -60,15 +59,16 @@ DLLEXPORT extern Tcl_AppInitProc Blt_DataTable_VectorInit;
  * $table import sql -host $host -password $pw -db $db -port $port 
  */
 
-static Blt_DataTable_ImportProc ImportVecProc;
-static Blt_DataTable_ExportProc ExportVecProc;
+static Blt_TableImportProc ImportVecProc;
+static Blt_TableExportProc ExportVecProc;
 
 /* 
  * $table export vector -file fileName ?switches...?
  * $table export vector ?switches...?
  */
 static int
-ExportVecProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+ExportVecProc(Blt_Table table, Tcl_Interp *interp, int objc, 
+	      Tcl_Obj *const *objv)
 {
     int i;
     long nRows;
@@ -79,15 +79,15 @@ ExportVecProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const 
 		" export vector col vecName ?col vecName?...", (char *)NULL);
 	return TCL_ERROR;
     }
-    nRows = Blt_DataTable_NumRows(table);
+    nRows = Blt_Table_NumRows(table);
     for (i = 3; i < objc; i += 2) {
 	Blt_Vector *vector;
 	size_t size;
 	double *array;
 	int k;
-	Blt_DataTableColumn col;
+	Blt_TableColumn col;
 
-	col = Blt_DataTable_FindColumn(interp, table, objv[i]);
+	col = Blt_Table_FindColumn(interp, table, objv[i]);
 	if (col == NULL) {
 	    return TCL_ERROR;
 	}
@@ -102,18 +102,18 @@ ExportVecProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const 
 	array = Blt_VecData(vector);
 	size = Blt_VecSize(vector);
 	for (k = 1; k <= Blt_VecLength(vector); k++) {
-	    Blt_DataTableRow row;
+	    Blt_TableRow row;
 	    Tcl_Obj *objPtr;
 
-	    row = Blt_DataTable_GetRowByIndex(table, k);
+	    row = Blt_Table_FindRowByIndex(table, k);
 	    assert(row != NULL);
-	    objPtr = Blt_DataTable_GetValue(table, row, col);
+	    objPtr = Blt_Table_GetObj(table, row, col);
 	    if (objPtr == NULL) {
 		array[k-1] = Blt_NaN();
 	    } else {
 		double value;
 
-		if (Tcl_GetDoubleFromObj(interp, objPtr, &value) != TCL_OK) {
+		if (Blt_GetDoubleFromObj(interp, objPtr, &value) != TCL_OK) {
 		    return TCL_ERROR;
 		}
 		array[k-1] = value;
@@ -143,7 +143,8 @@ ExportVecProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const 
  *---------------------------------------------------------------------------
  */
 static int
-ImportVecProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+ImportVecProc(Blt_Table table, Tcl_Interp *interp, int objc, 
+	      Tcl_Obj *const *objv)
 {
     int maxLen;
     int i;
@@ -156,36 +157,37 @@ ImportVecProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const 
     }
     maxLen = 0;
     for (i = 3; i < objc; i += 2) {
-	Blt_DataTableColumn col;
+	Blt_TableColumn col;
 	Blt_Vector *vector;
 	
 	if (Blt_GetVectorFromObj(interp, objv[i], &vector) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	col = Blt_DataTable_FindColumn(NULL, table, objv[i+1]);
+	col = Blt_Table_FindColumn(NULL, table, objv[i+1]);
 	if (col == NULL) {
 	    const char *label;
 
 	    label = Tcl_GetString(objv[i+1]);
-	    col = Blt_DataTable_CreateColumn(interp, table, label);
+	    col = Blt_Table_CreateColumn(interp, table, label);
 	    if (col == NULL) {
 		return TCL_ERROR;
 	    }
+	    Blt_Table_SetColumnType(table, col, TABLE_COLUMN_TYPE_DOUBLE);
 	}
 	if (Blt_VecLength(vector) > maxLen) {
 	    maxLen = Blt_VecLength(vector);
 	}
     }
-    if (maxLen > Blt_DataTable_NumRows(table)) {
+    if (maxLen > Blt_Table_NumRows(table)) {
 	size_t needed;
 
-	needed = maxLen - Blt_DataTable_NumRows(table);
-	if (Blt_DataTable_ExtendRows(interp, table, needed, NULL) != TCL_OK) {
+	needed = maxLen - Blt_Table_NumRows(table);
+	if (Blt_Table_ExtendRows(interp, table, needed, NULL) != TCL_OK) {
 	    return TCL_ERROR;
 	}
     }
     for (i = 3; i < objc; i += 2) {
-	Blt_DataTableColumn col;
+	Blt_TableColumn col;
 	Blt_Vector *vector;
 	double *array;
 	size_t j, k;
@@ -194,23 +196,23 @@ ImportVecProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const 
 	if (Blt_GetVectorFromObj(interp, objv[i], &vector) != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	col = Blt_DataTable_FindColumn(interp, table, objv[i+1]);
+	col = Blt_Table_FindColumn(interp, table, objv[i+1]);
 	if (col == NULL) {
 	    return TCL_ERROR;
 	}
 	array = Blt_VecData(vector);
 	nElems = Blt_VecLength(vector);
 	for (j = 0, k = 1; j < nElems; j++, k++) {
-	    Blt_DataTableRow row;
+	    Blt_TableRow row;
 
-	    row = Blt_DataTable_GetRowByIndex(table, k);
+	    row = Blt_Table_FindRowByIndex(table, k);
 	    if (array[j] == Blt_NaN()) {
-		if (Blt_DataTable_UnsetValue(table, row, col) != TCL_OK) {
+		if (Blt_Table_UnsetValue(table, row, col) != TCL_OK) {
 		    return TCL_ERROR;
 		}
 	    } else {
-		if (Blt_DataTable_SetValue(table, row, col, Tcl_NewDoubleObj(array[j]))
-		    != TCL_OK) {
+		if (Blt_Table_SetObj(table, row, col, 
+			Tcl_NewDoubleObj(array[j])) != TCL_OK) {
 		    return TCL_ERROR;
 		}
 	    }
@@ -220,7 +222,7 @@ ImportVecProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const 
 }
     
 int 
-Blt_DataTable_VectorInit(Tcl_Interp *interp)
+Blt_Table_VectorInit(Tcl_Interp *interp)
 {
 #ifdef USE_TCL_STUBS
     if (Tcl_InitStubs(interp, TCL_VERSION, 1) == NULL) {
@@ -233,7 +235,7 @@ Blt_DataTable_VectorInit(Tcl_Interp *interp)
     if (Tcl_PkgProvide(interp, "blt_datatable_vector", BLT_VERSION) != TCL_OK){ 
 	return TCL_ERROR;
     }
-    return Blt_DataTable_RegisterFormat(interp,
+    return Blt_Table_RegisterFormat(interp,
         "vector",		/* Name of format. */
 	ImportVecProc,		/* Import procedure. */
 	ExportVecProc);		/* Export procedure. */

@@ -15,6 +15,7 @@ blt::tabset .t \
     -tabwidth same \
     -highlightcolor yellow \
     -tiers 5 \
+    -scrolltabs yes \
     -scrollcommand { .s set } \
     -scrollincrement 1 
 
@@ -134,7 +135,7 @@ for { set i 0 } { $i < 500 } { incr i } {
     .t insert end [lindex $tabLabels $i] -state normal
 }
 
-scrollbar .s -command { .t view } -orient horizontal
+blt::tk::scrollbar .s -command { .t view } -orient horizontal
 radiobutton .left -text "Left" -variable side -value "left" \
     -command { .t configure -side $side -rotate 90 }
 radiobutton .right -text "Right" -variable side -value "right" \
@@ -157,11 +158,12 @@ focus .t
 
 .t focus 0
 
+if 0 {
 after 3000 {
 	.t move 0 after 3
 	.t tab configure 3 -state disabled 
 }
-
+}
 foreach file { graph1 graph2 graph3 graph5 barchart2 } {
     namespace eval $file {
 	if { [string match graph* $file] } {

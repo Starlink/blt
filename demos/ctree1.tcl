@@ -25,11 +25,10 @@ puts [$tree label 0]
 #    -postcommand {.e.m configure -width [winfo width .e] ; update} \
 set myIcon ""
 blt::comboentry .e \
-    -font { arial 10 bold } \
+    -font { arial 9 } \
     -textvariable myText1 \
     -iconvariable myIcon1 \
     -textwidth 20 \
-    -button yes \
     -menu .e.m \
     -menuanchor se \
     -exportselection yes \
@@ -43,15 +42,12 @@ blt::combotree .e.m \
     -iconvariable myIcon1 \
     -separator / \
     -height -200 \
-    -xscrollcommand { .e.m.xbar set } \
-    -yscrollcommand { .e.m.ybar set } \
+    -linecolor grey50 \
     -yscrollbar .e.m.ybar \
     -xscrollbar .e.m.xbar
 
-blt::tk::scrollbar .e.m.xbar -orient horizontal -command { .e.m xview } \
-    -width 17
-blt::tk::scrollbar .e.m.ybar -orient vertical -command { .e.m yview } \
-    -width 17 
+blt::tk::scrollbar .e.m.xbar
+blt::tk::scrollbar .e.m.ybar
 
 focus .e.m
 

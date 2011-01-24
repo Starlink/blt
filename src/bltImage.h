@@ -37,16 +37,17 @@
 
 BLT_EXTERN int Blt_IsPicture(Tk_Image tkImage);
 
-/* Routines that really should be in the Tk photo image C API. */
+/* Routines that really should be in the Tk image C API. */
 
-BLT_EXTERN int Blt_ImageIsDeleted(Tk_Image tkImage);
+BLT_EXTERN int Blt_Image_IsDeleted(Tk_Image tkImage);
 
-BLT_EXTERN Tk_ImageMaster Blt_ImageGetMaster(Tk_Image tkImage);
+BLT_EXTERN Tk_ImageMaster Blt_Image_GetMaster(Tk_Image tkImage);
 
-BLT_EXTERN Tk_ImageType *Blt_ImageGetType(Tk_Image tkImage);
+BLT_EXTERN Tk_ImageType *Blt_Image_GetType(Tk_Image tkImage);
 
-BLT_EXTERN ClientData Blt_ImageGetInstanceData(Tk_Image tkImage);
+BLT_EXTERN ClientData Blt_Image_GetInstanceData(Tk_Image tkImage);
 
-BLT_EXTERN const char *Blt_NameOfImage(Tk_Image tkImage);
+BLT_EXTERN const char *Blt_Image_Name(Tk_Image tkImage);
+BLT_EXTERN const char *Blt_Image_NameOfType(Tk_Image tkImage);
 
 #endif /*_BLT_IMAGE_H*/

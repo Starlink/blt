@@ -493,7 +493,7 @@ static Blt_NameOfFontProc		TkNameOfFontProc;
 static Blt_GetFontMetricsProc		TkGetFontMetricsProc;
 static Blt_FontIdProc			TkFontIdProc;
 static Blt_MeasureCharsProc		TkMeasureCharsProc;
-static Blt_TextWidthProc		TkTextWidthProc;
+static Blt_TextStringWidthProc		TkTextStringWidthProc;
 static Blt_FreeFontProc			TkFreeFontProc;
 static Blt_DrawCharsProc		TkDrawCharsProc;
 static Blt_PostscriptFontNameProc	TkPostscriptFontNameProc;
@@ -508,7 +508,7 @@ static Blt_FontClass tkFontClass = {
     TkFontIdProc,		/* Blt_FontIdProc */
     TkGetFontMetricsProc,	/* Blt_GetFontMetricsProc */
     TkMeasureCharsProc,		/* Blt_MeasureCharsProc */
-    TkTextWidthProc,		/* Blt_TextWidthProc */
+    TkTextStringWidthProc,	/* Blt_TexStringtWidthProc */
     TkCanRotateFontProc,	/* Blt_CanRotateFontProc */
     TkDrawCharsProc,		/* Blt_DrawCharsProc */
     TkPostscriptFontNameProc,	/* Blt_PostscriptFontNameProc */
@@ -1024,7 +1024,7 @@ TkMeasureCharsProc(_Blt_Font *fontPtr, const char *text, int nBytes, int max,
 }
 
 static int
-TkTextWidthProc(_Blt_Font *fontPtr, const char *string, int nBytes)
+TkTextStringWidthProc(_Blt_Font *fontPtr, const char *string, int nBytes)
 {
     return Tk_TextWidth(fontPtr->clientData, string, nBytes);
 }    
@@ -1104,10 +1104,12 @@ TkUnderlineCharsProc(
 				 * character dimensions, etc. */
     const char *string,		/* String containing characters to be
 				 * underlined or overstruck. */
+    int textLen,		/* Unused. */
     int x, int y,		/* Coordinates at which first character of
 				 * string is drawn. */
     int first,			/* Byte offset of the first character. */
-    int last)			/* Byte offset after the last character. */
+    int last,			/* Byte offset after the last character. */
+    int xMax)
 {
     Tk_UnderlineChars(display, drawable, gc, fontPtr->clientData, string, x, y, 
 	first, last);
@@ -1117,7 +1119,7 @@ static Blt_NameOfFontProc		WinNameOfFontProc;
 static Blt_GetFontMetricsProc		WinGetFontMetricsProc;
 static Blt_FontIdProc			WinFontIdProc;
 static Blt_MeasureCharsProc		WinMeasureCharsProc;
-static Blt_TextWidthProc		WinTextWidthProc;
+static Blt_TextStringWidthProc		WinTextStringWidthProc;
 static Blt_FreeFontProc			WinFreeFontProc;
 static Blt_DrawCharsProc		WinDrawCharsProc;
 static Blt_PostscriptFontNameProc	WinPostscriptFontNameProc;
@@ -1132,7 +1134,7 @@ static Blt_FontClass winFontClass = {
     WinFontIdProc,		/* Blt_FontIdProc */
     WinGetFontMetricsProc,	/* Blt_GetFontMetricsProc */
     WinMeasureCharsProc,	/* Blt_MeasureCharsProc */
-    WinTextWidthProc,		/* Blt_TextWidthProc */
+    WinTextStringWidthProc,	/* Blt_TextStringWidthProc */
     WinCanRotateFontProc,	/* Blt_CanRotateFontProc */
     WinDrawCharsProc,		/* Blt_DrawCharsProc */
     WinPostscriptFontNameProc,	/* Blt_PostscriptFontNameProc */
@@ -1390,7 +1392,7 @@ WinMeasureCharsProc(_Blt_Font *fontPtr, const char *text, int nBytes,
 }
 
 static int
-WinTextWidthProc(_Blt_Font *fontPtr, const char *text, int nBytes)
+WinTextStringWidthProc(_Blt_Font *fontPtr, const char *text, int nBytes)
 {
     RotatedFont *rotFontPtr = fontPtr->clientData;
 
@@ -1528,10 +1530,12 @@ WinUnderlineCharsProc(
 				 * character dimensions, etc. */
     const char *string,		/* String containing characters to be
 				 * underlined or overstruck. */
+    int textLen,		/* Unused. */
     int x, int y,		/* Coordinates at which first character of
 				 * string is drawn. */
     int first,			/* Byte offset of the first character. */
-    int last)			/* Byte offset after the last character. */
+    int last,			/* Byte offset after the last character. */
+    int xMax)
 {
     RotatedFont *rotFontPtr = fontPtr->clientData;
 
@@ -1597,6 +1601,8 @@ Blt_GetFontFromObj(
 #endif
     fontPtr->classPtr = &winFontClass;
 #endif
+    fontPtr->interp = interp;
+    fontPtr->display = Tk_Display(tkwin);
     return fontPtr;		/* Found Tk font. */
 }
 
@@ -1648,4 +1654,35 @@ Blt_GetFont(
     font = Blt_GetFontFromObj(interp, tkwin, objPtr);
     Tcl_DecrRefCount(objPtr);
     return font;
+}
+
+Tcl_Interp *
+Blt_GetFontInterp(_Blt_Font *fontPtr) 
+{
+    return fontPtr->interp;
+}
+
+int
+Blt_TextWidth(_Blt_Font *fontPtr, const char *string, int length)
+{
+    if (Blt_Ps_IsPrinting()) {
+	int width;
+
+	width = Blt_Ps_TextWidth(fontPtr, string, length);
+	if (width >= 0) {
+	    return width;
+	}
+    }
+    return (*fontPtr->classPtr->textWidth)(fontPtr, string, length);
+}
+
+void
+Blt_GetFontMetrics(_Blt_Font *fontPtr, Blt_FontMetrics *fmPtr)
+{
+    if (Blt_Ps_IsPrinting()) {
+	if (Blt_Ps_GetFontMetrics(fontPtr, fmPtr) == TCL_OK) {
+	    return;
+	}
+    }
+    return (*fontPtr->classPtr->getFontMetrics)(fontPtr, fmPtr);
 }

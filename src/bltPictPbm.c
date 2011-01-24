@@ -91,6 +91,7 @@ typedef struct {
     Tcl_Obj *dataObjPtr;
     Tcl_Obj *fileObjPtr;
     Blt_Pixel bg;
+    int index;
 } PbmExportSwitches;
 
 #define MAXCOLORS       256
@@ -141,6 +142,8 @@ static Blt_SwitchSpec exportSwitches[] =
 	Blt_Offset(PbmExportSwitches, fileObjPtr), 0},
     {BLT_SWITCH_CUSTOM,  "-bg",	   "color",
 	Blt_Offset(PbmExportSwitches, bg),         0, 0, &colorSwitch},
+    {BLT_SWITCH_INT_NNEG, "-index", "int",
+	Blt_Offset(PbmExportSwitches, index), 0},
     {BLT_SWITCH_END}
 };
 
@@ -625,11 +628,8 @@ IsPbm(Blt_DBuffer dbuffer)
  *---------------------------------------------------------------------------
  */
 static Blt_Chain 
-PbmToPictures(
-    Tcl_Interp *interp, 
-    const char *fileName,
-    Blt_DBuffer dbuffer,
-    PbmImportSwitches *switchesPtr)
+PbmToPictures(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer,
+	      PbmImportSwitches *switchesPtr)
 {
     Blt_Chain chain;
     Blt_Picture picture;
@@ -790,13 +790,12 @@ ReadPbm(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer)
 }
 
 static Tcl_Obj *
-WritePbm(Tcl_Interp *interp, Blt_Chain chain)
+WritePbm(Tcl_Interp *interp, Blt_Picture picture)
 {
+    Blt_ChainLink link;
     Blt_DBuffer dbuffer;
     PbmExportSwitches switches;
     Tcl_Obj *objPtr;
-    char *bytes;
-    Blt_ChainLink link;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
@@ -804,29 +803,23 @@ WritePbm(Tcl_Interp *interp, Blt_Chain chain)
 
     dbuffer = Blt_DBuffer_Create();
     objPtr = NULL;
-    for (link = Blt_Chain_FirstLink(chain); link != NULL; 
-	 link = Blt_Chain_NextLink(link)) {
-	Blt_Picture picture;
+    picture = Blt_Chain_GetValue(link);
+    if (PictureToPbm(interp, picture, dbuffer, &switches) == TCL_OK) {
+	char *bytes;
 
-	picture = Blt_Chain_GetValue(link);
-	if (PictureToPbm(interp, picture, dbuffer, &switches) != TCL_OK) {
-	    return NULL;
+	bytes = Blt_DBuffer_EncodeBase64(interp, dbuffer);
+	if (bytes != NULL) {
+	    objPtr = Tcl_NewStringObj(bytes, -1);
+	    Blt_Free(bytes);
 	}
     }
-    bytes = Blt_DBuffer_EncodeBase64(interp, dbuffer);
-    if (bytes != NULL) {
-	objPtr = Tcl_NewStringObj(bytes, -1);
-	Blt_Free(bytes);
-    }
+    Blt_DBuffer_Destroy(dbuffer);
     return objPtr;
 }
 
 static Blt_Chain
-ImportPbm(
-    Tcl_Interp *interp, 
-    int objc,
-    Tcl_Obj *const *objv,
-    const char **fileNamePtr)
+ImportPbm(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv, 
+	  const char **fileNamePtr)
 {
     Blt_DBuffer dbuffer;
     Blt_Chain chain;
@@ -855,7 +848,7 @@ ImportPbm(
 	int nBytes;
 
 	bytes = Tcl_GetByteArrayFromObj(switches.dataObjPtr, &nBytes);
-	if (Blt_IsBase64((const char *)bytes, nBytes)) {
+	if (Blt_IsBase64(bytes, nBytes)) {
 	    if (Blt_DBuffer_DecodeBase64(interp, string, nBytes, dbuffer) 
 		!= TCL_OK) {
 		goto error;
@@ -880,15 +873,17 @@ ImportPbm(
 }
 
 static int
-ExportPbm(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
+ExportPbm(Tcl_Interp *interp, unsigned int index, Blt_Chain chain, int objc, 
+	  Tcl_Obj *const *objv)
 {
-    Blt_ChainLink link;
     Blt_DBuffer dbuffer;
+    Blt_Picture picture;
     PbmExportSwitches switches;
     int result;
 
     memset(&switches, 0, sizeof(switches));
-    switches.bg.u32 = 0xFFFFFFFF; /* Default bgcolor is white. */
+    switches.index = index;
+    switches.bg.u32 = 0xFFFFFFFF;	/* Default bgcolor is white. */
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, 
 	&switches, BLT_SWITCH_DEFAULTS) < 0) {
 	return TCL_ERROR;
@@ -898,18 +893,17 @@ ExportPbm(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
 		"use only one -file or -data switch.", (char *)NULL);
 	return TCL_ERROR;
     }
-
+    /* FIXME: handle -all option.  */
+    picture = Blt_GetNthPicture(chain, switches.index);
+    if (picture == NULL) {
+	Tcl_AppendResult(interp, "bad picture index.", (char *)NULL);
+	return TCL_ERROR;
+    }
     dbuffer = Blt_DBuffer_Create();
-    for (link = Blt_Chain_FirstLink(chain); link != NULL; 
-	 link = Blt_Chain_NextLink(link)) {
-	Blt_Picture picture;
-
-	picture = Blt_Chain_GetValue(link);
-	if (PictureToPbm(interp, picture, dbuffer, &switches) != TCL_OK) {
-	    Tcl_AppendResult(interp, "can't convert \"", 
-			     Tcl_GetString(objv[2]), "\"", (char *)NULL);
-	    goto error;
-	}
+    if (PictureToPbm(interp, picture, dbuffer, &switches) != TCL_OK) {
+	Tcl_AppendResult(interp, "can't convert \"", 
+			 Tcl_GetString(objv[2]), "\"", (char *)NULL);
+	goto error;
     }
     /* Write the PBM data to file or convert it to a base64 string. */
     if (switches.fileObjPtr != NULL) {

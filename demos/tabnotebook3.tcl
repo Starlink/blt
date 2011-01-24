@@ -4,13 +4,14 @@ package require BLT
 source scripts/demo.tcl
 #blt::bltdebug 100
 
-image create picture label1 -file checkon.png
+image create picture label1 -file user1.png
 image create picture label2 -file ./images/mini-book2.gif
 image create picture testImage -file ./images/txtrflag.gif
 
 blt::tabset .ts \
     -scrollcommand { .s set } \
-    -scrollincrement 1 
+    -scrollincrement 1  \
+    -scrolltabs yes
 
 label .ts.l -image testImage
 
@@ -29,6 +30,12 @@ foreach { label color } $attributes {
 	-activebackground ${color}2
 }
 
+foreach item [.ts configure] {
+    if { [llength $item] == 5 } {
+	set switch [lindex $item 0]
+	set config($switch) [lindex $item 4]
+    }
+}
 .ts insert end -selectbackground salmon2 -background salmon3 \
     -selectbackground salmon3 -activebackground salmon2 -window .ts.l
 
@@ -46,6 +53,8 @@ set tabLabels {
     abide abided abides abiding Abidjan Abigail Abilene abilities
     ability abject abjection abjections abjectly abjectness abjure
     abjured abjures abjuring ablate ablated ablates ablating
+}
+set extra {
     ablation ablative ablaze able abler ablest ably Abner abnormal
     abnormalities abnormality abnormally Abo aboard abode abodes
     abolish abolished abolisher abolishers abolishes abolishing
@@ -123,223 +132,454 @@ foreach label $tabLabels {
     .ts insert end $label -image label1 
 }
 
-blt::tk::scrollbar .s -command { .ts view } -orient horizontal
-blt::combobutton .side -text "-side" -menu .side.m
-blt::combomenu .side.m 
-.side.m add -type radiobutton -text "Top" -variable side -value "top" \
-    -command { .ts configure -side $side -rotate 0 }
-.side.m add -type radiobutton -text "Bottom" -variable side -value "bottom" \
-    -command { .ts configure -side $side -rotate 0 }
-.side.m add -type radiobutton -text "Left" -variable side -value "left" \
-    -command { .ts configure -side $side -rotate 90 }
-.side.m add -type radiobutton -text "Right" -variable side -value "right" \
-    -command { .ts configure -side $side -rotate 270 }
+blt::tk::scrollbar .s -command { .ts view } -orient horizontal -borderwidth 1
+blt::tk::label .side_l -text "-side" 
+blt::combobutton .side -textvariable text(-side) -menu .side.m
+blt::combomenu .side.m -textvariable text(-side)
+array set side2rotate {
+    top 0
+    bottom 0
+    left 90
+    right 270
+}
+.side.m add -type radiobutton -text [.ts cget -side] 
+.side.m add -type separator
+.side.m add -type radiobutton -text "top" 
+.side.m add -type radiobutton -text "bottom" 
+.side.m add -type radiobutton -text "left" 
+.side.m add -type radiobutton -text "right" 
+.side.m item configure all -variable config(-side) \
+    -command { .ts configure -side $config(-side) -rotate $side2rotate($config(-side)) }
+.side.m select 0
 
-blt::combobutton .txside -text "-textside" -menu .txside.m 
-blt::combomenu .txside.m 
-.txside.m add -type radiobutton -text "Right" -variable textside \
-    -value "right" -command { .ts configure -textside $textside }
-.txside.m add -type radiobutton -text "Left" -variable textside -value "left" \
-    -command { .ts configure -textside $textside }
-.txside.m add -type radiobutton -text "Top" -variable textside -value "top" \
-    -command { .ts configure -textside $textside }
-.txside.m add -type radiobutton -text "Bottom" -variable textside \
-    -value "bottom" -command { .ts configure -textside $textside }
+blt::tk::label .iconpos_l -text "-iconposition" 
+blt::combobutton .iconpos -textvariable text(-iconposition) -menu .iconpos.m 
+blt::combomenu .iconpos.m -textvariable text(-iconposition)
+.iconpos.m add -type radiobutton -text [.ts cget -iconposition]
+.iconpos.m add -type separator
+.iconpos.m add -type radiobutton -text "right" 
+.iconpos.m add -type radiobutton -text "left"  
+.iconpos.m add -type radiobutton -text "bottom"
+.iconpos.m add -type radiobutton -text "top"   
+.iconpos.m item configure all -variable config(-iconposition) \
+    -command { .ts configure -iconposition $config(-iconposition) } 
+.iconpos.m select 0
 
-blt::combobutton .slant -text "-slant" -menu .slant.m 
-blt::combomenu .slant.m 
-.slant.m add -type radiobutton -text "None" -variable slant \
-    -value "none" -command { .ts configure -slant $slant }
-.slant.m add -type radiobutton -text "Left" -variable slant -value "left" \
-    -command { .ts configure -slant $slant }
-.slant.m add -type radiobutton -text "Right" -variable slant \
-    -value "right" -command { .ts configure -slant $slant }
-.slant.m add -type radiobutton -text "Both" -variable slant -value "both" \
-    -command { .ts configure -slant $slant }
+blt::tk::label .slant_l -text "-slant" 
+blt::combobutton .slant -textvariable text(-slant) -menu .slant.m 
+blt::combomenu .slant.m -textvariable text(-slant)
+.slant.m add -type radiobutton -text [.ts cget -slant]
+.slant.m add -type separator
+.slant.m add -type radiobutton -text "none" 
+.slant.m add -type radiobutton -text "left"
+.slant.m add -type radiobutton -text "right"
+.slant.m add -type radiobutton -text "both"
+.slant.m item configure all -variable config(-slant) \
+    -command { .ts configure -slant $config(-slant) }
+.slant.m select 0
+    
+blt::tk::label .rotate_l -text "-rotate"
+blt::combobutton .rotate -textvariable rotatelabel  -menu .rotate.m 
+blt::combomenu .rotate.m -textvariable rotatelabel
+.rotate.m add -type radiobutton -text [.ts cget -rotate]
+.rotate.m add -type separator
+.rotate.m add -type radiobutton -text "0" 
+.rotate.m add -type radiobutton -text "90" 
+.rotate.m add -type radiobutton -text "180" 
+.rotate.m add -type radiobutton -text "270" 
+.rotate.m add -type radiobutton -text "30" 
+.rotate.m item configure all -variable rotate \
+    -command { .ts configure -rotate $rotate }
+.rotate.m select 0
 
-blt::combobutton .rotate -text "-rotate" -menu .rotate.m 
-blt::combomenu .rotate.m 
-.rotate.m add -type radiobutton -text "0" -variable rotate \
-    -value "0.0" -command { .ts configure -rotate $rotate }
-.rotate.m add -type radiobutton -text "90" -variable rotate \
-    -value "90.0" -command { .ts configure -rotate $rotate }
-.rotate.m add -type radiobutton -text "180" -variable rotate \
-    -value "180.0" -command { .ts configure -rotate $rotate }
-.rotate.m add -type radiobutton -text "270" -variable rotate \
-    -value "270.0" -command { .ts configure -rotate $rotate }
-.rotate.m add -type radiobutton -text "30" -variable rotate \
-    -value "30.0" -command { .ts configure -rotate $rotate }
+blt::tk::label .scrolltabs_l -text "-scrolltabs" 
+blt::combobutton .scrolltabs -textvariable text(-scrolltabs) \
+    -menu .scrolltabs.m 
+blt::combomenu .scrolltabs.m -textvariable text(-scrolltabs)
+.scrolltabs.m add -type radiobutton -text [.ts cget -scrolltabs]
+.scrolltabs.m add -type separator
+.scrolltabs.m add -type radiobutton -text "No" -value "0" 
+.scrolltabs.m add -type radiobutton -text "Yes" -value "1" 
+.scrolltabs.m item configure all -variable config(-scrolltabs) \
+    -command { .ts configure -scrolltabs $config(-scrolltabs) }
+.scrolltabs.m select 1
 
-blt::combobutton .tiers -text "-tiers" -menu .tiers.m 
-blt::combomenu .tiers.m 
-.tiers.m add -type radiobutton -text "1" -variable tiers \
-    -value "1" -command { .ts configure -tiers $tiers }
-.tiers.m add -type radiobutton -text "2" -variable tiers -value "2" \
+blt::tk::label .closebutton_l -text "-closebutton" 
+blt::combobutton .closebutton -textvariable text(-closebutton) \
+    -menu .closebutton.m 
+blt::combomenu .closebutton.m -textvariable text(-closebutton)
+.closebutton.m add -type radiobutton -text [.ts cget -closebutton]
+.closebutton.m add -type separator
+.closebutton.m add -type radiobutton -text "No" -value "0" 
+.closebutton.m add -type radiobutton -text "Yes" -value "1" 
+.closebutton.m item configure all -variable config(-closebutton) \
+    -command { .ts configure -closebutton $config(-closebutton) }
+.closebutton.m select 0
+
+blt::tk::label .showsingletab_l -text "-showsingletab" 
+blt::combobutton .showsingletab -textvariable text(-showsingletab) \
+    -menu .showsingletab.m 
+blt::combomenu .showsingletab.m -textvariable text(-showsingletab)
+.showsingletab.m add -type radiobutton -text [.ts cget -showsingletab]
+.showsingletab.m add -type separator
+.showsingletab.m add -type radiobutton -text "No" -value "0" 
+.showsingletab.m add -type radiobutton -text "Yes" -value "1" 
+.showsingletab.m item configure all -variable config(-showsingletab) \
+    -command { .ts configure -showsingletab $config(-showsingletab) }
+.showsingletab.m select 0
+
+blt::tk::label .tiers_l -text "-tiers"
+blt::combobutton .tiers -textvariable text(-tiers) -menu .tiers.m 
+blt::combomenu .tiers.m -textvariable text(-tiers)
+.tiers.m add -type radiobutton -text [.ts cget -tiers]
+.tiers.m add -type separator
+.tiers.m add -type radiobutton -text "1"
+.tiers.m add -type radiobutton -text "2"
+.tiers.m add -type radiobutton -text "3"
+.tiers.m add -type radiobutton -text "4" 
+.tiers.m add -type radiobutton -text "5"
+.tiers.m add -type radiobutton -text "10" 
+.tiers.m item configure all -variable tiers \
     -command { .ts configure -tiers $tiers }
-.tiers.m add -type radiobutton -text "3" -variable tiers \
-    -value "3" -command { .ts configure -tiers $tiers }
-.tiers.m add -type radiobutton -text "4" -variable tiers \
-    -value "4" -command { .ts configure -tiers $tiers }
-.tiers.m add -type radiobutton -text "5" -variable tiers \
-    -value "5" -command { .ts configure -tiers $tiers }
-.tiers.m add -type radiobutton -text "10" -variable tiers \
-    -value "10" -command { .ts configure -tiers $tiers }
+.tiers.m select 0
 
-blt::combobutton .tabwidth -text "-tabwidth" -menu .tabwidth.m 
-blt::combomenu .tabwidth.m 
-.tabwidth.m add -type radiobutton -text "Variable" -variable tabwidth \
-    -value "variable" -command { .ts configure -tabwidth $tabwidth }
-.tabwidth.m add -type radiobutton -text "Same" -variable tabwidth \
-    -value "same" -command { .ts configure -tabwidth $tabwidth }
-.tabwidth.m add -type radiobutton -text ".5 inch" -variable tabwidth \
-    -value "0.5i" -command { .ts configure -tabwidth $tabwidth }
-.tabwidth.m add -type radiobutton -text "1 inch" -variable tabwidth \
-    -value "1i" -command { .ts configure -tabwidth $tabwidth }
-.tabwidth.m add -type radiobutton -text "2 inch" -variable tabwidth \
-    -value "2i" -command { .ts configure -tabwidth $tabwidth }
+blt::tk::label .tabwidth_l -text "-tabwidth"
+blt::combobutton .tabwidth -textvariable text(-tabwidth) -menu .tabwidth.m 
+blt::combomenu .tabwidth.m -textvariable text(-tabwidth)
+.tabwidth.m add -type radiobutton -text [.ts cget -tabwidth]
+.tabwidth.m add -type separator
+.tabwidth.m add -type radiobutton -text "variable" 
+.tabwidth.m add -type radiobutton -text "same"
+.tabwidth.m add -type radiobutton -text ".5 inch" -value "0.5i" 
+.tabwidth.m add -type radiobutton -text "1 inch" -value "1i" 
+.tabwidth.m add -type radiobutton -text "2 inch" -value "2i" 
+.tabwidth.m item configure all -variable config(-tabwidth) \
+    -command { .ts configure -tabwidth $config(-tabwidth) }
+.tabwidth.m select 0
 
-blt::combobutton .justify -text "-justify" -menu .justify.m 
-blt::combomenu .justify.m 
-.justify.m add -type radiobutton -text "Left" -variable justify \
-    -value "left" -command { .ts configure -justify $justify }
-.justify.m add -type radiobutton -text "Center" -variable justify \
-    -value "center" -command { .ts configure -justify $justify }
-.justify.m add -type radiobutton -text "Right" -variable justify \
-    -value "right" -command { .ts configure -justify $justify }
+blt::tk::label .justify_l -text "-justify" 
+blt::combobutton .justify -textvariable text(-justify) -menu .justify.m 
+blt::combomenu .justify.m -textvariable text(-justify)
+.justify.m add -type radiobutton -text [.ts cget -justify]
+.justify.m add -type separator
+.justify.m add -type radiobutton -text "left" 
+.justify.m add -type radiobutton -text "center"
+.justify.m add -type radiobutton -text "right"
+.justify.m item configure all -variable config(-justify) \
+    -command { .ts configure -justify $config(-justify) }
+.justify.m select 0
 
-blt::combobutton .tearoff -text "-tearoff" -menu .tearoff.m 
-blt::combomenu .tearoff.m 
-.tearoff.m add -type radiobutton -text "No" -variable tearoff \
-    -value "0" -command { .ts configure -tearoff $tearoff }
-.tearoff.m add -type radiobutton -text "Yes" -variable tearoff \
-    -value "1" -command { .ts configure -tearoff $tearoff }
+blt::tk::label .tearoff_l -text "-tearoff" 
+blt::combobutton .tearoff -textvariable text(-tearoff) -menu .tearoff.m 
+blt::combomenu .tearoff.m -textvariable text(-tearoff)
+.tearoff.m add -type radiobutton -text [.ts cget -tearoff]
+.tearoff.m add -type separator
+.tearoff.m add -type radiobutton -text "No" -value "0" 
+.tearoff.m add -type radiobutton -text "Yes" -value "1" 
+.tearoff.m item configure all -variable config(-tearoff) \
+    -command { .ts configure -tearoff $config(-tearoff) }
+.tearoff.m select 0
 
-blt::combobutton .highlightthickness -text "-highlightthickness" \
+blt::tk::label .highlightthickness_l -text "-highlightthickness" 
+blt::combobutton .highlightthickness -textvariable text(-highlightthickness) \
     -menu .highlightthickness.m 
-blt::combomenu .highlightthickness.m 
-.highlightthickness.m add -type radiobutton -text "0" \
-    -variable highlightthickness -value "0" \
-    -command { .ts configure -highlightthickness $highlightthickness }
-.highlightthickness.m add -type radiobutton -text "1" \
-    -variable highlightthickness -value "1" \
-    -command { .ts configure -highlightthickness $highlightthickness }
-.highlightthickness.m add -type radiobutton -text "2" \
-    -variable highlightthickness -value "2" \
-    -command { .ts configure -highlightthickness $highlightthickness }
-.highlightthickness.m add -type radiobutton -text "3" \
-    -variable highlightthickness -value "3" \
-    -command { .ts configure -highlightthickness $highlightthickness }
-.highlightthickness.m add -type radiobutton -text "10" \
-    -variable highlightthickness -value "10" \
-    -command { .ts configure -highlightthickness $highlightthickness }
+blt::combomenu .highlightthickness.m -textvariable text(-highlightthickness)
+.highlightthickness.m add -type radiobutton -text [.ts cget -highlightthickness]
+.highlightthickness.m add -type separator
+.highlightthickness.m add -type radiobutton -text "0" 
+.highlightthickness.m add -type radiobutton -text "1" 
+.highlightthickness.m add -type radiobutton -text "2" 
+.highlightthickness.m add -type radiobutton -text "3" 
+.highlightthickness.m add -type radiobutton -text "10" 
+.highlightthickness.m item configure all -variable config(-highlightthickness) \
+    -command { .ts configure -highlightthickness $config(-highlightthickness) }
+.highlightthickness.m select 0
 
-blt::combobutton .outerpad -text "-outerpad" \
-    -menu .outerpad.m 
-blt::combomenu .outerpad.m 
-.outerpad.m add -type radiobutton -text "0" \
-    -variable outerpad -value "0" \
-    -command { .ts configure -outerpad $outerpad }
-.outerpad.m add -type radiobutton -text "1" \
-    -variable outerpad -value "1" \
-    -command { .ts configure -outerpad $outerpad }
-.outerpad.m add -type radiobutton -text "2" \
-    -variable outerpad -value "2" \
-    -command { .ts configure -outerpad $outerpad }
-.outerpad.m add -type radiobutton -text "3" \
-    -variable outerpad -value "3" \
-    -command { .ts configure -outerpad $outerpad }
-.outerpad.m add -type radiobutton -text "10" \
-    -variable outerpad -value "10" \
-    -command { .ts configure -outerpad $outerpad }
+blt::tk::label .outerpad_l -text "-outerpad" 
+blt::combobutton .outerpad -textvariable text(-outerpad) -menu .outerpad.m 
+blt::combomenu .outerpad.m -textvariable text(-outerpad)
+.outerpad.m add -type radiobutton -text [.ts cget -outerpad]
+.outerpad.m add -type separator
+.outerpad.m add -type radiobutton -text "0" 
+.outerpad.m add -type radiobutton -text "1" 
+.outerpad.m add -type radiobutton -text "2" 
+.outerpad.m add -type radiobutton -text "3" 
+.outerpad.m add -type radiobutton -text "10" 
+.outerpad.m item configure all -variable config(-outerpad) \
+    -command { .ts configure -outerpad $config(-outerpad) }
+.outerpad.m select 0
 
-blt::combobutton .borderwidth -text "-borderwidth" \
+blt::tk::label .borderwidth_l -text "-borderwidth" 
+blt::combobutton .borderwidth -textvariable text(-borderwidth) \
     -menu .borderwidth.m 
-blt::combomenu .borderwidth.m 
-.borderwidth.m add -type radiobutton -text "0" \
-    -variable borderwidth -value "0" \
-    -command { .ts configure -borderwidth $borderwidth }
-.borderwidth.m add -type radiobutton -text "1" \
-    -variable borderwidth -value "1" \
-    -command { .ts configure -borderwidth $borderwidth }
-.borderwidth.m add -type radiobutton -text "2" \
-    -variable borderwidth -value "2" \
-    -command { .ts configure -borderwidth $borderwidth }
-.borderwidth.m add -type radiobutton -text "3" \
-    -variable borderwidth -value "3" \
-    -command { .ts configure -borderwidth $borderwidth }
-.borderwidth.m add -type radiobutton -text "10" \
-    -variable borderwidth -value "10" \
-    -command { .ts configure -borderwidth $borderwidth }
+blt::combomenu .borderwidth.m -textvariable text(-borderwidth)
+.borderwidth.m add -type radiobutton -text [.ts cget -borderwidth]
+.borderwidth.m add -type separator
+.borderwidth.m add -type radiobutton -text "0" 
+.borderwidth.m add -type radiobutton -text "1" 
+.borderwidth.m add -type radiobutton -text "2" 
+.borderwidth.m add -type radiobutton -text "3" 
+.borderwidth.m add -type radiobutton -text "10" 
+.borderwidth.m item configure all -variable config(-borderwidth) \
+    -command { .ts configure -borderwidth $config(-borderwidth) }
+.borderwidth.m select 0
 
-blt::combobutton .gap -text "-gap" \
-    -menu .gap.m 
-blt::combomenu .gap.m 
-.gap.m add -type radiobutton -text "0" \
-    -variable gap -value "0" \
-    -command { .ts configure -gap $gap }
-.gap.m add -type radiobutton -text "1" \
-    -variable gap -value "1" \
-    -command { .ts configure -gap $gap }
-.gap.m add -type radiobutton -text "2" \
-    -variable gap -value "2" \
-    -command { .ts configure -gap $gap }
-.gap.m add -type radiobutton -text "3" \
-    -variable gap -value "3" \
-    -command { .ts configure -gap $gap }
-.gap.m add -type radiobutton -text "10" \
-    -variable gap -value "10" \
-    -command { .ts configure -gap $gap }
+blt::tk::label .gap_l -text "-gap" 
+blt::combobutton .gap -textvariable text(-gap) -menu .gap.m 
+blt::combomenu .gap.m -textvariable text(-gap)
+.gap.m add -type radiobutton -text [.ts cget -gap]
+.gap.m add -type separator
+.gap.m add -type radiobutton -text "0" 
+.gap.m add -type radiobutton -text "1" 
+.gap.m add -type radiobutton -text "2" 
+.gap.m add -type radiobutton -text "3" 
+.gap.m add -type radiobutton -text "10" 
+.gap.m item configure all -variable config(-gap) \
+    -command { .ts configure -gap $config(-gap) }
+.gap.m select 0
 
-blt::combobutton .relief -text "-relief" \
-    -menu .relief.m 
-blt::combomenu .relief.m 
-.relief.m add -type radiobutton -text "flat" \
-    -variable relief -value "flat" \
-    -command { .ts configure -relief $relief }
-.relief.m add -type radiobutton -text "sunken" \
-    -variable relief -value "sunken" \
-    -command { .ts configure -relief $relief }
-.relief.m add -type radiobutton -text "raised" \
-    -variable relief -value "raised" \
-    -command { .ts configure -relief $relief }
-.relief.m add -type radiobutton -text "groove" \
-    -variable relief -value "groove" \
-    -command { .ts configure -relief $relief }
-.relief.m add -type radiobutton -text "ridge" \
-    -variable relief -value "ridge" \
-    -command { .ts configure -relief $relief }
-.relief.m add -type radiobutton -text "solid" \
-    -variable relief -value "solid" \
-    -command { .ts configure -relief $relief }
+blt::tk::label .relief_l -text "-relief" 
+blt::combobutton .relief -textvariable text(-relief) -menu .relief.m 
+blt::combomenu .relief.m -textvariable text(-relief)
+.relief.m add -type radiobutton -text [.ts cget -relief]
+.relief.m add -type separator
+.relief.m add -type radiobutton -text "flat" 
+.relief.m add -type radiobutton -text "sunken" 
+.relief.m add -type radiobutton -text "raised" 
+.relief.m add -type radiobutton -text "groove" 
+.relief.m add -type radiobutton -text "ridge" 
+.relief.m add -type radiobutton -text "solid" 
+.relief.m item configure all -variable config(-relief) \
+    -command { .ts configure -relief $config(-relief) }
+.relief.m select 0
+
+blt::tk::label .background_l -text "-background" 
+blt::combobutton .background -textvariable text(-background) \
+    -menu .background.m 
+blt::combomenu .background.m -textvariable text(-background)
+.background.m add -type radiobutton -text [.ts cget -background]
+.background.m add -type separator
+.background.m add -type radiobutton -text "grey" 
+.background.m add -type radiobutton -text "white" 
+.background.m add -type radiobutton -text "black" 
+.background.m add -type radiobutton -text "lightblue" 
+.background.m item configure all -variable config(-background) \
+    -command { .ts configure -background $config(-background) }
+.background.m select 0
+
+blt::tk::label .activebackground_l -text "-activebackground" 
+blt::combobutton .activebackground -textvariable text(-activebackground) \
+    -menu .activebackground.m 
+blt::combomenu .activebackground.m -textvariable text(-activebackground)
+.activebackground.m add -type radiobutton -text [.ts cget -activebackground]
+.activebackground.m add -type separator
+.activebackground.m add -type radiobutton -text "grey" 
+.activebackground.m add -type radiobutton -text "white" 
+.activebackground.m add -type radiobutton -text "black" 
+.activebackground.m add -type radiobutton -text "lightblue" 
+.activebackground.m item configure all -variable config(-activebackground) \
+    -command { .ts configure -activebackground $config(-activebackground) }
+.activebackground.m select 0
+
+blt::tk::label .activeforeground_l -text "-activeforeground" 
+blt::combobutton .activeforeground -textvariable text(-activeforeground) \
+    -menu .activeforeground.m 
+blt::combomenu .activeforeground.m -textvariable text(-activeforeground)
+.activeforeground.m add -type radiobutton -text [.ts cget -activeforeground]
+.activeforeground.m add -type separator
+.activeforeground.m add -type radiobutton -text "grey" 
+.activeforeground.m add -type radiobutton -text "white" 
+.activeforeground.m add -type radiobutton -text "black" 
+.activeforeground.m add -type radiobutton -text "lightblue" 
+.activeforeground.m item configure all -variable config(-activeforeground) \
+    -command { .ts configure -activeforeground $config(-activeforeground) }
+.activeforeground.m select 0
+
+blt::tk::label .selectbackground_l -text "-selectbackground" 
+blt::combobutton .selectbackground -textvariable text(-selectbackground) \
+    -menu .selectbackground.m 
+blt::combomenu .selectbackground.m -textvariable text(-selectbackground)
+.selectbackground.m add -type radiobutton -text [.ts cget -selectbackground]
+.selectbackground.m add -type separator
+.selectbackground.m add -type radiobutton -text "grey" 
+.selectbackground.m add -type radiobutton -text "white" 
+.selectbackground.m add -type radiobutton -text "black" 
+.selectbackground.m add -type radiobutton -text "lightblue" 
+.selectbackground.m item configure all -variable config(-selectbackground) \
+    -command { .ts configure -selectbackground $config(-selectbackground) }
+.selectbackground.m select 0
+
+blt::tk::label .troughcolor_l -text "-troughcolor" 
+blt::combobutton .troughcolor -textvariable text(-troughcolor) \
+    -menu .troughcolor.m 
+blt::combomenu .troughcolor.m -textvariable text(-troughcolor)
+.troughcolor.m add -type radiobutton -text [.ts cget -troughcolor]
+.troughcolor.m add -type separator
+.troughcolor.m add -type radiobutton -text "grey" 
+.troughcolor.m add -type radiobutton -text "white" 
+.troughcolor.m add -type radiobutton -text "black" 
+.troughcolor.m add -type radiobutton -text "lightblue" 
+.troughcolor.m item configure all -variable config(-troughcolor) \
+    -command { .ts configure -troughcolor $config(-troughcolor) }
+.troughcolor.m select 0
+
+blt::tk::label .foreground_l -text "-foreground" 
+blt::combobutton .foreground -textvariable text(-foreground) \
+    -menu .foreground.m 
+blt::combomenu .foreground.m -textvariable text(-foreground)
+.foreground.m add -type radiobutton -text [.ts cget -foreground]
+.foreground.m add -type separator
+.foreground.m add -type radiobutton -text "grey" 
+.foreground.m add -type radiobutton -text "white" 
+.foreground.m add -type radiobutton -text "black" 
+.foreground.m add -type radiobutton -text "lightblue" 
+.foreground.m item configure all -variable config(-foreground) \
+    -command { .ts configure -foreground $config(-foreground) }
+.foreground.m select 0
+
+blt::tk::label .outerborderwidth_l -text "-outerborderwidth" 
+blt::combobutton .outerborderwidth -textvariable text(-outerborderwidth) \
+    -menu .outerborderwidth.m 
+blt::combomenu .outerborderwidth.m -textvariable text(-outerborderwidth)
+.outerborderwidth.m add -type radiobutton -text [.ts cget -outerborderwidth]
+.outerborderwidth.m add -type separator
+.outerborderwidth.m add -type radiobutton -text "0" 
+.outerborderwidth.m add -type radiobutton -text "1" 
+.outerborderwidth.m add -type radiobutton -text "2" 
+.outerborderwidth.m add -type radiobutton -text "3" 
+.outerborderwidth.m add -type radiobutton -text "10" 
+.outerborderwidth.m item configure all -variable config(-outerborderwidth) \
+    -command { .ts configure -outerborderwidth $config(-outerborderwidth) }
+.outerborderwidth.m select 0
+
+
+blt::tk::label .outerrelief_l -text "-outerrelief" 
+blt::combobutton .outerrelief -textvariable text(-outerrelief) \
+    -menu .outerrelief.m 
+blt::combomenu .outerrelief.m -textvariable text(-outerrelief)
+.outerrelief.m add -type radiobutton -text [.ts cget -outerrelief]
+.outerrelief.m add -type separator
+.outerrelief.m add -type radiobutton -text "flat" 
+.outerrelief.m add -type radiobutton -text "sunken" 
+.outerrelief.m add -type radiobutton -text "raised" 
+.outerrelief.m add -type radiobutton -text "groove" 
+.outerrelief.m add -type radiobutton -text "ridge" 
+.outerrelief.m add -type radiobutton -text "solid" 
+.outerrelief.m item configure all -variable config(-outerrelief) \
+    -command { .ts configure -outerrelief $config(-outerrelief) }
+.outerrelief.m select 0
+
+blt::tk::label .selectforeground_l -text "-selectforeground" 
+blt::combobutton .selectforeground -textvariable text(-selectforeground) \
+    -menu .selectforeground.m 
+blt::combomenu .selectforeground.m -textvariable text(-selectforeground)
+.selectforeground.m add -type radiobutton -text [.ts cget -selectforeground]
+.selectforeground.m add -type separator
+.selectforeground.m add -type radiobutton -text "grey" 
+.selectforeground.m add -type radiobutton -text "white" 
+.selectforeground.m add -type radiobutton -text "black" 
+.selectforeground.m add -type radiobutton -text "lightblue" 
+.selectforeground.m item configure all -variable config(-selectforeground) \
+    -command { .ts configure -selectforeground $config(-selectforeground) }
+.selectforeground.m select 0
+
+blt::tk::label .selectpadx_l -text "-selectpadx" 
+blt::combobutton .selectpadx -textvariable text(-selectpadx) \
+    -menu .selectpadx.m 
+blt::combomenu .selectpadx.m -textvariable text(-selectpadx)
+.selectpadx.m add -type radiobutton -text [.ts cget -selectpadx]
+.selectpadx.m add -type separator
+.selectpadx.m add -type radiobutton -text "0" 
+.selectpadx.m add -type radiobutton -text "1" 
+.selectpadx.m add -type radiobutton -text "2" 
+.selectpadx.m add -type radiobutton -text "3" 
+.selectpadx.m add -type radiobutton -text "10" 
+.selectpadx.m item configure all -variable config(-selectpadx) \
+    -command { .ts configure -selectpadx $config(-selectpadx) }
+.selectpadx.m select 0
+
+blt::tk::label .selectpady_l -text "-selectpady" 
+blt::combobutton .selectpady -textvariable text(-selectpady) \
+    -menu .selectpady.m 
+blt::combomenu .selectpady.m -textvariable text(-selectpady)
+.selectpady.m add -type radiobutton -text [.ts cget -selectpady]
+.selectpady.m add -type separator
+.selectpady.m add -type radiobutton -text "0" 
+.selectpady.m add -type radiobutton -text "1" 
+.selectpady.m add -type radiobutton -text "2" 
+.selectpady.m add -type radiobutton -text "3" 
+.selectpady.m add -type radiobutton -text "10" 
+.selectpady.m item configure all -variable config(-selectpady) \
+    -command { .ts configure -selectpady $config(-selectpady) }
+.selectpady.m select 0
 
 blt::table . \
-    .ts 0,0 -fill both -rspan 14 \
-    .borderwidth 0,1 -anchor w \
-    .gap 1,1 -anchor w \
-    .highlightthickness 2,1 -anchor w \
-    .justify 3,1 -anchor w \
-    .outerpad 4,1 -anchor w \
-    .relief 5,1 -anchor w \
-    .rotate 6,1 -anchor w \
-    .side 7,1 -anchor w \
-    .slant 8,1 -anchor w \
-    .tabwidth 9,1 -anchor w \
-    .tearoff 10,1 -anchor w \
-    .tiers 11,1 -anchor w \
-    .txside 12,1 -anchor w \
-    .s 14,0 -fill x \
+    .ts                   0,0 -fill both -rspan 25 \
+    .activebackground_l   1,1 -anchor e \
+    .activebackground     1,2 -fill x \
+    .activeforeground_l   2,1 -anchor e \
+    .activeforeground     2,2 -fill x \
+    .background_l         3,1 -anchor e \
+    .background           3,2 -fill x \
+    .borderwidth_l        4,1 -anchor e \
+    .borderwidth          4,2 -fill x \
+    .gap_l                5,1 -anchor e \
+    .gap                  5,2 -fill x \
+    .foreground_l         6,1 -anchor e \
+    .foreground           6,2 -fill x \
+    .highlightthickness_l 7,1 -anchor e \
+    .highlightthickness   7,2 -fill x \
+    .iconpos_l            8,1 -anchor e \
+    .iconpos              8,2 -fill x \
+    .justify_l            9,1 -anchor e \
+    .justify              9,2 -fill x \
+    .outerborderwidth_l  10,1 -anchor e \
+    .outerborderwidth    10,2 -fill x \
+    .outerpad_l          11,1 -anchor e \
+    .outerpad            11,2 -fill x \
+    .outerrelief_l       12,1 -anchor e \
+    .outerrelief         12,2 -fill x \
+    .relief_l            13,1 -anchor e \
+    .relief              13,2 -fill x \
+    .rotate_l            14,1 -anchor e \
+    .rotate              14,2 -fill x \
+    .scrolltabs_l        15,1 -anchor e \
+    .scrolltabs          15,2 -fill x \
+    .selectbackground_l  16,1 -anchor e \
+    .selectbackground    16,2 -fill x \
+    .selectforeground_l  17,1 -anchor e \
+    .selectforeground    17,2 -fill x \
+    .selectpadx_l        18,1 -anchor e \
+    .selectpadx          18,2 -fill x \
+    .selectpady_l        19,1 -anchor e \
+    .selectpady          19,2 -fill x \
+    .side_l              20,1 -anchor e \
+    .side                20,2 -fill x \
+    .closebutton_l       21,1 -anchor e \
+    .closebutton         21,2 -fill x \
+    .showsingletab_l     22,1 -anchor e \
+    .showsingletab       22,2 -fill x \
+    .slant_l             23,1 -anchor e \
+    .slant               23,2 -fill x \
+    .tabwidth_l          24,1 -anchor e \
+    .tabwidth            24,2 -fill x \
+    .tearoff_l           25,1 -anchor e \
+    .tearoff             25,2 -fill x \
+    .tiers_l             26,1 -anchor e \
+    .tiers               26,2 -fill x \
+    .troughcolor_l       27,1 -anchor e \
+    .troughcolor         27,2 -fill x \
+    .s                   27,0 -fill x 
 
 foreach option { 
     borderwidth gap highlightthickness justify outerpad relief rotate 
-    side slant tabwidth tearoff tiers textside
+    side slant tabwidth tearoff tiers iconposition
 } {
     set $option [.ts cget -$option]
 }
 
-puts stderr angle=[.ts cget -rotate]
-
 blt::table configure . r* c1 -resize none
-blt::table configure . r13 -resize expand
+blt::table configure . r24 -resize expand
 focus .ts
 
 .ts focus 0

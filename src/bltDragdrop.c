@@ -276,7 +276,7 @@ typedef struct {
     Tk_3DBorder normalBorder;	/* Border/background for token window */
     Tk_3DBorder activeBorder;	/* Border/background for token window */
     int activeRelief;
-    int activeBorderWidth;	/* Border width in pixels */
+    int activeBW;	/* Border width in pixels */
     XColor *rejectFg;		/* Color used to draw rejection fg: (\) */
     XColor *rejectBg;		/* Color used to draw rejection bg: (\) */
     Pixmap rejectStipple;	/* Stipple used to draw rejection: (\) */
@@ -392,7 +392,7 @@ static Blt_ConfigSpec tokenConfigSpecs[] =
 	DEF_TOKEN_ANCHOR, Blt_Offset(Token, anchor), 0},
     {BLT_CONFIG_PIXELS_NNEG, "-activeborderwidth", "activeBorderWidth",
 	"ActiveBorderWidth", DEF_TOKEN_ACTIVE_BORDERWIDTH, 
-	Blt_Offset(Token, activeBorderWidth), 0},
+	Blt_Offset(Token, activeBW), 0},
     {BLT_CONFIG_BORDER, "-background", "background", "Background",
 	DEF_TOKEN_BACKGROUND, Blt_Offset(Token, normalBorder), 0},
     {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", "BorderWidth", 
@@ -848,7 +848,7 @@ ChangeToken(Token *tokenPtr, int active)
     if (active) {
 	relief = tokenPtr->activeRelief;
 	border = tokenPtr->activeBorder;
-	borderWidth = tokenPtr->activeBorderWidth;
+	borderWidth = tokenPtr->activeBW;
     } else {
 	relief = tokenPtr->relief;
 	border = tokenPtr->normalBorder;
@@ -937,16 +937,17 @@ MoveToken(
     int x, y;
     int maxX, maxY;
     int vx, vy, vw, vh;
-    Screen *screenPtr;
+    int screenWidth, screenHeight;
+
+    Blt_SizeOfScreen(srcPtr->tkwin, &screenWidth, &screenHeight);
 
     /* Adjust current location for virtual root windows.  */
     Tk_GetVRootGeometry(srcPtr->tkwin, &vx, &vy, &vw, &vh);
     x = tokenPtr->lastX + vx - 3;
     y = tokenPtr->lastY + vy - 3;
 
-    screenPtr = Tk_Screen(srcPtr->tkwin);
-    maxX = WidthOfScreen(screenPtr) - Tk_Width(tokenPtr->tkwin);
-    maxY = HeightOfScreen(screenPtr) - Tk_Height(tokenPtr->tkwin);
+    maxX = screenWidth - Tk_Width(tokenPtr->tkwin);
+    maxY = screenHeight - Tk_Height(tokenPtr->tkwin);
     Blt_TranslateAnchor(x, y, Tk_Width(tokenPtr->tkwin),
 	Tk_Height(tokenPtr->tkwin), tokenPtr->anchor, &x, &y);
     if (x > maxX) {
@@ -1218,7 +1219,7 @@ CreateSource(
     srcPtr->token.anchor = TK_ANCHOR_SE;
     srcPtr->token.relief = TK_RELIEF_RAISED;
     srcPtr->token.activeRelief = TK_RELIEF_SUNKEN;
-    srcPtr->token.borderWidth = srcPtr->token.activeBorderWidth = 3;
+    srcPtr->token.borderWidth = srcPtr->token.activeBW = 3;
     srcPtr->hashPtr = hPtr;
     srcPtr->dataPtr = dataPtr;
     Blt_InitHashTable(&srcPtr->handlerTable, BLT_STRING_KEYS);
@@ -1973,15 +1974,6 @@ QueryWindow(
 	Blt_Chain chain;
 	AnyWindow *childPtr;
 
-#ifndef WIN32
-	/* Add offset from parent's origin to coordinates */
-	if (winPtr->parentPtr != NULL) {
-	    winPtr->x1 += winPtr->parentPtr->x1;
-	    winPtr->y1 += winPtr->parentPtr->y1;
-	    winPtr->x2 += winPtr->parentPtr->x1;
-	    winPtr->y2 += winPtr->parentPtr->y1;
-	}
-#endif
 	/*
 	 * Collect a list of child windows, sorted in z-order.  The
 	 * topmost window will be first in the list.
@@ -2088,7 +2080,7 @@ ExpandPercents(
 	/* Copy up to the percent sign.  Repair the string afterwards */
 	Tcl_DStringAppend(resultPtr, chunk, p - chunk);
 
-	/* Search for a matching substition rule */
+	/* Search for a matching substitution rule */
 	letter = *(p + 1);
 	for (i = 0; i < nSubs; i++) {
 	    if (subsArr[i].letter == letter) {

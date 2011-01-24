@@ -49,7 +49,7 @@
  *	  your option table.  
  *      o The Tk_FreeConfigOptions routine requires a tkwin argument.
  *	  Unfortunately, most widgets save the display pointer and 
- *	  deference their tkwin when the window is destroyed.  
+ *	  de-reference their tkwin when the window is destroyed.  
  *	o There's no TK_CONFIG_CUSTOM functionality.  This means that
  *	  save special options must be saved as strings by 
  *	  Tk_ConfigureWidget and processed later, thus losing the 
@@ -164,64 +164,7 @@ Tk_GetReliefFromObj(
 {
     return Tk_GetRelief(interp, Tcl_GetString(objPtr), reliefPtr);
 }
-/*
- *---------------------------------------------------------------------------
- *
- * Tk_GetMMFromObj --
- *
- *	Attempt to return an mm value from the TCL object "objPtr". If the
- *	object is not already an mm value, an attempt will be made to convert
- *	it to one.
- *
- * Results:
- *	The return value is a standard TCL object result. If an error occurs
- *	during conversion, an error message is left in the interpreter's
- *	result unless "interp" is NULL.
- *
- * Side effects:
- *	If the object is not already a pixel, the conversion will free
- *	any old internal representation. 
- *
- *---------------------------------------------------------------------------
- */
-int
-Tk_GetMMFromObj(
-    Tcl_Interp *interp, 	/* Used for error reporting if not NULL. */
-    Tk_Window tkwin,
-    Tcl_Obj *objPtr,		/* The object from which to get mms. */
-    double *doublePtr)		/* Place to store resulting millimeters. */
-{
-    return Tk_GetScreenMM(interp, tkwin, Tcl_GetString(objPtr), doublePtr);
-}
-/*
- *---------------------------------------------------------------------------
- *
- * Tk_GetPixelsFromObj --
- *
- *	Attempt to return a pixel value from the TCL object "objPtr". If the
- *	object is not already a pixel value, an attempt will be made to convert
- *	it to one.
- *
- * Results:
- *	The return value is a standard TCL object result. If an error occurs
- *	during conversion, an error message is left in the interpreter's
- *	result unless "interp" is NULL.
- *
- * Side effects:
- *	If the object is not already a pixel, the conversion will free
- *	any old internal representation. 
- *
- *---------------------------------------------------------------------------
- */
-int
-Tk_GetPixelsFromObj(
-    Tcl_Interp *interp, 	/* Used for error reporting if not NULL. */
-    Tk_Window tkwin,
-    Tcl_Obj *objPtr,		/* The object from which to get pixels. */
-    int *intPtr)		/* Place to store resulting pixels. */
-{
-    return Tk_GetPixels(interp, tkwin, Tcl_GetString(objPtr), intPtr);
-}
+
 
 /*
  *---------------------------------------------------------------------------
@@ -626,10 +569,7 @@ Blt_NameOfFill(int fill)
  */
 /*ARGSUSED*/
 int
-Blt_GetFillFromObj(
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tcl_Obj *objPtr,		/* Fill style string */
-    int *fillPtr)
+Blt_GetFillFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, int *fillPtr)
 {
     char c;
     const char *string;
@@ -648,6 +588,78 @@ Blt_GetFillFromObj(
     } else {
 	Tcl_AppendResult(interp, "bad argument \"", string,
 	    "\": should be \"none\", \"x\", \"y\", or \"both\"", (char *)NULL);
+	return TCL_ERROR;
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_NameOfResize --
+ *
+ *	Converts the resize value into its string representation.
+ *
+ * Results:
+ *	Returns a pointer to the static name string.
+ *
+ *---------------------------------------------------------------------------
+ */
+const char *
+Blt_NameOfResize(int resize)
+{
+    switch (resize & RESIZE_BOTH) {
+    case RESIZE_NONE:
+	return "none";
+    case RESIZE_EXPAND:
+	return "expand";
+    case RESIZE_SHRINK:
+	return "shrink";
+    case RESIZE_BOTH:
+	return "both";
+    default:
+	return "unknown resize value";
+    }
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_GetResizeFromObj --
+ *
+ *	Converts the resize string into its numeric representation.
+ *
+ *	Valid style strings are:
+ *
+ *	  "none"   
+ * 	  "expand" 
+ *	  "shrink" 
+ *	  "both"   
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+int
+Blt_GetResizeFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, int *resizePtr)
+{
+    char c;
+    const char *string;
+    int length;
+
+    string = Tcl_GetStringFromObj(objPtr, &length);
+    c = string[0];
+    if ((c == 'n') && (strncmp(string, "none", length) == 0)) {
+	*resizePtr = RESIZE_NONE;
+    } else if ((c == 'b') && (strncmp(string, "both", length) == 0)) {
+	*resizePtr = RESIZE_BOTH;
+    } else if ((c == 'e') && (strncmp(string, "expand", length) == 0)) {
+	*resizePtr = RESIZE_EXPAND;
+    } else if ((c == 's') && (strncmp(string, "shrink", length) == 0)) {
+	*resizePtr = RESIZE_SHRINK;
+    } else {
+	Tcl_AppendResult(interp, "bad resize argument \"", string,
+	    "\": should be \"none\", \"expand\", \"shrink\", or \"both\"",
+	    (char *)NULL);
 	return TCL_ERROR;
     }
     return TCL_OK;
@@ -808,6 +820,114 @@ Blt_GetSideFromObj(
 	    "\": should be left, right, top, or bottom", (char *)NULL);
 	return TCL_ERROR;
     }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_ResetLimits --
+ *
+ *	Resets the limits to their default values.
+ *
+ * Results:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+void
+Blt_ResetLimits(Blt_Limits *limitsPtr) /* Limits to be imposed on the value */
+{
+    limitsPtr->flags = 0;
+    limitsPtr->min = LIMITS_MIN;
+    limitsPtr->max = LIMITS_MAX;
+    limitsPtr->nom = LIMITS_NOM;
+}
+
+int 
+Blt_GetLimitsFromObj(Tcl_Interp *interp, Tk_Window tkwin, Tcl_Obj *objPtr, 
+		     Blt_Limits *limitsPtr)
+{
+    int values[3];
+    int nValues;
+    int limitsFlags;
+
+    /* Initialize limits to default values */
+    values[2] = LIMITS_NOM;
+    values[1] = LIMITS_MAX;
+    values[0] = LIMITS_MIN;
+    limitsFlags = 0;
+    nValues = 0;
+    if (objPtr != NULL) {
+	Tcl_Obj **objv;
+	int objc;
+	int i;
+
+	if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
+	    return TCL_ERROR;
+	}
+	if (objc > 3) {
+	    Tcl_AppendResult(interp, "wrong # limits \"", Tcl_GetString(objPtr),
+			     "\"", (char *)NULL);
+	    return TCL_ERROR;
+	}
+	for (i = 0; i < objc; i++) {
+	    const char *string;
+	    int size;
+
+	    string = Tcl_GetString(objv[i]);
+	    if (string[0] == '\0') {
+		continue;		/* Empty string: use default value */
+	    }
+	    limitsFlags |= (1 << i);
+	    if (Tk_GetPixelsFromObj(interp, tkwin, objv[i], &size) != TCL_OK) {
+		return TCL_ERROR;
+	    }
+	    if ((size < LIMITS_MIN) || (size > LIMITS_MAX)) {
+		Tcl_AppendResult(interp, "bad limit \"", string, "\"",
+				 (char *)NULL);
+		return TCL_ERROR;
+	    }
+	    values[i] = size;
+	}
+	nValues = objc;
+    }
+    /*
+     * Check the limits specified.  We can't check the requested size of
+     * widgets.
+     */
+    switch (nValues) {
+    case 1:
+	limitsFlags |= (LIMITS_MIN_SET | LIMITS_MAX_SET);
+	values[1] = values[0];		/* Set minimum and maximum to value */
+	break;
+
+    case 2:
+	if (values[1] < values[0]) {
+	    Tcl_AppendResult(interp, "bad range \"", Tcl_GetString(objPtr),
+		"\": min > max", (char *)NULL);
+	    return TCL_ERROR;		/* Minimum is greater than maximum */
+	}
+	break;
+
+    case 3:
+	if (values[1] < values[0]) {
+	    Tcl_AppendResult(interp, "bad range \"", Tcl_GetString(objPtr),
+			     "\": min > max", (char *)NULL);
+	    return TCL_ERROR;		/* Minimum is greater than maximum */
+	}
+	if ((values[2] < values[0]) || (values[2] > values[1])) {
+	    Tcl_AppendResult(interp, "nominal value \"", Tcl_GetString(objPtr),
+		"\" out of range", (char *)NULL);
+	    return TCL_ERROR;		/* Nominal is outside of range defined
+					 * by minimum and maximum */
+	}
+	break;
+    }
+    limitsPtr->min = values[0];
+    limitsPtr->max = values[1];
+    limitsPtr->nom = values[2];
+    limitsPtr->flags = limitsFlags;
     return TCL_OK;
 }
 
@@ -978,12 +1098,6 @@ DoConfig(
 	    break;
 
 	case BLT_CONFIG_CUSTOM: 
-	    if ((*(char **)ptr != NULL) && 
-		(sp->specFlags & BLT_CONFIG_FREE_BEFORE) &&
-		(sp->customPtr->freeProc != NULL)) {
-		(*sp->customPtr->freeProc)(sp->customPtr->clientData, 
-			Tk_Display(tkwin), widgRec, sp->offset);
-	    }
 	    if ((*sp->customPtr->parseProc)(sp->customPtr->clientData, interp, 
 		tkwin, objPtr, widgRec, sp->offset, sp->specFlags) != TCL_OK) {
 		return TCL_ERROR;
@@ -1158,6 +1272,24 @@ DoConfig(
 	    }
 	    break;
 
+	case BLT_CONFIG_BITMASK_INVERT: 
+	    {
+		int bool;
+		unsigned long mask, flags;
+
+		if (Tcl_GetBooleanFromObj(interp, objPtr, &bool) != TCL_OK) {
+		    return TCL_ERROR;
+		}
+		mask = (unsigned long)sp->customPtr;
+		flags = *(int *)ptr;
+		flags &= ~mask;
+		if (!bool) {
+		    flags |= mask;
+		}
+		*(int *)ptr = flags;
+	    }
+	    break;
+
 	case BLT_CONFIG_DASHES:
 	    if (Blt_GetDashesFromObj(interp, objPtr, (Blt_Dashes *)ptr) 
 		!= TCL_OK) {
@@ -1168,6 +1300,12 @@ DoConfig(
 
 	case BLT_CONFIG_FILL:
 	    if (Blt_GetFillFromObj(interp, objPtr, (int *)ptr) != TCL_OK) {
+		return TCL_ERROR;
+	    }
+	    break;
+
+	case BLT_CONFIG_RESIZE:
+	    if (Blt_GetResizeFromObj(interp, objPtr, (int *)ptr) != TCL_OK) {
 		return TCL_ERROR;
 	    }
 	    break;
@@ -1491,6 +1629,14 @@ FormatConfigValue(
 	    return Tcl_NewBooleanObj((flag != 0));
 	}
 
+    case BLT_CONFIG_BITMASK_INVERT:
+	{
+	    unsigned long flag;
+
+	    flag = (*(unsigned long *)ptr) & (unsigned long)sp->customPtr;
+	    return Tcl_NewBooleanObj((flag == 0));
+	}
+
     case BLT_CONFIG_DASHES: 
 	{
 	    unsigned char *p;
@@ -1510,6 +1656,10 @@ FormatConfigValue(
 
     case BLT_CONFIG_FILL: 
 	string = Blt_NameOfFill(*(int *)ptr);
+	break;
+
+    case BLT_CONFIG_RESIZE: 
+	string = Blt_NameOfResize(*(int *)ptr);
 	break;
 
     case BLT_CONFIG_FLOAT: 
@@ -1615,13 +1765,13 @@ FormatConfigInfo(
 	Tcl_ListObjAppendElement(interp, listObjPtr, 
 		Tcl_NewStringObj(sp->switchName, -1));
     }  else {
-	Tcl_ListObjAppendElement(interp, listObjPtr, Blt_EmptyStringObj());
+	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewStringObj("", -1));
     }
     if (sp->dbName != NULL) {
 	Tcl_ListObjAppendElement(interp, listObjPtr,  
 		Tcl_NewStringObj(sp->dbName, -1));
     } else {
-	Tcl_ListObjAppendElement(interp, listObjPtr, Blt_EmptyStringObj());
+	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewStringObj("", -1));
     }
     if (sp->type == BLT_CONFIG_SYNONYM) {
 	return listObjPtr;
@@ -1630,13 +1780,13 @@ FormatConfigInfo(
 	Tcl_ListObjAppendElement(interp, listObjPtr, 
 		Tcl_NewStringObj(sp->dbClass, -1));
     } else {
-	Tcl_ListObjAppendElement(interp, listObjPtr, Blt_EmptyStringObj());
+	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewStringObj("", -1));
     }
     if (sp->defValue != NULL) {
 	Tcl_ListObjAppendElement(interp, listObjPtr, 
 		Tcl_NewStringObj(sp->defValue, -1));
     } else {
-	Tcl_ListObjAppendElement(interp, listObjPtr, Blt_EmptyStringObj());
+	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewStringObj("", -1));
     }
     Tcl_ListObjAppendElement(interp, listObjPtr, 
 	FormatConfigValue(interp, tkwin, sp, widgRec));
@@ -1729,7 +1879,7 @@ FindConfigSpec(
 		if (interp != NULL) {
    		    Tcl_AppendResult(interp, 
 			"couldn't find synonym for option \"", string, "\"", 
-			(char *) NULL);
+			(char *)NULL);
 		}
 		return (Blt_ConfigSpec *) NULL;
 	    }
@@ -1839,7 +1989,7 @@ Blt_ConfigureWidgetFromObj(
 	/* Process the entry.  */
 	if (objc < 2) {
 	    Tcl_AppendResult(interp, "value for \"", Tcl_GetString(objv[0]),
-		    "\" missing", (char *) NULL);
+		    "\" missing", (char *)NULL);
 	    return TCL_ERROR;
 	}
 	if (DoConfig(interp, tkwin, sp, objv[1], widgRec) != TCL_OK) {
@@ -2188,8 +2338,7 @@ Blt_FreeOptions(
 	    break;
 
 	case BLT_CONFIG_CUSTOM:
-	    if ((*(char **)ptr != NULL) && 
-		(sp->customPtr->freeProc != NULL)) {
+	    if ((sp->customPtr->freeProc != NULL) && (*(char **)ptr != NULL)) {
 		(*sp->customPtr->freeProc)(sp->customPtr->clientData,
 			display, widgRec, sp->offset);
 	    }
