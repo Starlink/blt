@@ -2299,7 +2299,7 @@ GetPaneByIndex(Tcl_Interp *interp, Paneset *setPtr, const char *string,
 
     panePtr = NULL;
     c = string[0];
-    if (Tcl_GetLong(NULL, string, &pos) == TCL_OK) {
+    if (Blt_GetLong(NULL, string, &pos) == TCL_OK) {
 	Blt_ChainLink link;
 
 	link = Blt_Chain_GetNthLink(setPtr->chain, pos);

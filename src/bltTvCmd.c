@@ -632,7 +632,7 @@ AddTag(TreeView *viewPtr, Blt_TreeNode node, const char *tagName)
     if (isdigit(UCHAR(tagName[0]))) {
 	long inode;
 	
-	if (TclGetLong(NULL, tagName, &inode) == TCL_OK) {
+	if (Blt_GetLong(NULL, tagName, &inode) == TCL_OK) {
 	    Tcl_AppendResult(viewPtr->interp, "invalid tag \"", tagName, 
 			     "\": can't be a number.", (char *)NULL);
 	    return TCL_ERROR;

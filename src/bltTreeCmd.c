@@ -581,7 +581,7 @@ IsNodeId(const char *string)
 {
     long value;
 
-    return (Tcl_GetLong(NULL, string, &value) == TCL_OK);
+    return (Blt_GetLong(NULL, string, &value) == TCL_OK);
 }
 
 static int

@@ -2615,7 +2615,7 @@ GetItemByIndex(Tcl_Interp *interp, ComboMenu *comboPtr, const char *string,
 
     itemPtr = NULL;
     c = string[0];
-    if ((isdigit(c)) && (TclGetLong(NULL, string, &pos) == TCL_OK)) {
+    if ((isdigit(c)) && (Blt_GetLong(NULL, string, &pos) == TCL_OK)) {
 	Blt_ChainLink link;
 
 	link = Blt_Chain_GetNthLink(comboPtr->chain, pos);
@@ -3238,7 +3238,7 @@ ItemVarTraceProc(
 	    objPtr = Tcl_NewStringObj(itemPtr->label, -1);
 	    if (Tcl_ObjSetVar2(interp, comboPtr->textVarObjPtr, NULL, objPtr, 
 			       TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG) == NULL) {
-		return TCL_ERROR;
+		return NULL;
 	    }
 	}
 	itemPtr->flags |= ITEM_SELECTED;
@@ -3514,10 +3514,10 @@ RestrictToObjProc(
     int flags)	
 {
     unsigned int *flagsPtr = (unsigned int *)(widgRec + offset);
-    int restrict;
+    int xrestrict; /* restrict is a reserved word in clang */
 
-    restrict = *flagsPtr & (RESTRICT_MIN|RESTRICT_MAX);
-    switch (restrict) {
+    xrestrict = *flagsPtr & (RESTRICT_MIN|RESTRICT_MAX);
+    switch (xrestrict) {
     case RESTRICT_MIN:
 	return Tcl_NewStringObj("min", -1);	
     case RESTRICT_MAX:

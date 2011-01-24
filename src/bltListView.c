@@ -2378,7 +2378,7 @@ SetTag(Tcl_Interp *interp, Item *itemPtr, const char *tagName)
 	}
 	return TCL_ERROR;
     }
-    if (Tcl_GetLong(NULL, (char *)tagName, &dummy) == TCL_OK) {
+    if (Blt_GetLong(NULL, (char *)tagName, &dummy) == TCL_OK) {
 	if (interp != NULL) {
 	    Tcl_AppendResult(interp, "tag \"", tagName, "\" can't be a number.",
 			     (char *)NULL);
@@ -2787,7 +2787,7 @@ GetItemByIndex(Tcl_Interp *interp, ListView *viewPtr, const char *string,
 
     itemPtr = NULL;
     c = string[0];
-    if ((isdigit(c)) && (Tcl_GetLong(NULL, string, &pos) == TCL_OK)) {
+    if ((isdigit(c)) && (Blt_GetLong(NULL, string, &pos) == TCL_OK)) {
 	Blt_ChainLink link;
 
 	link = Blt_Chain_GetNthLink(viewPtr->chain, pos);
@@ -3261,11 +3261,11 @@ RestrictToObjProc(
     int flags)	
 {
     unsigned int *flagsPtr = (unsigned int *)(widgRec + offset);
-    int restrict;
+    int xrestrict; /* restrict is a reserved word in clang */
     const char *string;
 
-    restrict = *flagsPtr & (RESTRICT_MIN|RESTRICT_MAX);
-    switch (restrict) {
+    xrestrict = *flagsPtr & (RESTRICT_MIN|RESTRICT_MAX);
+    switch (xrestrict) {
     case RESTRICT_MIN:	string = "min";		break;
     case RESTRICT_MAX:	string = "max";		break;
     case RESTRICT_NONE: string = "none";	break;

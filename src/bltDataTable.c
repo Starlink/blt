@@ -312,7 +312,7 @@ CheckLabel(Tcl_Interp *interp, RowColumn *rcPtr, const char *label)
     if (isdigit(UCHAR(c))) {
 	long index;
 
-	if (TclGetLong(NULL, (char *)label, &index) == TCL_OK) {
+	if (Blt_GetLong(NULL, (char *)label, &index) == TCL_OK) {
 	    if (interp != NULL) {
 		Tcl_AppendResult(interp, rcPtr->classPtr->name, " label \"", 
 			label, "\" can't be a number.", (char *)NULL);
@@ -707,7 +707,7 @@ SetValueFromString(Tcl_Interp *interp, Blt_TableColumnType type, const char *s,
 	break;
     case TABLE_COLUMN_TYPE_LONG:	/* long */
     case TABLE_COLUMN_TYPE_INT:		/* int */
-	if (TclGetLong(interp, string, &l) != TCL_OK) {
+	if (Blt_GetLong(interp, string, &l) != TCL_OK) {
 	    Blt_Free(string);
 	    return TCL_ERROR;
 	}
@@ -5764,7 +5764,7 @@ Blt_Table_AppendString(Tcl_Interp *interp, Table *tablePtr, Row *rowPtr,
 	break;
     case TABLE_COLUMN_TYPE_LONG:	/* long */
     case TABLE_COLUMN_TYPE_INT:		/* int */
-	if (Tcl_GetLong(interp, string, &l) != TCL_OK) {
+	if (Blt_GetLong(interp, string, &l) != TCL_OK) {
 	    Blt_Free(string);
 	    return TCL_ERROR;
 	}
@@ -5882,7 +5882,7 @@ Blt_Table_GetLong(Table *tablePtr, Row *rowPtr, Column *colPtr, long defVal)
     if (colPtr->type == TABLE_COLUMN_TYPE_LONG) {
 	return valuePtr->datum.l;
     }
-    if (Tcl_GetLong(tablePtr->interp, valuePtr->string, &l) != TCL_OK) {
+    if (Blt_GetLong(tablePtr->interp, valuePtr->string, &l) != TCL_OK) {
 	return TCL_ERROR;
     }
     return l;
