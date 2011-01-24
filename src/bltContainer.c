@@ -1112,7 +1112,8 @@ AdoptedWindowEventProc(
     Container *cntrPtr = (Container *) clientData;
 
     if ((eventPtr->type == CreateNotify) && (cntrPtr->adopted == None)) {
-	fprintf(stderr, "window found is %x\n", eventPtr->xmaprequest.window);
+	fprintf(stderr, "window found is %x\n", 
+		(unsigned int)eventPtr->xmaprequest.window);
 	if (Blt_ReparentWindow(cntrPtr->display, eventPtr->xmaprequest.window,
 		Tk_WindowId(cntrPtr->tkwin), cntrPtr->inset, cntrPtr->inset) 
 	    != TCL_OK) {
@@ -1848,7 +1849,7 @@ FillTree(Container *cntrPtr, Window window, Blt_Tree tree, Blt_TreeNode parent)
 	        &format,	/* (out) Actual format of the property. */
 	        &nItems,	/* (out) # of items in specified format. */
 	        &bytesAfter,	/* (out) # of bytes remaining to be read. */
-		&data);
+		(unsigned char **)&data);
 #ifdef notdef
 	    fprintf(stderr, "%x: property name is %s (format=%d(%d) type=%d result=%d)\n", window, name, format, nItems, typeAtom, result == Success);
 #endif

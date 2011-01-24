@@ -1,8 +1,10 @@
 # Tcl package index file, version 1.0
 
-namespace eval blt {}
+set version "%VERSION%"
 
-proc blt::load_library { name version dir package } {
+namespace eval blt${version} {}
+
+proc blt${version}::load_library { name version dir package } {
 
     set prefix "%SO_PREFIX%"
     set suffix "%LIB_SUFFIX%"
@@ -28,8 +30,6 @@ proc blt::load_library { name version dir package } {
     load $library $package
 }
 
-set version "%VERSION%"
-
 package ifneeded BLT $version [subst -nocommands {
     package require blt_core $version
     if { [info commands tk] == "tk" } {
@@ -41,11 +41,11 @@ package ifneeded BLT $version [subst -nocommands {
 # Core (tcl-only) and extra (Tk) packages 
 
 package ifneeded blt_core $version \
-    [list blt::load_library "BLTCore" $version $dir "blt_core"]
+    [list blt${version}::load_library "BLTCore" $version $dir "blt_core"]
 
 package ifneeded blt_extra $version [subst {
     package require blt_core
-    blt::load_library "BLTX" $version $dir "blt_x"
+    blt${version}::load_library "BLTX" $version $dir "blt_x"
 }]
 
 # Data table data format packages
@@ -82,6 +82,9 @@ package ifneeded blt_picture_jpg $version \
 
 package ifneeded blt_picture_pbm $version \
 	[list blt::picture load pbm $dir]
+
+package ifneeded blt_picture_pdf $version \
+	[list blt::picture load pdf $dir]
 
 package ifneeded blt_picture_png $version \
 	[list blt::picture load png $dir]

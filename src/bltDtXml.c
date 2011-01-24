@@ -46,15 +46,15 @@
 #  include <memory.h>
 #endif /* HAVE_MEMORY_H */
 
-DLLEXPORT extern Tcl_AppInitProc Blt_DataTable_XmlInit;
+DLLEXPORT extern Tcl_AppInitProc Blt_Table_XmlInit;
 
 extern const char *Blt_Itoa(int);
 
 #define TRUE 	1
 #define FALSE 	0
 
-static Blt_DataTable_ImportProc ImportXmlProc;
-static Blt_DataTable_ExportProc ExportXmlProc;
+static Blt_TableImportProc ImportXmlProc;
+static Blt_TableExportProc ExportXmlProc;
 
 /*
  * Format	Import		Export
@@ -96,11 +96,11 @@ static Blt_SwitchSpec importSwitches[] =
          Blt_Offset(ImportSwitches, dataObj), 0, 0},
     {BLT_SWITCH_OBJ, "-file", "fileName",
 	Blt_Offset(ImportSwitches, fileObj), 0, 0},
-    {BLT_SWITCH_BITMASK_NEG,"-noattrs", "",
+    {BLT_SWITCH_BITMASK_INVERT,"-noattrs", "",
 	Blt_Offset(ImportSwitches, flags), 0, IMPORT_ATTRIBUTES},
-    {BLT_SWITCH_BITMASK_NEG,"-noelems", "",
+    {BLT_SWITCH_BITMASK_INVERT,"-noelems", "",
 	Blt_Offset(ImportSwitches, flags), 0, IMPORT_ELEMENTS},
-    {BLT_SWITCH_BITMASK_NEG,"-nocdata", "",
+    {BLT_SWITCH_BITMASK_INVERT,"-nocdata", "",
 	Blt_Offset(ImportSwitches, flags), 0, IMPORT_CDATA},
     {BLT_SWITCH_END}
 };
@@ -109,7 +109,7 @@ static Blt_SwitchSpec importSwitches[] =
  * ExportSwitches --
  */
 typedef struct {
-    Blt_DataTableIterator rIter, cIter;
+    Blt_TableIterator rIter, cIter;
     Tcl_Obj *fileObj;
 
     /* Private fields. */
@@ -119,16 +119,16 @@ typedef struct {
     Tcl_DString *dsPtr;
 } ExportSwitches;
 
-extern Blt_SwitchFreeProc Blt_DataTable_ColumnIterFreeProc;
-extern Blt_SwitchFreeProc Blt_DataTable_RowIterFreeProc;
-extern Blt_SwitchParseProc Blt_DataTable_ColumnIterSwitchProc;
-extern Blt_SwitchParseProc Blt_DataTable_RowIterSwitchProc;
+extern Blt_SwitchFreeProc Blt_Table_ColumnIterFreeProc;
+extern Blt_SwitchFreeProc Blt_Table_RowIterFreeProc;
+extern Blt_SwitchParseProc Blt_Table_ColumnIterSwitchProc;
+extern Blt_SwitchParseProc Blt_Table_RowIterSwitchProc;
 
 static Blt_SwitchCustom columnIterSwitch = {
-    Blt_DataTable_ColumnIterSwitchProc, Blt_DataTable_ColumnIterFreeProc, 0,
+    Blt_Table_ColumnIterSwitchProc, Blt_Table_ColumnIterFreeProc, 0,
 };
 static Blt_SwitchCustom rowIterSwitch = {
-    Blt_DataTable_RowIterSwitchProc, Blt_DataTable_RowIterFreeProc, 0,
+    Blt_Table_RowIterSwitchProc, Blt_Table_RowIterFreeProc, 0,
 };
 
 static Blt_SwitchSpec exportSwitches[] = 
@@ -147,9 +147,9 @@ static Blt_SwitchSpec exportSwitches[] =
 #include <expat.h>
 
 typedef struct {
-    Blt_DataTableRow row;
-    Blt_DataTableColumn col;
-    Blt_DataTable table;
+    Blt_TableRow row;
+    Blt_TableColumn col;
+    Blt_Table table;
     Tcl_Interp *interp;
     int flags;
     Blt_HashTable attrTable;
@@ -222,12 +222,12 @@ GetXmlCharacterData(void *userData, const XML_Char *string, int length)
 	Blt_List_SetValue(importPtr->node, objPtr);
 	for (node = Blt_List_FirstNode(importPtr->elemList); node != NULL;
 	     node = Blt_List_NextNode(node)) {
-	    Blt_DataTableColumn col;
+	    Blt_TableColumn col;
 
 	    objPtr = Blt_List_GetValue(node);
-	    col = (Blt_DataTableColumn)Blt_List_GetKey(node);
-	    if (Blt_DataTable_SetValue(importPtr->table, importPtr->row, col, objPtr) 
-		!= TCL_OK) {
+	    col = (Blt_TableColumn)Blt_List_GetKey(node);
+	    if (Blt_Table_SetObj(importPtr->table, importPtr->row, col, 
+		objPtr) != TCL_OK) {
 		Tcl_BackgroundError(importPtr->interp);
 	    }
 	}
@@ -237,8 +237,8 @@ GetXmlCharacterData(void *userData, const XML_Char *string, int length)
 static void
 StartXmlTag(void *userData, const char *element, const char **attr) 
 {
-    Blt_DataTable table;
-    Blt_DataTableRow row;
+    Blt_Table table;
+    Blt_TableRow row;
     ImportData *importPtr = userData;
     Tcl_Interp *interp;
 
@@ -246,7 +246,7 @@ StartXmlTag(void *userData, const char *element, const char **attr)
     table = importPtr->table;
     importPtr->node = NULL;
     if (importPtr->flags & IMPORT_ELEMENTS) {
-	Blt_DataTableColumn col;
+	Blt_TableColumn col;
 	Blt_HashEntry *hPtr;
 	int isNew;
 
@@ -258,7 +258,7 @@ StartXmlTag(void *userData, const char *element, const char **attr)
 	 */
 	hPtr = Blt_CreateHashEntry(&importPtr->elemTable, element, &isNew);
 	if (isNew) {
-	    col = Blt_DataTable_CreateColumn(interp, table, element);
+	    col = Blt_Table_CreateColumn(interp, table, element);
 	    if (col == NULL) {
 		goto error;
 	    }
@@ -269,7 +269,7 @@ StartXmlTag(void *userData, const char *element, const char **attr)
 	importPtr->col = col;
 	importPtr->node = Blt_List_Append(importPtr->elemList, (char *)col,NULL);
     }
-    if (Blt_DataTable_ExtendRows(interp, table, 1, &row) != TCL_OK) {
+    if (Blt_Table_ExtendRows(interp, table, 1, &row) != TCL_OK) {
 	goto error;
     }
     importPtr->row = row;
@@ -277,9 +277,8 @@ StartXmlTag(void *userData, const char *element, const char **attr)
 	const char **p;
 	
 	for (p = attr; *p != NULL; p += 2) {
-	    Blt_DataTableColumn col;
+	    Blt_TableColumn col;
 	    Blt_HashEntry *hPtr;
-	    Tcl_Obj *objPtr;
 	    const char *name, *value;
 	    int isNew;
 
@@ -290,7 +289,7 @@ StartXmlTag(void *userData, const char *element, const char **attr)
 	     */
 	    hPtr = Blt_CreateHashEntry(&importPtr->attrTable, name, &isNew);
 	    if (isNew) {
-		col = Blt_DataTable_CreateColumn(interp, table, name);
+		col = Blt_Table_CreateColumn(interp, table, name);
 		if (col == NULL) {
 		    goto error;
 		}
@@ -299,8 +298,7 @@ StartXmlTag(void *userData, const char *element, const char **attr)
 		col = Blt_GetHashValue(hPtr);
 	    }
 	    /* Set the attribute value as the cell value. */
-	    objPtr = GetStringObj(importPtr, value, strlen(value));
-	    if (Blt_DataTable_SetValue(table, row, col, objPtr) != TCL_OK) {
+	    if (Blt_Table_SetString(table, row, col, value, -1)!=TCL_OK) {
 		goto error;
 	    }
 	}
@@ -441,7 +439,7 @@ GetXmlExternalEntityRef(XML_Parser parser, const XML_Char *context,
 }
 
 static int
-ImportXmlFile(Tcl_Interp *interp, Blt_DataTable table, Tcl_Obj *fileObjPtr,
+ImportXmlFile(Tcl_Interp *interp, Blt_Table table, Tcl_Obj *fileObjPtr,
 	      unsigned int flags) 
 {
     ImportData import;
@@ -492,7 +490,7 @@ ImportXmlFile(Tcl_Interp *interp, Blt_DataTable table, Tcl_Obj *fileObjPtr,
 
 
 static int
-ImportXmlData(Tcl_Interp *interp, Blt_DataTable table, Tcl_Obj *dataObjPtr,
+ImportXmlData(Tcl_Interp *interp, Blt_Table table, Tcl_Obj *dataObjPtr,
 	      unsigned int flags) 
 {
     ImportData import;
@@ -535,7 +533,7 @@ ImportXmlData(Tcl_Interp *interp, Blt_DataTable table, Tcl_Obj *dataObjPtr,
 } 
 
 static int
-ImportXmlProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+ImportXmlProc(Blt_Table table, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     int result;
     ImportSwitches switches;
@@ -687,7 +685,7 @@ XmlEndElement(ExportSwitches *exportPtr)
 
 static void
 XmlAppendAttrib(ExportSwitches *exportPtr, const char *attrName, 
-		const char *value, int length, int type)
+		const char *value, int length)
 {
     size_t valueLen;
 
@@ -705,32 +703,27 @@ XmlAppendAttrib(ExportSwitches *exportPtr, const char *attrName,
 }
 
 static int
-XmlExport(Blt_DataTable table, ExportSwitches *exportPtr)
+XmlExport(Blt_Table table, ExportSwitches *exportPtr)
 {
-    Blt_DataTableRow row;
+    Blt_TableRow row;
 
     XmlStartTable(exportPtr, "root");
-    for (row = Blt_DataTable_FirstRow(&exportPtr->rIter); row != NULL; 
-	 row = Blt_DataTable_NextRow(&exportPtr->rIter)) {
-	Blt_DataTableColumn col;
+    for (row = Blt_Table_FirstTaggedRow(&exportPtr->rIter); row != NULL; 
+	 row = Blt_Table_NextTaggedRow(&exportPtr->rIter)) {
+	Blt_TableColumn col;
 	const char *label;
 	    
 	XmlStartElement(exportPtr, "row");
-	label = Blt_DataTable_RowLabel(row);
-	XmlAppendAttrib(exportPtr, "name", label, -1, DT_COLUMN_STRING);
-	for (col = Blt_DataTable_FirstColumn(&exportPtr->cIter); col != NULL; 
-	     col = Blt_DataTable_NextColumn(&exportPtr->cIter)) {
-	    Tcl_Obj *objPtr;
+	label = Blt_Table_RowLabel(row);
+	XmlAppendAttrib(exportPtr, "name", label, -1);
+	for (col = Blt_Table_FirstTaggedColumn(&exportPtr->cIter); col != NULL; 
+	     col = Blt_Table_NextTaggedColumn(&exportPtr->cIter)) {
+	    const char *string;
 
-	    label = Blt_DataTable_ColumnLabel(col);
-	    objPtr = Blt_DataTable_GetValue(table, row, col);
-	    if (objPtr != NULL) {
-		int length, type;
-		const char *value;
-
-		type = Blt_DataTable_ColumnType(col);
-		value = Tcl_GetStringFromObj(objPtr, &length);
-		XmlAppendAttrib(exportPtr, label, value, length, type);
+	    label = Blt_Table_ColumnLabel(col);
+	    string = Blt_Table_GetString(table, row, col);
+	    if (string != NULL) {
+		XmlAppendAttrib(exportPtr, label, string, -1);
 	    }
 	}
 	if (XmlEndElement(exportPtr) != TCL_OK) {
@@ -742,7 +735,7 @@ XmlExport(Blt_DataTable table, ExportSwitches *exportPtr)
 }
 
 static int
-ExportXmlProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+ExportXmlProc(Blt_Table table, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     ExportSwitches switches;
     Tcl_Channel channel;
@@ -757,8 +750,8 @@ ExportXmlProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const 
     memset(&switches, 0, sizeof(switches));
     rowIterSwitch.clientData = table;
     columnIterSwitch.clientData = table;
-    Blt_DataTable_IterateAllRows(table, &switches.rIter);
-    Blt_DataTable_IterateAllColumns(table, &switches.cIter);
+    Blt_Table_IterateAllRows(table, &switches.rIter);
+    Blt_Table_IterateAllColumns(table, &switches.cIter);
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, &switches,
 	BLT_SWITCH_DEFAULTS) < 0) {
 	return TCL_ERROR;
@@ -806,7 +799,7 @@ ExportXmlProc(Blt_DataTable table, Tcl_Interp *interp, int objc, Tcl_Obj *const 
 }
 
 int 
-Blt_DataTable_XmlInit(Tcl_Interp *interp)
+Blt_Table_XmlInit(Tcl_Interp *interp)
 {
 #ifdef USE_TCL_STUBS
     if (Tcl_InitStubs(interp, TCL_VERSION, 1) == NULL) {
@@ -819,7 +812,7 @@ Blt_DataTable_XmlInit(Tcl_Interp *interp)
     if (Tcl_PkgProvide(interp, "blt_datatable_xml", BLT_VERSION) != TCL_OK) { 
 	return TCL_ERROR;
     }
-    return Blt_DataTable_RegisterFormat(interp,
+    return Blt_Table_RegisterFormat(interp,
         "xml",			/* Name of format. */
 #ifdef HAVE_LIBEXPAT
 	ImportXmlProc,		/* Import procedure. */

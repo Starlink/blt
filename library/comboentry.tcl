@@ -1,14 +1,28 @@
 
 namespace eval ::blt::ComboEntry {
-    array set Priv {
-	afterId -1
-	b1  ""
-	relief  raised
+    variable _private
+    array set _private {
+	activeItem      {}
+	afterId		-1
+	b1		""
+	lastFocus       {}
+	mouseMoved      0
+	oldGrab         {}
+	postingButton   {}
+	arrowRelief	raised
+	trace		0
+	lastX		-1
+    }
+    proc trace { mesg } {
+	variable _private
+	if { $_private(trace) } {
+	    puts stderr $mesg
+	}
     }
 }
 
-
 bind ComboEntry <Enter> {
+    # Do nothing
 }
 
 bind ComboEntry <Leave> {
@@ -18,11 +32,7 @@ bind ComboEntry <Leave> {
 # Standard Motif bindings:
 
 bind ComboEntry <Motion> {
-    if { [%W identify %x %y] == "button" } {
-	%W activate on
-    } else {
-	%W activate off
-    }
+    %W activate [%W identify %x %y] 
 }
 
 bind ComboEntry <ButtonPress-1> {
@@ -30,53 +40,52 @@ bind ComboEntry <ButtonPress-1> {
 }
 
 bind ComboEntry <ButtonRelease-1> {
-    set x [expr [winfo pointerx %W] - [winfo rootx %W]]
-    set y [expr [winfo pointery %W] - [winfo rooty %W]]
-    puts stderr "ComboEntry %W at %X,%Y <ButtonRelease-1> state=[%W cget -state], grab=[grab current]"
-    after cancel $blt::ComboEntry::Priv(afterId)
-    if { [%W identify $x $y] == "button" } {
-	puts stderr "invoke"
-	%W invoke
-    } else { 
-	puts stderr "unpost"
-	blt::ComboEntry::UnpostMenu %W
-    }	
-    if { [info exists blt::ComboEntry::Priv(relief)] } {
-	%W configure -buttonrelief $blt::ComboEntry::Priv(relief)
+    blt::ComboEntry::trace "ComboEntry %W at %X,%Y <ButtonRelease-1> state=[%W cget -state], grab=[grab current]"
+    after cancel $blt::ComboEntry::_private(afterId)
+    switch -- [%W identify -root %X %Y] {
+	"arrow" {
+	    blt::ComboEntry::trace "invoke"
+	    %W invoke
+	}
+	"close"	{
+	    blt::ComboEntry::trace "button invoke"
+	    %W button invoke
+	}
+	default { 
+	    blt::ComboEntry::trace "unpost"
+	    blt::ComboEntry::UnpostMenu %W
+	}	
+    }
+    if { [info exists blt::ComboEntry::_private(arrowRelief)] } {
+	%W configure -arrowrelief $blt::ComboEntry::_private(arrowRelief)
     }
 }
 
 bind ComboEntry <B1-Motion> {
-    if { $blt::ComboEntry::Priv(b1) != "button" } {
+    if { $blt::ComboEntry::_private(b1) != "arrow" } {
 	%W selection to [%W closest %x]
     }
 }
-
 bind ComboEntry <B1-Enter> {
-    if { $blt::ComboEntry::Priv(afterId) != "" } {
-	after cancel $blt::ComboEntry::Priv(afterId)
-    }
+    after cancel $blt::ComboEntry::_private(afterId)
+    set blt::ComboEntry::_private(afterId) -1
 }
-
 bind ComboEntry <B1-Leave> {
-    puts stderr "ComboEntry B1-Leave"
-    if { $blt::ComboEntry::Priv(b1) == "text" } {
-	set blt::ComboEntry::Priv(x) %x
+    blt::ComboEntry::trace "ComboEntry B1-Leave"
+    if { $blt::ComboEntry::_private(b1) == "text" } {
+	set blt::ComboEntry::_private(lastX) %x
 	blt::ComboEntry::AutoScan %W
     }
 }
-
-
 bind ComboEntry <KeyPress-Down> {
     if { [%W cget -state] != "disabled" } {
+	grab %W
 	::blt::ComboEntry::PostMenu %W
     }
 }
-
-
 bind ComboEntry <Double-1> {
-    puts stderr "Double-1"
-    if { [%W identify %x %y] == "button" } {
+    blt::ComboEntry::trace "Double-1"
+    if { [%W identify %x %y] == "arrow" } {
 	::blt::ComboEntry::ButtonPress %W %x %y
     } else {
 	%W icursor [%W closest %x]
@@ -87,24 +96,19 @@ bind ComboEntry <Double-1> {
 	%W see insert
     }
 }
-
 bind ComboEntry <Triple-1> {
-    puts stderr "Triple-1"
-    if { [%W identify %x %y] != "button" } {
+    blt::ComboEntry::trace "Triple-1"
+    if { [%W identify %x %y] != "arrow" } {
 	%W selection range 0 end
 	%W icursor sel.last
     }
 }
-
 bind ComboEntry <Shift-1> {
     %W selection adjust @%x
 }
-
-
 bind ComboEntry <ButtonPress-2> {
     %W scan mark %x
 }
-
 bind ComboEntry <ButtonRelease-2> {
     if { abs([%W scan mark] - %x) <= 3 } {
 	catch { 
@@ -113,15 +117,12 @@ bind ComboEntry <ButtonRelease-2> {
 	}
     }
 }
-
 bind ComboEntry <B2-Motion> {
     %W scan dragto %x
 }
-
 bind ComboEntry <Control-1> {
     %W icursor @%x
 }
-
 bind ComboEntry <KeyPress-Left> {
     if { [%W selection present] } {
 	%W icursor sel.last
@@ -130,7 +131,6 @@ bind ComboEntry <KeyPress-Left> {
     %W icursor previous
     %W see insert
 }
-
 bind ComboEntry <KeyPress-Right> {
     if { [%W selection present] } {
 	%W icursor sel.last
@@ -294,8 +294,9 @@ bind ComboEntry <<Clear>> {
 
 
 bind Entry <<PasteSelection>> {
-    if {$tk_strictMotif || ![info exists tk::ComboEntry::Priv(mouseMoved)]
-	|| !$tk::ComboEntry::Priv(mouseMoved)} {
+    if { $tk_strictMotif || 
+	 ![info exists tk::ComboEntry::_private(mouseMoved)] || 
+	 !$tk::ComboEntry::_private(mouseMoved)} {
 	tk::EntryPaste %W %x
     }
 }
@@ -349,7 +350,7 @@ bind ComboEntry <Control-b> {
 }
 
 bind ComboEntry <Control-d> {
-    if {[%W selection present]} {
+    if { [%W selection present] } {
 	%W delete sel.first sel.last
     } else {
 	%W delete insert next
@@ -367,7 +368,7 @@ bind ComboEntry <Control-f> {
 }
 
 bind ComboEntry <Control-h> {
-    if {[%W selection present]} {
+    if { [%W selection present] } {
 	%W delete sel.first sel.last
     } else {
 	%W delete previous insert 
@@ -415,7 +416,6 @@ bind ComboEntry <Alt-Delete> {
 }
 
 ####
-
 bind ComboEntry <Meta-b> {
     %W icursor [string wordstart [%W get] [%W index previous]]
     %W see insert
@@ -447,48 +447,36 @@ bind ComboEntry <Meta-Delete> {
 # <KeyPress> class binding will also fire and insert the character,
 # which is wrong.  Ditto for Escape, Return, and Tab.
 
-bind ComboEntry <Alt-KeyPress> {# nothing}
-bind ComboEntry <Meta-KeyPress> { puts %K }
-bind ComboEntry <Control-KeyPress> {# nothing}
-bind ComboEntry <Escape> {# nothing}
-#bind ComboEntry <KP_Enter> {# nothing}
-bind ComboEntry <Tab> {# nothing}
-if {[string equal [tk windowingsystem] "classic"] || 
-    [string equal [tk windowingsystem] "aqua"]} {
-    bind ComboEntry <Command-KeyPress> {# nothing}
+bind ComboEntry <Alt-KeyPress> {
+    # Do nothing.
 }
-
-namespace eval ::blt::ComboEntry {
-    variable Priv
-    array set Priv {
-	activeMenu      {}
-	activeItem      {}
-	afterId         {}
-	buttons         0
-	buttonWindow    {}
-	dragging        0
-	focus           {}
-	grab            {}
-	initPos         {}
-	inMenubutton    {}
-	listboxPrev     {}
-	menuBar         {}
-	mouseMoved      0
-	oldGrab         {}
-	popup           {}
-	popup           {}
-	postedMb        {}
-	pressX          0
-	pressY          0
-	prevPos         0
-	selectMode      char
+bind ComboEntry <Meta-KeyPress> { 
+    blt::ComboEntry::trace %K 
+}
+bind ComboEntry <Control-KeyPress> {
+    # Do nothing.
+}
+bind ComboEntry <Escape> {
+    # Do nothing.
+}
+bind ComboEntry <KP_Enter> {
+    # Do nothing.
+}
+bind ComboEntry <Tab> {
+    # Do nothing.
+}
+switch -- [tk windowingsystem] {
+    "classic" - "aqua"  {
+	bind ComboEntry <Command-KeyPress> {
+	    # Do nothing.
+	}
     }
 }
 
 proc ::blt::ComboEntry::AutoScan {w} {
-    variable Priv
+    variable _private
 
-    set x $Priv(x)
+    set x $_private(lastX)
     if { ![winfo exists $w] } {
 	return
     }
@@ -497,20 +485,20 @@ proc ::blt::ComboEntry::AutoScan {w} {
     } elseif { $x < 0 } {
 	$w xview scroll -2 units
     }
-    set Priv(afterId) [after 50 [list blt::ComboEntry::AutoScan $w]]
+    set _private(afterId) [after 50 [list blt::ComboEntry::AutoScan $w]]
 }
 
 proc ::blt::ComboEntry::SaveGrab { w } {
-    variable Priv
+    variable _private
 
     set grab [grab current $w]
-    set Priv(oldGrab) ""
+    set _private(oldGrab) ""
     if { $grab != "" } {
 	set type [grab status $grab]
 	if { $type == "global" } {
-	    #set Priv(oldGrab) [list grab set -global $grab]
+	    #set _private(oldGrab) [list grab set -global $grab]
 	} else {
-	    #set Priv(oldGrab) [list grab set $grab]
+	    #set _private(oldGrab) [list grab set $grab]
 	}	    
     } 
 }
@@ -519,13 +507,13 @@ proc ::blt::ComboEntry::SaveGrab { w } {
 # Restores the grab to what it was before TkSaveGrabInfo was called.
 
 proc ::blt::ComboEntry::RestoreOldGrab {} {
-    variable Priv
+    variable _private
 
-    if { $Priv(oldGrab) != "" } {
+    if { $_private(oldGrab) != "" } {
     	# Be careful restoring the old grab, since it's window may not
 	# be visible anymore.
-	catch $Priv(oldGrab)
-	set Priv(oldGrab) ""
+	catch $_private(oldGrab)
+	set _private(oldGrab) ""
     }
 }
 
@@ -543,9 +531,9 @@ proc ::blt::ComboEntry::RestoreOldGrab {} {
 #			of the menubutton is used for an option menu.
 
 proc ::blt::ComboEntry::PostMenu { w } {
-    variable Priv
+    variable _private
 
-    puts stderr "proc PostMenu $w, state=[$w cget -state]"
+    trace "proc PostMenu $w, state=[$w cget -state]"
     if { [$w cget -state] == "disabled" } {
 	return
     }
@@ -557,18 +545,18 @@ proc ::blt::ComboEntry::PostMenu { w } {
     if { $menu == "" } {
 	return
     }
-    set cur $Priv(postedMb)
+    set cur $_private(postingButton)
     if { $cur != "" } {
 	#
 	UnpostMenu $cur
     }
-    set Priv(cursor) [$w cget -cursor]
+    set _private(cursor) [$w cget -cursor]
     $w configure -cursor arrow
     
-    set Priv(postedMb) $w
-    set Priv(focus) [focus]
+    set _private(postingButton) $w
+    set _private(lastFocus) [focus]
     $menu activate none
-    blt::ComboEntry::GenerateMenuSelect $menu
+    #blt::ComboEntry::GenerateMenuSelect $menu
 
 
     # If this looks like an option menubutton then post the menu so
@@ -587,9 +575,15 @@ proc ::blt::ComboEntry::PostMenu { w } {
     }
 
     focus $menu
+    set value [$w get]
+    set index [$menu index $value]
+    if { $index != -1 } {
+	$menu see $index
+	$menu activate $index
+    }
     if { [winfo viewable $menu] } {
 	SaveGrab $menu
-	puts stderr "setting global grab on $menu"
+	trace "setting global grab on $menu"
 	#grab -global $menu
     }
 }
@@ -612,31 +606,34 @@ proc ::blt::ComboEntry::PostMenu { w } {
 #			is a posted menubutton.
 
 proc ::blt::ComboEntry::UnpostMenu { w } {
-    variable Priv
+    variable _private
 
-    puts stderr "proc UnpostMenu $w"
+    trace "proc UnpostMenu $w"
     catch { 
 	# Restore focus right away (otherwise X will take focus away when the
 	# menu is unmapped and under some window managers (e.g. olvwm) we'll
 	# lose the focus completely).
-	focus $Priv(focus) 
+	focus $_private(lastFocus) 
     }
-    set Priv(focus) ""
+    set _private(lastFocus) ""
 
     # Unpost menu(s) and restore some stuff that's dependent on what was
     # posted.
 
     $w unpost
-    set Priv(postedMb) {}
-    if { [info exists Priv(cursor)] } {
-	$w configure -cursor $Priv(cursor)
+    set _private(postingButton) {}
+    if { [info exists _private(cursor)] } {
+	$w configure -cursor $_private(cursor)
     }
     if { [$w cget -state] != "disabled" } {
 	#$w configure -state normal
     }
     set menu [$w cget -menu]
-    puts MENU=$menu
-    puts GRAB=[grab current $menu]
+    if { $menu == "" } {
+	return
+    }
+    trace MENU=$menu
+    trace GRAB=[grab current $menu]
 
     # Release grab, if any, and restore the previous grab, if there
     # was one.
@@ -651,37 +648,40 @@ proc ::blt::ComboEntry::UnpostMenu { w } {
 
 proc ::blt::ComboEntry::GenerateMenuSelect {menu} {
     if 0 {
-    variable Priv
-    if { $Priv(activeComboMenu) != $menu ||
-	 $Priv(activeItem) != [$menu index active] } {
-	set Priv(activeComboMenu) $menu
-	set Priv(activeItem) [$menu index active]
+    variable _private
+    if { $_private(activeComboMenu) != $menu ||
+	 $_private(activeItem) != [$menu index active] } {
+	set _private(activeComboMenu) $menu
+	set _private(activeItem) [$menu index active]
 	event generate $menu <<MenuSelect>>
     }
     }
 }
 
 proc ::blt::ComboEntry::ButtonPress { w x y } {
-    variable Priv
+    variable _private
 
-    puts stderr "blt::ComboEntry::ButtonPress $w state=[$w cget -state]"
-    set Priv(b1) [$w identify $x $y]
+    trace "blt::ComboEntry::ButtonPress $w state=[$w cget -state]"
+    set _private(b1) [$w identify $x $y]
+    trace "_private(b1) = \"$_private(b1)\""
     if { [$w cget -state] == "posted" } {
+	trace "state = [$w cget -state]"
 	$w unpost
 	UnpostMenu $w
-    } elseif { $Priv(b1) == "button" } {
-	set Priv(relief) [$w cget -buttonrelief]
-	puts stderr "relief=$Priv(relief)"
+    } elseif { $_private(b1) == "arrow" } {
+	set _private(arrowRelief) [$w cget -arrowrelief]
+	trace "relief=$_private(arrowRelief)"
 	if { [$w cget -state] != "disabled" } {
-	    $w configure -buttonrelief sunken
+	    $w configure -arrowrelief sunken
 	}
 	grab -global $w
 	PostMenu $w
     } else {
+	trace "else: priv(v1)=$_private(b1) state=[$w cget -state]"
 	focus $w
 	$w icursor [$w closest $x]
 	$w selection clear
 	$w selection from insert
-	$w configure -buttonrelief $Priv(relief)
+	$w configure -arrowrelief $_private(arrowRelief)
     }
 }

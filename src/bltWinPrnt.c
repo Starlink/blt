@@ -343,7 +343,7 @@ static TokenString attributeTable[] =
     { PRINTER_ATTRIBUTE_DO_COMPLETE_FIRST, "Do Complete First" },
     { PRINTER_ATTRIBUTE_ENABLE_BIDI, "Enable BIDI" },
     { PRINTER_ATTRIBUTE_ENABLE_DEVQ, "Enable Devq" },
-    { PRINTER_ATTRIBUTE_HIDE, "Hidden" },
+    { PRINTER_ATTRIBUTE_HIDDEN, "Hidden" },
     { PRINTER_ATTRIBUTE_KEEPPRINTEDJOBS, "Keep Printed Jobs" },
     { PRINTER_ATTRIBUTE_LOCAL, "Local" },
     { PRINTER_ATTRIBUTE_NETWORK, "Network" },
@@ -1603,7 +1603,7 @@ Blt_PrintDialog(
     int mode, result;
     
     ZeroMemory(&dlg, sizeof(PRINTDLG));
-    dlg._lSize = sizeof(PRINTDLG);
+    dlg.lStructSize = sizeof(PRINTDLG);
     dlg.Flags = PD_RETURNDC | PD_NOPAGENUMS | PD_NOSELECTION;
     mode = Tcl_SetServiceMode(TCL_SERVICE_NONE);
     result = PrintDlg(&dlg);

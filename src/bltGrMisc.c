@@ -1,4 +1,5 @@
 
+
 /*
  * bltGrMisc.c --
  *
@@ -38,6 +39,14 @@ Blt_CustomOption bltPointOption =
 {
     ObjToPoint, PointToObj, NULL, (ClientData)0
 };
+
+static Blt_OptionParseProc ObjToLimitsProc;
+static Blt_OptionPrintProc LimitsToObjProc;
+Blt_CustomOption bltLimitsOption =
+{
+    ObjToLimitsProc, LimitsToObjProc, NULL, (ClientData)0
+};
+
 
 /*
  *---------------------------------------------------------------------------
@@ -169,6 +178,101 @@ PointToObj(
     return objPtr;
 }
 
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ObjToLimitsProc --
+ *
+ *	Converts the list of elements into zero or more pixel values which
+ *	determine the range of pixel values possible.  An element can be in any
+ *	form accepted by Tk_GetPixels. The list has a different meaning based
+ *	upon the number of elements.
+ *
+ *	    # of elements:
+ *
+ *	    0 - the limits are reset to the defaults.
+ *	    1 - the minimum and maximum values are set to this
+ *		value, freezing the range at a single value.
+ *	    2 - first element is the minimum, the second is the
+ *		maximum.
+ *	    3 - first element is the minimum, the second is the
+ *		maximum, and the third is the nominal value.
+ *
+ *	Any element may be the empty string which indicates the default.
+ *
+ * Results:
+ *	The return value is a standard TCL result.  The min and max fields
+ *	of the range are set.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ObjToLimitsProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,		        /* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Widget of paneset */
+    Tcl_Obj *objPtr,			/* New width list */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
+    int flags)	
+{
+    Blt_Limits *limitsPtr = (Blt_Limits *)(widgRec + offset);
+
+    if (Blt_GetLimitsFromObj(interp, tkwin, objPtr, limitsPtr) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    return TCL_OK;
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * LimitsToObjProc --
+ *
+ *	Convert the limits of the pixel values allowed into a list.
+ *
+ * Results:
+ *	The string representation of the limits is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static Tcl_Obj *
+LimitsToObjProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Not used. */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Row/column structure record */
+    int offset,				/* Offset to field in structure */
+    int flags)	
+{
+    Blt_Limits *limitsPtr = (Blt_Limits *)(widgRec + offset);
+    Tcl_Obj *listObjPtr;
+
+    listObjPtr = Tcl_NewListObj(0, (Tcl_Obj **)NULL);
+    if (limitsPtr->flags & LIMITS_MIN_SET) {
+	Tcl_ListObjAppendElement(interp, listObjPtr, 
+				 Tcl_NewIntObj(limitsPtr->min));
+    } else {
+	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewStringObj("", -1));
+    }
+    if (limitsPtr->flags & LIMITS_MAX_SET) {
+	Tcl_ListObjAppendElement(interp, listObjPtr, 
+				 Tcl_NewIntObj(limitsPtr->max));
+    } else {
+	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewStringObj("", -1));
+    }
+    if (limitsPtr->flags & LIMITS_NOM_SET) {
+	Tcl_ListObjAppendElement(interp, listObjPtr, 
+				 Tcl_NewIntObj(limitsPtr->nom));
+    } else {
+	Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewStringObj("", -1));
+    }
+    return listObjPtr;
+}
 
 int
 Blt_PointInSegments(
@@ -870,24 +974,24 @@ Blt_UpdateScrollbar(
     Tcl_Interp *interp,
     Tcl_Obj *scrollCmdObjPtr,		/* Scrollbar command prefix. May be
 					 * several words */
-    double firstFract, double lastFract)
+    int first, int last, int width)
 {
-    Tcl_Obj **objv;
-    Tcl_Obj *listObjPtr;
-    int objc;
+    Tcl_Obj *cmdObjPtr;
+    double firstFract, lastFract;
 
-    listObjPtr = Tcl_DuplicateObj(scrollCmdObjPtr);
-    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(firstFract));
-    Tcl_ListObjAppendElement(interp, listObjPtr, Tcl_NewDoubleObj(lastFract));
-    if (Tcl_ListObjGetElements(interp, listObjPtr, &objc, &objv) != TCL_OK) {
-	Tcl_BackgroundError(interp);
-    } else {
-	Tcl_IncrRefCount(listObjPtr);
-	if (Tcl_EvalObjv(interp, objc, objv, TCL_EVAL_GLOBAL) != TCL_OK) {
-	    Tcl_BackgroundError(interp);
-	}
+    firstFract = 0.0, lastFract = 1.0;
+    if (width > 0) {
+	firstFract = (double)first / (double)width;
+	lastFract = (double)last / (double)width;
     }
-    Tcl_DecrRefCount(listObjPtr);
+    cmdObjPtr = Tcl_DuplicateObj(scrollCmdObjPtr);
+    Tcl_ListObjAppendElement(interp, cmdObjPtr, Tcl_NewDoubleObj(firstFract));
+    Tcl_ListObjAppendElement(interp, cmdObjPtr, Tcl_NewDoubleObj(lastFract));
+    Tcl_IncrRefCount(cmdObjPtr);
+    if (Tcl_EvalObjEx(interp, cmdObjPtr, TCL_EVAL_GLOBAL) != TCL_OK) {
+	Tcl_BackgroundError(interp);
+    }
+    Tcl_DecrRefCount(cmdObjPtr);
 
 }
 
@@ -1033,150 +1137,81 @@ Blt_Draw2DSegments(
 }
 
 void
-Blt_DrawArrowOld(
-    Display *display,
-    Drawable drawable,
-    GC gc,
-    int x, int y,
-    int arrowWidth,
-    int arrowHeight,
-    int orientation)
+Blt_DrawArrowOld(Display *display, Drawable drawable, GC gc, int x, int y, int w, 
+	      int h, int borderWidth, int orientation)
 {
-#define ARROW_PAD	0
-#define TAN30		0.577350269189
-#define COS30		0.866025403785
     XPoint arrow[4];
-    int s;
-    double s2;
-    double d;
-    int cx, cy;
+    int  s2, s;
+    int ax, ay;
 
-    s = MIN(arrowWidth, arrowHeight);
-    s2 = s * 0.5;
+#define ARROW_IPAD 1
+    w -= 2 * (ARROW_IPAD + borderWidth);
+    h -= 2 * (ARROW_IPAD + borderWidth);
+    x += ARROW_IPAD + borderWidth;
+    y += ARROW_IPAD + borderWidth;
 
-    cx = x;
-    cy = y;
+    w |= 0x01;
+    h |= 0x01;
+    s = MIN(w, h);
+    s2 = s / 2;
+    ax = x + w / 2;
+    ay = y + h / 2;
 
     switch (orientation) {
     case ARROW_UP:
-	/*
-	 *            0
-	 *            +
-	 *           / \
-	 *          /   \
-	 *         /     \  a
-	 *        /       \
-	 *   x,y /         \
-	 *      +-----------+
-	 *     1      b      2
-	 */
-	d = s2 * TAN30;
-	arrow[0].x = ROUND(cx - s2);
-	arrow[1].x = ROUND(cx + s2);
-	arrow[2].x = cx;
-	arrow[0].y = arrow[1].y = ROUND(cy + d);
-	d = s2 / COS30;
-	arrow[2].y = ROUND(cy - d);
-	arrow[3] = arrow[0];
+	ay -= s2/2 + 1;
+	arrow[2].x = arrow[0].x = ax;
+	arrow[2].y = arrow[0].y = ay;
+	arrow[0].x = ax + s2 + 1;
+	arrow[1].x = ax - s2;
+	arrow[0].y = arrow[1].y = ay + s2 + 1;
+	fprintf(stderr, "up arrow %d,%d %d,%d %d,%d\n",
+		arrow[0].x, arrow[0].y,
+		arrow[1].x, arrow[1].y,
+		arrow[2].x, arrow[2].y);
 	break;
-
     case ARROW_DOWN:
-	/*
-	 *     1      b      2
-	 *      +-----------+
-	 *       \         /
-	 *        \  x,y  /
-	 *         \     /  a
-	 *          \   /
-	 *           \ /
-	 *            +
-	 *            0
-	 */
-	d = s2 * TAN30;
-	arrow[0].x = ROUND(cx - s2);
-	arrow[1].x = ROUND(cx + s2);
-	arrow[2].x = cx;
-	arrow[0].y = arrow[1].y = ROUND(cy - d);
-	d = s2 / COS30;
-	arrow[2].y = ROUND(cy + d);
-	arrow[3] = arrow[0];
+	ay -= s2/2;
+	arrow[3].x = arrow[0].x = ax;
+	arrow[3].y = arrow[0].y = ay + s2 + 1;
+	arrow[1].x = ax + s2 + 1;
+	arrow[2].x = ax - s2;
+	arrow[2].y = arrow[1].y = ay;
+	fprintf(stderr, "down arrow %d,%d %d,%d %d,%d\n",
+		arrow[0].x, arrow[0].y,
+		arrow[1].x, arrow[1].y,
+		arrow[2].x, arrow[2].y);
 	break;
-
-    case ARROW_RIGHT:
-	/*
-	 *       2
-	 *	 +
-	 *       |\
-	 *       | \
-	 *       |  \ 
-	 *       |   \
-	 *       |    \
-	 *       | x,y + 0
-	 *       |    /
-	 *	 |   /
-	 *       |  /
-	 *       | /
-	 *       |/
-	 *       +
-	 *       1
-	 */
-	d = s2 * TAN30;
-	arrow[0].y = ROUND(cy - s2);
-	arrow[1].y = ROUND(cy + s2);
-	arrow[2].y = cy;
-	arrow[0].x = arrow[1].x = ROUND(cx - d);
-	d = s2 / COS30;
-	arrow[2].x = ROUND(cx + d);
-	arrow[3] = arrow[0];
-	break;
-
     case ARROW_LEFT:
-	/*
-	 *              2
-	 *	       	+
-	 *             /|
-	 *            /	|
-	 *           /	|
-	 *          /	|
-	 *         /  	|
-	 *       0+ x,y |
-	 *         \  	|
-	 *	    \	|
-	 *           \	|
-	 *            \ |
-	 *             \|
-	 *       	+
-	 *             	1
-	 */
-	d = s2 * TAN30;
-	arrow[0].y = ROUND(cy - s2);
-	arrow[1].y = ROUND(cy + s2);
-	arrow[2].y = cy;
-	arrow[0].x = arrow[1].x = ROUND(cx + d);
-	d = s2 / COS30;
-	arrow[2].x = ROUND(cx - d);
-	arrow[3] = arrow[0];
+	ax -= s2 / 2;
+	arrow[3].x = arrow[0].x = ax;
+	arrow[3].y = arrow[0].y = ay;
+	arrow[1].y = ay - s2;
+	arrow[2].y = ay + s2 + 1;
+	arrow[2].x = arrow[1].x = ax + s2 + 1;
 	break;
-
+    case ARROW_RIGHT:
+	ax -= s2 / 2;
+	arrow[3].x = arrow[0].x = ax + s2 + 1;
+	arrow[3].y = arrow[0].y = ay;
+	arrow[1].y = ay - s2;
+	arrow[2].y = ay + s2;
+	arrow[2].x = arrow[1].x = ax;
+	break;
     }
-    XFillPolygon(display, drawable, gc, arrow, 4, Convex, CoordModeOrigin);
-    XDrawLines(display, drawable, gc, arrow, 4, CoordModeOrigin);
+    XFillPolygon(display, drawable, gc, arrow, 3, Convex, CoordModeOrigin);
 }
 
 void
-Blt_DrawArrow(
-    Display *display,
-    Drawable drawable,
-    GC gc,
-    int x, int y, int w, int h,
-    int borderWidth,
-    int orientation)
+Blt_DrawArrow(Display *display, Drawable drawable, XColor *color, int x, int y, 
+	      int w, int h, int borderWidth, int orientation)
 {
     int s;
     int s2;
     int ax, ay;
     int dx, dy;
-    
+    GC gc;
+
 #define ARROW_IPAD 1
     w -= 2 * (ARROW_IPAD + borderWidth);
     h -= 2 * (ARROW_IPAD + borderWidth);
@@ -1184,10 +1219,11 @@ Blt_DrawArrow(
     y += ARROW_IPAD + borderWidth;
 
     s = MIN(w, h);
-    s2 = s / 2;
+    s2 = (s / 2) + 1;
     ax = x + w / 2;
     ay = y + h / 2;
 
+    gc = Tk_GCForColor(color, drawable);
     switch (orientation) {
     case ARROW_UP:
 	ay -= s2 / 2;
@@ -1960,12 +1996,29 @@ ArcBallCmd(ClientData clientData, Tcl_Interp *interp, int objc,
 	   Tcl_Obj *const *objv)
 {
     Tcl_ObjCmdProc *proc;
-    int result;
 
     proc = Blt_GetOpFromObj(interp, nArcBallOps, arcBallOps, BLT_OP_ARG1, 
 			    objc, objv, 0);
     if (proc == NULL) {
 	return TCL_ERROR;
     }
-    result = (*proc) (clientData, interp, objc, objv);
+    return (*proc) (clientData, interp, objc, objv);
+}
+
+#undef Tk_GetPixmap
+Pixmap 
+Blt_GetPixmap(Display *display, Drawable drawable, int w, int h, int depth,
+	      int lineNum, const char *fileName)
+{
+    if (w <= 0) {
+	fprintf(stderr, "line %d of %s: width is %d\n", 
+		lineNum, fileName, w);
+	abort();
+    }
+    if (h <= 0) {
+	fprintf(stderr, "line %d of %s: height is %d\n", 
+		lineNum, fileName, h);
+	abort();
+    }
+    return Tk_GetPixmap(display, drawable, w, h, depth);
 }

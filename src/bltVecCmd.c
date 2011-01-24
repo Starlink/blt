@@ -1038,9 +1038,9 @@ PopulateOp(Vector *vPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 /*
  *---------------------------------------------------------------------------
  *
- * PrintOp --
+ * ValuesOp --
  *
- *	Print the vector.
+ *	Print the values vector.
  *
  * Results:
  *	A standard TCL result.  
@@ -1049,7 +1049,7 @@ PopulateOp(Vector *vPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
  */
 /*ARGSUSED*/
 static int
-PrintOp(Vector *vPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+ValuesOp(Vector *vPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     PrintSwitches switches;
 
@@ -1790,7 +1790,6 @@ SimplifyOp(Vector *vPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     for (i = 0; i < n; i++) {
 	reduced[i] = orig[simple[i]];
     }
-    fprintf(stderr, "length old=%d new=%d\n", nPoints, n);
     Blt_Free(simple);
     Blt_Vec_Reset(vPtr, (double *)reduced, n * 2, vPtr->length, TCL_DYNAMIC);
     /*
@@ -2250,8 +2249,7 @@ static Blt_OpSpec vectorInstOps[] =
     {"normalize", 3, NormalizeOp, 2, 3, "?vecName?",},	/*Deprecated*/
     {"notify",    3, NotifyOp,    3, 3, "keyword",},
     {"offset",    1, OffsetOp,    2, 3, "?offset?",},
-    {"populate",  2, PopulateOp,  4, 4, "vecName density",},
-    {"print",     2, PrintOp,     2, 0, "?switches?",},
+    {"populate",  1, PopulateOp,  4, 4, "vecName density",},
     {"random",    4, RandomOp,    2, 2, "",},	/*Deprecated*/
     {"range",     4, RangeOp,     2, 4, "first last",},
     {"search",    3, SearchOp,    3, 5, "?-value? value ?value?",},
@@ -2260,7 +2258,8 @@ static Blt_OpSpec vectorInstOps[] =
     {"simplify",  2, SimplifyOp,  2, 2, },
     {"sort",      2, SortOp,      2, 0, "?switches? ?vecName...?",},
     {"split",     2, SplitOp,     2, 0, "?vecName...?",},
-    {"variable",  1, MapOp,       2, 3, "?varName?",},
+    {"values",    3, ValuesOp,    2, 0, "?switches?",},
+    {"variable",  3, MapOp,       2, 3, "?varName?",},
 };
 
 static int nInstOps = sizeof(vectorInstOps) / sizeof(Blt_OpSpec);

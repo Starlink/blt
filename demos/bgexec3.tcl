@@ -88,7 +88,7 @@ bitmap define blt.4 {{40 40} {
     fe ff 00 00 00 00 00 00}
 }
 
-set program ../src/bltwish
+set program tclsh
 if { [info exists tcl_platform ] } {
     puts stderr $tcl_platform(platform)
     if { $tcl_platform(platform) == "windows" } {
@@ -97,7 +97,7 @@ if { [info exists tcl_platform ] } {
     }
 }
 if { ![file executable $program] } {
-    error "Can't execute $program"
+#    error "Can't execute $program"
 }
 set command [list $program scripts/bgtest.tcl]
 set animate(index) -1
@@ -180,7 +180,7 @@ proc Start { command } {
     if { $animate(index) < 0 } {
         set results {}
         set animate(index) 0
-        eval "bgexec results -error barney -output fred -killsignal SIGINT \
+        eval "blt::ptyexec -variable results -error barney -output fred -killsignal SIGINT \
 	    -onoutput DisplayOutput -onerror DisplayErrors -linebuffered no \
 		$command &"
         Animate

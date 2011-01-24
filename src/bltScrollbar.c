@@ -33,6 +33,8 @@
 #define DEF_ACTIVE_BACKGROUND	ACTIVE_BG
 #define DEF_ACTIVE_BG_MONO	RGB_BLACK
 #define DEF_ACTIVE_RELIEF	"raised"
+#define DEF_ARROW_COLOR		"black" 
+#define DEF_DISABLED_ARROW_COLOR RGB_GREY50
 #define DEF_BACKGROUND		NORMAL_BG
 #define DEF_BG_MONO		RGB_WHITE
 #define DEF_BORDERWIDTH		"2"
@@ -52,7 +54,7 @@
 #define DEF_TAKE_FOCUS		(char *)NULL
 #define DEF_TROUGH_COLOR	"grey" /*TROUGH*/
 #define DEF_TROUGH_MONO		RGB_WHITE
-#define DEF_WIDTH		"15"
+#define DEF_WIDTH		"3.0m"
 #define DEF_SELECT_RELIEF	"sunken"
 #define SB_WIDTH		15
 
@@ -62,81 +64,93 @@
  */
 
 typedef struct {
-    Tk_Window tkwin;		/* Window that embodies the scrollbar.  NULL
-				 * means that the window has been destroyed
-				 * but the data structures haven't yet been
-				 * cleaned up.*/
-    Display *display;		/* Display containing widget.  Used, among
-				 * other things, so that resources can be
-				 * freed even after tkwin has gone away. */
-    Tcl_Interp *interp;		/* Interpreter associated with scrollbar. */
-    Tcl_Command widgetCmd;	/* Token for scrollbar's widget command. */
-    char *orientation;		/* Orientation for window ("vertical" or
-				 * "horizontal"). */
-    int vertical;		/* Non-zero means vertical orientation
-				 * requested, zero means horizontal. */
-    int width;			/* Desired narrow dimension of scrollbar,
-				 * in pixels. */
-    char *command;		/* Command prefix to use when invoking
-				 * scrolling commands.  NULL means don't
-				 * invoke commands.  Malloc'ed. */
-    int commandSize;		/* Number of non-NULL bytes in command. */
-    int repeatDelay;		/* How long to wait before auto-repeating
-				 * on scrolling actions (in ms). */
-    int repeatInterval;		/* Interval between autorepeats (in ms). */
-    int jump;			/* Value of -jump option. */
+    Tk_Window tkwin;			/* Window that embodies the scrollbar.
+					 * NULL means that the window has been
+					 * destroyed but the data structures
+					 * haven't yet been cleaned up.*/
+    Display *display;			/* Display containing widget.  Used,
+					 * among other things, so that
+					 * resources can be freed even after
+					 * tkwin has gone away. */
+    Tcl_Interp *interp;			/* Interpreter associated with
+					 * scrollbar. */
+    Tcl_Command widgetCmd;		/* Token for scrollbar's widget
+					 * command. */
+    char *orientation;			/* Orientation for window ("vertical"
+					 * or "horizontal"). */
+    int vertical;			/* Non-zero means vertical orientation
+					 * requested, zero means horizontal. */
+    int width;				/* Desired narrow dimension of
+					 * scrollbar, in pixels. */
+    char *command;			/* Command prefix to use when invoking
+					 * scrolling commands.  NULL means don't
+					 * invoke commands.  Malloc'ed. */
+    int commandSize;			/* Number of non-NULL bytes in
+					 * command. */
+    int repeatDelay;			/* How long to wait before
+					 * auto-repeating on scrolling actions
+					 * (in * ms). */
+    int repeatInterval;			/* Interval between autorepeats (in
+					 * ms). */
+    int jump;				/* Value of -jump option. */
 
     /*
      * Information used when displaying widget:
      */
-
-    int borderWidth;		/* Width of 3-D borders. */
-    Blt_Background bg;		/* Used for drawing background (all flat
-				 * surfaces except for trough). */
-    Blt_Background activeBg;	/* For drawing backgrounds when active (i.e.
-				 * when mouse is positioned over element). */
+    int borderWidth;			/* Width of 3-D borders. */
+    Blt_Background bg;			/* Used for drawing background (all flat
+					 * surfaces except for trough). */
+    Blt_Background activeBg;		/* For drawing backgrounds when active
+					 * (i.e.  when mouse is positioned
+					 * over element). */
     Blt_Background selBg;
-    Blt_Background troughBg;	/* For drawing trough. */
-    GC copyGC;			/* Used for copying from pixmap onto
-				   screen. */
-    GC arrowGC;			/* Used for drawing the arrow. */
-    int relief;			/* Indicates whether window as a whole is
-				 * raised, sunken, or flat. */
-    int highlightWidth;		/* Width in pixels of highlight to draw around
-				 * widget when it has the focus.  <= 0 means
-				 * don't draw a highlight. */
-    XColor *highlightBgColorPtr;
-    /* Color for drawing traversal highlight
-				 * area when highlight is off. */
-    XColor *highlightColorPtr;	/* Color for drawing traversal highlight. */
-    int inset;			/* Total width of all borders, including
-				 * traversal highlight and 3-D border.
-				 * Indicates how much interior stuff must be
-				 * offset from outside edges to leave room for
-				 * borders. */
-    int minSliderLength;	/* Minimum size of thumb. */
-    int elementBorderWidth;	/* Width of border to draw around elements
-				 * inside scrollbar (arrows and slider).  -1
-				 * means use borderWidth. */
-    int arrowLength;		/* Length of arrows along long dimension of
-				 * scrollbar, including space for a small gap
-				 * between the arrow and the slider.
-				 * Recomputed on window size changes. */
-    int sliderFirst;		/* Pixel coordinate of top or left edge of
-				 * slider area, including border. */
-    int sliderLast;		/* Coordinate of pixel just after bottom or
-				 * right edge of slider area, including
-				 * border. */
-    int activeField;		/* Names field to be displayed in active
-				 * colors, such as TOP_ARROW, or 0 for no
-				 * field. */
-    int activeRelief;		/* Value of -activeRelief option: relief to
-				 * use for active element. */
-
+    Blt_Background troughBg;		/* For drawing trough. */
+    GC copyGC;				/* Used for copying from pixmap onto
+					   screen. */
+    XColor *disabledArrowColor;		/* Used for drawing the arrow. */
+    XColor *arrowColor;			/* Used for drawing the arrow. */
+    int relief;				/* Indicates whether window as a whole
+					 * is raised, sunken, or flat. */
+    int highlightWidth;			/* Width in pixels of highlight to
+					 * draw around widget when it has the
+					 * focus.  <= 0 means don't draw a
+					 * highlight. */
+    XColor *highlightBgColorPtr;	/* Color for drawing traversal
+					 * highlight area when highlight is
+					 * off. */
+    XColor *highlightColorPtr;		/* Color for drawing traversal
+					 * highlight. */
+    int inset;				/* Total width of all borders,
+					 * including traversal highlight and
+					 * 3-D * border.  Indicates how much
+					 * interior stuff must be offset from
+					 * outside edges to leave room for
+					 * borders. */
+    int minSliderLength;		/* Minimum size of thumb. */
+    int elementBW;			/* Width of border to draw around
+					 * elements inside scrollbar (arrows
+					 * and * slider).  -1 means use
+					 * borderWidth. */
+    int arrowLength;			/* Length of arrows along long
+					 * dimension of scrollbar, including
+					 * space for a small gap between the
+					 * arrow and the slider.  Recomputed
+					 * on window size changes. */
+    int sliderFirst;			/* Pixel coordinate of top or left
+					 * edge of slider area, including
+					 * border. */
+    int sliderLast;			/* Coordinate of pixel just after
+					 * bottom or right edge of slider
+					 * area, including border. */
+    int activeField;			/* Names field to be displayed in
+					 * active colors, such as TOP_ARROW,
+					 * or 0 for no field. */
+    int activeRelief;			/* Value of -activeRelief option:
+					 * relief to use for active element. */
     int selRelief;
-    int selField;		/* Names field to be displayed in active
-				 * colors, such as TOP_ARROW, or 0 for no
-				 * field. */
+    int selField;			/* Names field to be displayed in
+					 * active colors, such as TOP_ARROW,
+					 * or 0 for no field. */
    /*
      * Information describing the application related to the scrollbar.  This
      * information is provided by the application by invoking the "set" widget
@@ -147,36 +161,39 @@ typedef struct {
      * the NEW_STYLE_COMMANDS flag is 0.
      */
 
-    int totalUnits;		/* Total dimension of application, in units.
-				 * Valid only if the NEW_STYLE_COMMANDS flag
-				 * isn't set. */
-    int windowUnits;		/* Maximum number of units that can be
-				 * displayed in the window at once.  Valid
-p				 * only if the NEW_STYLE_COMMANDS flag isn't
-				 * set. */
-    int firstUnit;		/* Number of last unit visible in
-				 * application's window.  Valid only if the
-				 * NEW_STYLE_COMMANDS flag isn't set. */
-    int lastUnit;		/* Index of last unit visible in window.
-				 * Valid only if the NEW_STYLE_COMMANDS flag
-				 * isn't set. */
-    double firstFraction;	/* Position of first visible thing in window,
-				 * specified as a fraction between 0 and
-				 * 1.0. */
-    double lastFraction;	/* Position of last visible thing in window,
-				 * specified as a fraction between 0 and
-				 * 1.0. */
-
+    int totalUnits;			/* Total dimension of application, in
+					 * units.  Valid only if the
+					 * NEW_STYLE_COMMANDS flag isn't
+					 * set. */
+    int windowUnits;			/* Maximum number of units that can be
+					 * displayed in the window at once.
+					 * Valid * only if the
+					 * NEW_STYLE_COMMANDS flag isn't
+					 * set. */
+    int firstUnit;			/* Number of last unit visible in
+					 * application's window.  Valid only
+					 * if the NEW_STYLE_COMMANDS flag
+					 * isn't set. */
+    int lastUnit;			/* Index of last unit visible in
+					 * window.  Valid only if the
+					 * NEW_STYLE_COMMANDS flag isn't set. */
+    double firstFraction;		/* Position of first visible thing in
+					 * window, specified as a fraction
+					 * between 0 and 1.0. */
+    double lastFraction;		/* Position of last visible thing in
+					 * window, specified as a fraction
+					 * between 0 and 1.0. */
     /*
      * Miscellaneous information:
      */
-
-    Tk_Cursor cursor;		/* Current cursor for window, or None. */
-    char *takeFocus;		/* Value of -takefocus option; not used in the
-				 * C code, but used by keyboard traversal
-				 * scripts.  Malloc'ed, but may be NULL. */
-    int flags;			/* Various flags;  see below for
-				 * definitions. */
+    Tk_Cursor cursor;			/* Current cursor for window, or
+					 * None. */
+    char *takeFocus;			/* Value of -takefocus option; not
+					 * used in the C code, but used by
+					 * keyboard traversal scripts.
+					 * Malloc'ed, but may be * NULL. */
+    int flags;				/* Various flags;  see below for
+					 * definitions. */
 } Scrollbar;
 
 /*
@@ -230,6 +247,8 @@ static Blt_ConfigSpec configSpecs[] =
 	BLT_CONFIG_MONO_ONLY},
     {BLT_CONFIG_RELIEF, "-activerelief", "activeRelief", "Relief",
 	DEF_ACTIVE_RELIEF, Blt_Offset(Scrollbar, activeRelief), 0},
+    {BLT_CONFIG_COLOR, "-arrowcolor", "arrowColor", "ArrowColor", 
+	DEF_ARROW_COLOR, Blt_Offset(Scrollbar, arrowColor), 0},
     {BLT_CONFIG_BACKGROUND, "-background", "background", "Background",
 	DEF_BACKGROUND, Blt_Offset(Scrollbar, bg), BLT_CONFIG_COLOR_ONLY},
     {BLT_CONFIG_BACKGROUND, "-background", "background", "Background",
@@ -246,9 +265,12 @@ static Blt_ConfigSpec configSpecs[] =
 	BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_ACTIVE_CURSOR, "-cursor", "cursor", "Cursor",
 	DEF_CURSOR, Blt_Offset(Scrollbar, cursor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-diabledarrowcolor", "disabledArrowColor", 
+	"DisabledArrowColor", DEF_DISABLED_ARROW_COLOR, 
+	Blt_Offset(Scrollbar, disabledArrowColor), 0},
     {BLT_CONFIG_PIXELS, "-elementborderwidth", "elementBorderWidth",
 	"BorderWidth", DEF_ELEMENT_BORDERWIDTH,
-	Blt_Offset(Scrollbar, elementBorderWidth), BLT_CONFIG_DONT_SET_DEFAULT},
+	Blt_Offset(Scrollbar, elementBW), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_COLOR, "-highlightbackground", "highlightBackground",
 	"HighlightBackground", DEF_HIGHLIGHT_BG,
 	Blt_Offset(Scrollbar, highlightBgColorPtr), 0},
@@ -282,7 +304,7 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_BACKGROUND, "-troughcolor", "troughColor", "Background",
 	DEF_TROUGH_COLOR, Blt_Offset(Scrollbar, troughBg), 0},
     {BLT_CONFIG_PIXELS, "-width", "width", "Width", DEF_WIDTH, 
-	Blt_Offset(Scrollbar, width), BLT_CONFIG_DONT_SET_DEFAULT},
+	Blt_Offset(Scrollbar, width), 0},
     {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL,
 	(char *)NULL, 0, 0}
 };
@@ -394,7 +416,7 @@ ScrollbarCmd(
 	Tk_PathName(sp->tkwin), ScrollbarWidgetCmd,
 	(ClientData)sp, ScrollbarCmdDeletedProc);
     sp->relief = TK_RELIEF_FLAT;
-    sp->elementBorderWidth = 2;
+    sp->elementBW = 2;
     sp->borderWidth = 1;
     sp->selRelief = TK_RELIEF_SUNKEN;
     sp->activeRelief = TK_RELIEF_RAISED;
@@ -402,7 +424,7 @@ ScrollbarCmd(
     
     sp->width = SB_WIDTH;
 
-    Tk_SetClass(sp->tkwin, "ScrollBar");
+    Tk_SetClass(sp->tkwin, "TkScrollbar");
     Tk_CreateEventHandler(sp->tkwin, 
 	ExposureMask | StructureNotifyMask | FocusChangeMask,
 	ScrollbarEventProc, (ClientData)sp);
@@ -458,7 +480,8 @@ ScrollbarWidgetCmd(ClientData clientData, Tcl_Interp *interp, int objc,
      * deferred sourcing the file until now so that the variable $blt_library
      * could be set within a script.
      */
-    if (!Tcl_GetCommandInfo(interp, "::blt::ScrollPage", &cmdInfo)) {
+    if (!Tcl_GetCommandInfo(interp, "::blt::TkScrollbar::ScrollButtonDown", 
+			    &cmdInfo)) {
 	static char cmd[] = "source [file join $blt_library scrollbar.tcl]";
 
 	if (Tcl_GlobalEval(interp, cmd) != TCL_OK) {
@@ -741,9 +764,6 @@ DestroyScrollbar(DestroyData *memPtr) /* Info about scrollbar widget. */
     if (scrollPtr->copyGC != None) {
 	Tk_FreeGC(scrollPtr->display, scrollPtr->copyGC);
     }
-    if (scrollPtr->arrowGC != None) {
-	Tk_FreeGC(scrollPtr->display, scrollPtr->arrowGC);
-    }
     Blt_FreeOptions(configSpecs, (char *)scrollPtr, scrollPtr->display, 0);
     Blt_Free(scrollPtr);
 }
@@ -804,7 +824,6 @@ ConfigureScrollbar(
 {
     size_t length;
     XGCValues gcValues;
-    GC new;
 
     if (Blt_ConfigureWidgetFromObj(interp, scrollPtr->tkwin, configSpecs,
 	    objc, objv, (char *)scrollPtr, flags) != TCL_OK) {
@@ -845,14 +864,6 @@ ConfigureScrollbar(
 	scrollPtr->copyGC = Tk_GetGC(scrollPtr->tkwin, GCGraphicsExposures,
 	    &gcValues);
     }
-    gcValues.foreground = BlackPixel(
-	Tk_Display(scrollPtr->tkwin), Tk_ScreenNumber(scrollPtr->tkwin));
-    new = Tk_GetGC(scrollPtr->tkwin, GCForeground, &gcValues);
-    if (scrollPtr->arrowGC != None) {
-	Tk_FreeGC(scrollPtr->display, scrollPtr->arrowGC);
-    }
-    scrollPtr->arrowGC = new;
-
     /*
      * Register the desired geometry for the window (leave enough space for
      * the two arrows plus a minimum-size slider, plus border around the whole
@@ -885,24 +896,30 @@ ConfigureScrollbar(
 static void
 DisplayScrollbar(ClientData clientData)	/* Information about window. */
 {
-    Scrollbar *scrollPtr = clientData;
-    Tk_Window tkwin = scrollPtr->tkwin;
-    XPoint points[7];
     Blt_Background bg;
-    int relief, width, elementBorderWidth;
+    XColor *fg;
     Pixmap pixmap;
+    Scrollbar *scrollPtr = clientData;
+    Tk_Window tkwin;
+    XPoint points[7];
+    int relief, width, elementBW;
 
-    if ((scrollPtr->tkwin == NULL) || !Tk_IsMapped(tkwin)) {
-	goto done;
+    scrollPtr->flags &= ~REDRAW_PENDING;
+    tkwin = scrollPtr->tkwin;
+    if ((tkwin == NULL) || !Tk_IsMapped(tkwin)) {
+	return;
+    }
+    if ((Tk_Width(tkwin) <= 1) || (Tk_Height(tkwin) <= 1)) {
+	return;
     }
     if (scrollPtr->vertical) {
 	width = Tk_Width(tkwin) - 2 * scrollPtr->inset;
     } else {
 	width = Tk_Height(tkwin) - 2 * scrollPtr->inset;
     }
-    elementBorderWidth = scrollPtr->elementBorderWidth;
-    if (elementBorderWidth < 0) {
-	elementBorderWidth = scrollPtr->borderWidth;
+    elementBW = scrollPtr->elementBW;
+    if (elementBW < 0) {
+	elementBW = scrollPtr->borderWidth;
     }
 
     /*
@@ -964,11 +981,12 @@ DisplayScrollbar(ClientData clientData)	/* Information about window. */
 	points[2].y = width + scrollPtr->inset;
     }
     Blt_FillBackgroundRectangle(tkwin, pixmap, bg, scrollPtr->inset, 
-       scrollPtr->inset, width, width, elementBorderWidth, relief); 
+       scrollPtr->inset, width, width, elementBW, relief); 
     
-    Blt_DrawArrow(scrollPtr->display, pixmap, scrollPtr->arrowGC, 
-	scrollPtr->inset, scrollPtr->inset, width, width, 
-	elementBorderWidth, 
+    fg = (scrollPtr->firstFraction <= 0.0) 
+	? scrollPtr->disabledArrowColor : scrollPtr->arrowColor;
+    Blt_DrawArrow(scrollPtr->display, pixmap, fg,
+	scrollPtr->inset+1, scrollPtr->inset+1, width-2, width-2, elementBW, 
 	(scrollPtr->vertical) ? ARROW_UP : ARROW_LEFT);
     /*
      * Display the bottom or right arrow.
@@ -1001,20 +1019,22 @@ DisplayScrollbar(ClientData clientData)	/* Information about window. */
 	points[2].y = width / 2 + scrollPtr->inset;
     }
 #ifdef notdef
-    Blt_FillBackgroundPolygon(tkwin, pixmap, bg, points, 3, elementBorderWidth,
+    Blt_FillBackgroundPolygon(tkwin, pixmap, bg, points, 3, elementBW,
 	relief);
     }
 #else
     Blt_FillBackgroundRectangle(tkwin, pixmap, bg, 
 		       Tk_Width(tkwin) - (width + scrollPtr->inset), 
 		       Tk_Height(tkwin) - (width + scrollPtr->inset),
-		       width, width, elementBorderWidth, relief); 
+		       width, width, elementBW, relief); 
     
-    Blt_DrawArrow(scrollPtr->display, pixmap, scrollPtr->arrowGC, 
-	Tk_Width(tkwin) - scrollPtr->inset - width, 
-	Tk_Height(tkwin) - scrollPtr->inset - width, 
-	width, width, elementBorderWidth,
-	(scrollPtr->vertical) ? ARROW_DOWN : ARROW_RIGHT);
+    fg = (scrollPtr->lastFraction >= 1.0) 
+	? scrollPtr->disabledArrowColor : scrollPtr->arrowColor;
+    Blt_DrawArrow(scrollPtr->display, pixmap, fg, 
+	Tk_Width(tkwin) - scrollPtr->inset - width + 1, 
+	Tk_Height(tkwin) - scrollPtr->inset - width + 1, 
+	width - 2, width - 2, 
+	elementBW, (scrollPtr->vertical) ? ARROW_DOWN : ARROW_RIGHT);
 #endif    
     /*
      * Display the slider.
@@ -1033,12 +1053,12 @@ DisplayScrollbar(ClientData clientData)	/* Information about window. */
 	Blt_FillBackgroundRectangle(tkwin, pixmap, bg, scrollPtr->inset, 
 		scrollPtr->sliderFirst, width, 
 		scrollPtr->sliderLast - scrollPtr->sliderFirst,
-		elementBorderWidth, relief);
+		elementBW, relief);
     } else {
 	Blt_FillBackgroundRectangle(tkwin, pixmap, bg, scrollPtr->sliderFirst, 
 		scrollPtr->inset, 
 		scrollPtr->sliderLast - scrollPtr->sliderFirst, width,
-		elementBorderWidth, relief);
+		elementBW, relief);
     }
 
     /*
@@ -1050,8 +1070,6 @@ DisplayScrollbar(ClientData clientData)	/* Information about window. */
 	scrollPtr->copyGC, 0, 0, (unsigned)Tk_Width(tkwin),
 	(unsigned)Tk_Height(tkwin), 0, 0);
     Tk_FreePixmap(scrollPtr->display, pixmap);
-  done:
-    scrollPtr->flags &= ~REDRAW_PENDING;
 }
 
 /*

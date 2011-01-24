@@ -65,21 +65,21 @@ typedef struct {
     Blt_TreeNode node;
 
     /* Public fields */
-    Blt_DataTableIterator rIter, cIter;
-    Blt_DataTableIterator hIter;
+    Blt_TableIterator rIter, cIter;
+    Blt_TableIterator hIter;
     Tcl_Obj *nodeObjPtr;
 } ExportSwitches;
 
-BLT_EXTERN Blt_SwitchFreeProc Blt_DataTable_ColumnIterFreeProc;
-BLT_EXTERN Blt_SwitchFreeProc Blt_DataTable_RowIterFreeProc;
-BLT_EXTERN Blt_SwitchParseProc Blt_DataTable_ColumnIterSwitchProc;
-BLT_EXTERN Blt_SwitchParseProc Blt_DataTable_RowIterSwitchProc;
+BLT_EXTERN Blt_SwitchFreeProc Blt_Table_ColumnIterFreeProc;
+BLT_EXTERN Blt_SwitchFreeProc Blt_Table_RowIterFreeProc;
+BLT_EXTERN Blt_SwitchParseProc Blt_Table_ColumnIterSwitchProc;
+BLT_EXTERN Blt_SwitchParseProc Blt_Table_RowIterSwitchProc;
 
 static Blt_SwitchCustom columnIterSwitch = {
-    Blt_DataTable_ColumnIterSwitchProc, Blt_DataTable_ColumnIterFreeProc, 0,
+    Blt_Table_ColumnIterSwitchProc, Blt_Table_ColumnIterFreeProc, 0,
 };
 static Blt_SwitchCustom rowIterSwitch = {
-    Blt_DataTable_RowIterSwitchProc, Blt_DataTable_RowIterFreeProc, 0,
+    Blt_Table_RowIterSwitchProc, Blt_Table_RowIterFreeProc, 0,
 };
 
 static Blt_SwitchSpec exportSwitches[] = 
@@ -95,13 +95,13 @@ static Blt_SwitchSpec exportSwitches[] =
     {BLT_SWITCH_END}
 };
 
-DLLEXPORT extern Tcl_AppInitProc Blt_DataTable_TreeInit;
+DLLEXPORT extern Tcl_AppInitProc Blt_Table_TreeInit;
 
-static Blt_DataTable_ImportProc ImportTreeProc;
-static Blt_DataTable_ExportProc ExportTreeProc;
+static Blt_TableImportProc ImportTreeProc;
+static Blt_TableExportProc ExportTreeProc;
 
 static int
-ImportTree(Tcl_Interp *interp, Blt_DataTable table, Blt_Tree tree, 
+ImportTree(Tcl_Interp *interp, Blt_Table table, Blt_Tree tree, 
 	   Blt_TreeNode top)
 {
     Blt_TreeNode node;
@@ -118,39 +118,37 @@ ImportTree(Tcl_Interp *interp, Blt_DataTable table, Blt_Tree tree,
     /* Pass 1.  Create entries for all the nodes. Add entries for 
      *          the node and it's ancestor's labels. */
     maxDepth = topDepth = Blt_Tree_NodeDepth(top);
-    nCols = Blt_DataTable_NumColumns(table);
+    nCols = Blt_Table_NumColumns(table);
     for (node = Blt_Tree_NextNode(top, top); node != NULL;
 	 node = Blt_Tree_NextNode(top, node)) {
 	Blt_TreeNode parent;
 	int depth;
-	Blt_DataTableRow row;
+	Blt_TableRow row;
 	size_t iCol;
 
 	depth = Blt_Tree_NodeDepth(node);
 	if (depth > maxDepth) {
-	    Blt_DataTableColumn col;
+	    Blt_TableColumn col;
 
-	    if (Blt_DataTable_ExtendColumns(interp, table, 1, &col) != TCL_OK) {
+	    if (Blt_Table_ExtendColumns(interp, table, 1, &col) != TCL_OK) {
 		return TCL_ERROR;
 	    }
-	    iCol = Blt_DataTable_ColumnIndex(col);
+	    iCol = Blt_Table_ColumnIndex(col);
 	    maxDepth = depth;
 	} else {
 	    iCol = depth - topDepth;
 	}
-	if (Blt_DataTable_ExtendRows(interp, table, 1, &row) != TCL_OK) {
+	if (Blt_Table_ExtendRows(interp, table, 1, &row) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 	for (parent = node; parent != top; 
 	     parent = Blt_Tree_ParentNode(parent)){
-	    Tcl_Obj *objPtr;
 	    const char *label;
-	    Blt_DataTableColumn col;
+	    Blt_TableColumn col;
 
-	    col = Blt_DataTable_GetColumnByIndex(table, iCol);
+	    col = Blt_Table_FindColumnByIndex(table, iCol);
 	    label = Blt_Tree_NodeLabel(parent);
-	    objPtr = Tcl_NewStringObj(label, -1);
-	    if (Blt_DataTable_SetValue(table, row, col, objPtr) != TCL_OK) {
+	    if (Blt_Table_SetString(table, row, col, label, -1)!=TCL_OK) {
 		return TCL_ERROR;
 	    }
 	    iCol--;
@@ -161,25 +159,25 @@ ImportTree(Tcl_Interp *interp, Blt_DataTable table, Blt_Tree tree,
 	 node = Blt_Tree_NextNode(top, node), iRow++) {
 	Blt_TreeKey key;
 	Blt_TreeKeyIterator iter;
-	Blt_DataTableRow row;
+	Blt_TableRow row;
 
-	row = Blt_DataTable_GetRowByIndex(table, iRow);
+	row = Blt_Table_FindRowByIndex(table, iRow);
 	for (key = Blt_Tree_FirstKey(tree, node, &iter); key != NULL;
 	     key = Blt_Tree_NextKey(tree, &iter)) {
-	    Blt_DataTableColumn col;
+	    Blt_TableColumn col;
 	    Tcl_Obj *objPtr;
 
 	    if (Blt_Tree_GetValue(interp, tree, node, key, &objPtr) != TCL_OK) {
 		return TCL_ERROR;
 	    }
-	    col = Blt_DataTable_GetColumnByLabel(table, key);
+	    col = Blt_Table_FindColumnByLabel(table, key);
 	    if (col == NULL) {
-		col = Blt_DataTable_CreateColumn(interp, table, key);
+		col = Blt_Table_CreateColumn(interp, table, key);
 		if (col == NULL) {
 		    return TCL_ERROR;
 		}
 	    }
-	    if (Blt_DataTable_SetValue(table, row, col, objPtr) != TCL_OK) {
+	    if (Blt_Table_SetObj(table, row, col, objPtr) != TCL_OK) {
 		return TCL_ERROR;
 	    }
 	}
@@ -188,7 +186,7 @@ ImportTree(Tcl_Interp *interp, Blt_DataTable table, Blt_Tree tree,
 }
 
 static int
-ImportTreeProc(Blt_DataTable table, Tcl_Interp *interp, int objc, 
+ImportTreeProc(Blt_Table table, Tcl_Interp *interp, int objc, 
 	       Tcl_Obj *const *objv)
 {
     Blt_Tree tree;
@@ -219,26 +217,26 @@ ImportTreeProc(Blt_DataTable table, Tcl_Interp *interp, int objc,
 }
 
 static int
-ExportTree(Tcl_Interp *interp, Blt_DataTable table, Blt_Tree tree, 
+ExportTree(Tcl_Interp *interp, Blt_Table table, Blt_Tree tree, 
 	   Blt_TreeNode parent, ExportSwitches *switchesPtr) 
 {
-    Blt_DataTableRow row;
+    Blt_TableRow row;
 
-    for (row = Blt_DataTable_FirstRow(&switchesPtr->rIter); row != NULL;
-	 row = Blt_DataTable_NextRow(&switchesPtr->rIter)) {
-	Blt_DataTableColumn col;
+    for (row = Blt_Table_FirstTaggedRow(&switchesPtr->rIter); row != NULL;
+	 row = Blt_Table_NextTaggedRow(&switchesPtr->rIter)) {
+	Blt_TableColumn col;
 	Blt_TreeNode node;
 	const char *label;
 
-	label = Blt_DataTable_RowLabel(row);
+	label = Blt_Table_RowLabel(row);
 	node = Blt_Tree_CreateNode(tree, parent, label, -1);
-	for (col = Blt_DataTable_FirstColumn(&switchesPtr->cIter); col != NULL;
-	     col = Blt_DataTable_NextColumn(&switchesPtr->cIter)) {
+	for (col = Blt_Table_FirstTaggedColumn(&switchesPtr->cIter); col != NULL;
+	     col = Blt_Table_NextTaggedColumn(&switchesPtr->cIter)) {
 	    Tcl_Obj *objPtr;
 	    const char *key;
 
-	    objPtr = Blt_DataTable_GetValue(table, row, col);
-	    key = Blt_DataTable_ColumnLabel(col);
+	    objPtr = Blt_Table_GetObj(table, row, col);
+	    key = Blt_Table_ColumnLabel(col);
 	    if (Blt_Tree_SetValue(interp, tree, node, key, objPtr) != TCL_OK) {
 		return TCL_ERROR;
 	    }		
@@ -248,7 +246,7 @@ ExportTree(Tcl_Interp *interp, Blt_DataTable table, Blt_Tree tree,
 }
 
 static int
-ExportTreeProc(Blt_DataTable table, Tcl_Interp *interp, int objc, 
+ExportTreeProc(Blt_Table table, Tcl_Interp *interp, int objc, 
 	       Tcl_Obj *const *objv)
 {
     Blt_Tree tree;
@@ -269,8 +267,8 @@ ExportTreeProc(Blt_DataTable table, Tcl_Interp *interp, int objc,
     memset(&switches, 0, sizeof(switches));
     rowIterSwitch.clientData = table;
     columnIterSwitch.clientData = table;
-    Blt_DataTable_IterateAllRows(table, &switches.rIter);
-    Blt_DataTable_IterateAllColumns(table, &switches.cIter);
+    Blt_Table_IterateAllRows(table, &switches.rIter);
+    Blt_Table_IterateAllColumns(table, &switches.cIter);
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 4, objv + 4, &switches,
 	BLT_SWITCH_DEFAULTS) < 0) {
 	return TCL_ERROR;
@@ -294,7 +292,7 @@ ExportTreeProc(Blt_DataTable table, Tcl_Interp *interp, int objc,
 }
 
 int 
-Blt_DataTable_TreeInit(Tcl_Interp *interp)
+Blt_Table_TreeInit(Tcl_Interp *interp)
 {
 #ifdef USE_TCL_STUBS
     if (Tcl_InitStubs(interp, TCL_VERSION, 1) == NULL) {
@@ -307,7 +305,7 @@ Blt_DataTable_TreeInit(Tcl_Interp *interp)
     if (Tcl_PkgProvide(interp, "blt_datatable_tree", BLT_VERSION) != TCL_OK) { 
 	return TCL_ERROR;
     }
-    return Blt_DataTable_RegisterFormat(interp,
+    return Blt_Table_RegisterFormat(interp,
         "tree",			/* Name of format. */
 	ImportTreeProc,		/* Import procedure. */
 	ExportTreeProc);	/* Export procedure. */

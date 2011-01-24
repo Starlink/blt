@@ -85,11 +85,11 @@ BLT_EXTERN Tcl_Obj *Blt_DBuffer_StringObj(Blt_DBuffer buffer);
 	((s)->count = (i), (s)->bytes[(s)->count] = '\0')
 #define Blt_DBuffer_IncrLength(s,i)	((s)->count += (i))
 
-BLT_EXTERN int Blt_DBuffer_DecodeBase64(Tcl_Interp *interp, const char *string,
-	size_t length, Blt_DBuffer buffer);
+BLT_EXTERN int Blt_DBuffer_DecodeBase64(Tcl_Interp *interp, 
+	const char *string, size_t length, Blt_DBuffer buffer);
 BLT_EXTERN char *Blt_DBuffer_EncodeBase64(Tcl_Interp *interp, 
 	Blt_DBuffer buffer);
 
-BLT_EXTERN int Blt_IsBase64(const char *bytes, size_t length);
+BLT_EXTERN int Blt_IsBase64(const unsigned char *bytes, size_t length);
 
 #endif /*_BLT_DBUFFER_H*/

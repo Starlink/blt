@@ -1,30 +1,23 @@
 
 namespace eval ::blt::ComboMenu {
-    variable privateData
-    array set privateData {
-	afterId		-1
-	b1		{}
-        activeComboMenu {}
-        activeItem      {}
-        afterId         {}
-        buttons         0
-        buttonWindow    {}
-        dragging        0
-        focus           {}
-        grab            {}
-        initPos         {}
-        inComboMenubutton    {}
-        listboxPrev     {}
-        menuBar         {}
-        mouseMoved      0
-        oldGrab         {}
-        popup           {}
-        popup           {}
-        postedMb        {}
-        pressX          0
-        pressY          0
-        prevPos         0
-        selectMode      char
+    variable _private
+    array set _private {
+        activeComboMenu ""
+        activeItem      ""
+        afterId         -1
+        b1              ""
+        lastFocus	""
+        menuBar         ""
+        oldGrab         ""
+        popup           ""
+        postingMenu     ""
+        trace           0
+    }
+    proc trace { mesg } {
+	variable _private 
+	if { $_private(trace) } {
+	    puts stderr $mesg
+	}
     }
 }
 
@@ -40,52 +33,51 @@ namespace eval ::blt::ComboMenu {
 bind ComboMenu <FocusIn> {}
 
 bind ComboMenu <Enter> { 
-    puts stderr "ComboMenu %W <Enter>"
+    blt::ComboMenu::trace "blt::ComboMenu %W <Enter>"
     focus %W
 }
 
 bind ComboMenu <Leave> { 
-    puts stderr "ComboMenu %W <Leave> %s"
+    blt::ComboMenu::trace "blt::ComboMenu %W <Leave> %s"
     if { %s == 0 } {
 	#%W activate none 
     }
 }
 
 bind ComboMenu <Motion> { 
-    #puts stderr "ComboMenu Motion %x,%y"
+    #blt::ComboMenu::trace "blt::ComboMenu Motion %x,%y"
     %W activate @%x,%y 
     %W postcascade active
 }
 
 bind ComboMenu <ButtonRelease-1> { 
-    puts stderr "ComboMenu %W at %x,%y ButtonRelease-1"
+    blt::ComboMenu::trace "blt::ComboMenu %W at %x,%y ButtonRelease-1"
     set index [%W index @%x,%y]
     if { $index == -1 } {
-	puts stderr "failed to find item in %W"
-	event generate [grab current] <ButtonRelease-1> 
+	blt::ComboMenu::trace "ButtonRelease-1: failed to find item in %W"
+	blt::ComboMenu::SimulateButtonRelease %W
     } else {
 	%W activate $index
-	puts stderr "activated $index"
+	blt::ComboMenu::trace "ButtonRelease-1: activated $index"
 	if { [%W type active] == "cascade" } {
+	    blt::ComboMenu::trace "ButtonRelease-1: posting cascade for $index"
 	    %W postcascade active
-	    puts stderr "posting cascade for $index"
 	    blt::ComboMenu::PostMenu %W active
 	} else {
-	    puts stderr "invoking active $index"
+	    blt::ComboMenu::trace "ButtonRelease-1: %W invoke active ($index)"
+	    blt::ComboMenu::SimulateButtonRelease %W
+	    update
 	    %W invoke active
-	    if { [grab current] != "%W" } {
-		event generate [grab current] <ButtonRelease-1> 
-	    }
 	}
     }
 }
 
 bind ComboMenu <ButtonPress-1> { 
-    puts stderr "ComboMenu ButtonPress-1"
+    blt::ComboMenu::trace "blt::ComboMenu ButtonPress-1"
 }
 
-
 bind ComboMenu <ButtonPress-2> { 
+    blt::ComboMenu::trace "blt::ComboMenu %W ButtonPress-2"
     set w [grab current]
     $w configure -cursor diamond_cross
     update
@@ -96,8 +88,21 @@ bind ComboMenu <B2-Motion> {
 }
 
 bind ComboMenu <ButtonRelease-2> { 
+    blt::ComboMenu::trace "blt::ComboMenu %W ButtonRelease-2"
     set w [grab current]
     $w configure -cursor arrow
+}
+
+bind ComboMenu <ButtonPress-3> { 
+    blt::ComboMenu::trace "blt::ComboMenu ButtonPress-3"
+    blt::ComboMenu::UnpostMenu %W
+}
+
+bind xComboMenu <ButtonRelease-3> { 
+    blt::ComboMenu::trace "blt::ComboMenu ButtonRelease-3"
+    if { $blt::ComboMenu::_private(popup) != "" } {
+	blt::ComboMenu::popup %W %X %Y
+    }
 }
 
 bind ComboMenu <KeyPress-space> {
@@ -105,8 +110,8 @@ bind ComboMenu <KeyPress-space> {
 	%W postcascade active
 	blt::ComboMenu::PostMenu %W active
     } else {
+	blt::ComboMenu::SimulateButtonRelease %W
 	%W invoke active
-	event generate [grab current] <ButtonRelease-1> 
     }
 }
 
@@ -114,35 +119,41 @@ bind ComboMenu <KeyRelease> {
     if { [string compare %A {}] == 0 } {
 	continue
     }
-    set index [%W find underline %A]
+    set index [%W find "%A" -underline]
     if { $index >= 0 } {
 	%W activate $index
 	%W see $index
     }
 }
 
+# KeyPress-Return -- 
+#
+#	If the menu item selected is a cascade menu, then post the cascade.
+#	Otherwise tell the combobutton or comboentry that we've selected 
+#	something by simulating a button release.  This will unpost all the
+#	posted menus. Set the root coordinates of the event to be offscreen 
+#	so that we don't inadvertantly lie over the arrow of the button.
+#
 bind ComboMenu <KeyPress-Return> {
     if { [%W type active] == "cascade" } {
 	%W postcascade active
 	blt::ComboMenu::PostMenu %W active
     } else {
 	%W invoke active
-	event generate [grab current] <ButtonRelease-1> 
+	blt::ComboMenu::SimulateButtonRelease %W 
     }
 }
 
 bind ComboMenu <Escape> {
-    event generate [grab current] <ButtonPress-1> 
+    blt::ComboMenu::SimulateButtonRelease %W
 }
 
 bind ComboMenu <Left> {
     set menu [winfo parent %W]
-    blt::debug 100
     if { [winfo class $menu] == "ComboMenu" } {
 	$menu postcascade none
 	focus $menu
     }
-    blt::debug 0
 }
 
 bind ComboMenu <Right> {
@@ -185,8 +196,8 @@ bind ComboMenu <KeyPress-Next> {
     %W see active
 }
 
-# The following bindings apply to all windows, and are used to
-# implement keyboard menu traversal.
+# The following bindings apply to all windows, and are used to implement
+# keyboard menu traversal.
 
 if { [tk windowingsystem] == "x11" } {
     bind all <Alt-KeyPress> {
@@ -235,43 +246,44 @@ if { [tk windowingsystem] == "x11" } {
 # menu -		Name of a menu to unpost.  Ignored if there
 #			is a posted menubutton.
 
-proc ::blt::ComboMenu::UnpostMenu menu {
-    variable privateData
+proc ::blt::ComboMenu::UnpostMenu { menu } {
+    variable _private
 
-    set mb $privateData(postedMb)
-
-    # Restore focus right away (otherwise X will take focus away when
-    # the menu is unmapped and under some window managers (e.g. olvwm)
-    # we'll lose the focus completely).
-
-    catch {focus $privateData(focus)}
-    set privateData(focus) ""
-
-    # Unpost menu(s) and restore some stuff that's dependent on
-    # what was posted.
+    trace "proc ComboMenu::UnpostMenu $menu"
+    set mb $_private(postingMenu)
+    set mb ""
+    
+    # Restore focus right away (otherwise X will take focus away when the menu
+    # is unmapped and under some window managers (e.g. olvwm) we'll lose the
+    # focus completely).
+    
+    catch {focus $_private(lastFocus)}
+    set _private(lastFocus) ""
+    
+    # Unpost menu(s) and restore some stuff that's dependent on what was
+    # posted.
 
     catch {
-	if {[string compare $mb ""]} {
+	if { $mb != "" } {
 	    set menu [$mb cget -menu]
 	    $menu unpost
-	    set privateData(postedMb) {}
-	    $mb configure -cursor $privateData(cursor)
-	    if  { [$mb cget -buttonrelief] == "sunken" } {
-		$mb configure -buttonrelief $privateData(relief)
+	    set _private(postingMenu) {}
+	    $mb configure -cursor $_private(cursor)
+	    if  { [$mb cget -arrowrelief] == "sunken" } {
+		$mb configure -arrowrelief $_private(relief)
 	    }
-	} elseif {[string compare $privateData(popup) ""]} {
-	    $privateData(popup) unpost
-	    set privateData(popup) {}
+	} elseif { $_private(popup) != "" } {
+	    $_private(popup) unpost
+	    set _private(popup) {}
 	} else {
-	    # We're in a cascaded sub-menu from a torn-off menu or popup.
-	    # Unpost all the menus up to the toplevel one (but not
-	    # including the top-level torn-off one) and deactivate the
-	    # top-level torn off menu if there is one.
-
+	    # We're in a cascaded sub-menu from a tearoff menu or popup.
+	    # Unpost all the menus up to the toplevel one (but not including
+	    # the top-level torn-off one) and deactivate the top-level torn
+	    # off menu if there is one.
 	    while {1} {
 		set parent [winfo parent $menu]
-		if { [winfo class $parent] != "ComboMenu"] || 
-			![winfo ismapped $parent]} {
+		if { [winfo class $parent] != "ComboMenu" || 
+		     ![winfo ismapped $parent]} {
 		    break
 		}
 		$parent activate none
@@ -281,39 +293,44 @@ proc ::blt::ComboMenu::UnpostMenu menu {
 	    }
 	    $menu unpost
 	}
-    }
+    } 
     if { $mb != "" && [$mb cget -state] != "disabled" } {
 	$mb configure -state normal
     }
 
-    puts tearoff=$privateData(tearoff)
-    puts menuBar=$privateData(menuBar)
-    puts menu=$menu
-    puts grab=[grab current $menu]
-    if {($privateData(tearoff) != 0) || $privateData(menuBar) ne ""} {
-    	# Release grab, if any, and restore the previous grab, if there
-    	# was one.
-	if {[string compare $menu ""]} {
-	    set grab [grab current $menu]
-	    if {[string compare $grab ""]} {
-		#grab release $grab
-	    }
+    trace menuBar=$_private(menuBar)
+    trace menu=$menu
+    trace grab=[grab current $menu]
+
+    # Release grab, if any, and restore the previous grab, if there
+    # was one.
+    if { $menu != "" } {
+	set grab [grab current $menu]
+	if { $grab != "" } {
+	    grab release $grab
 	}
+    }
+    RestoreOldGrab
+    if { $_private(menuBar) != "" } {
+	$_private(menuBar) configure -cursor $_private(cursor)
+	set _private(menuBar) {}
+    }
+}
+
+proc ::blt::ComboMenu::SimulateButtonRelease { w } {
+    set grab [grab current]
+    if { $grab != "$w" } {
+	event generate $grab <ButtonRelease-1> -rootx -1000 -rooty -1000
+    } else {
+	$w unpost
 	RestoreOldGrab
-	if {$privateData(menuBar) ne ""} {
-	    $privateData(menuBar) configure -cursor $privateData(cursor)
-	    set privateData(menuBar) {}
-	}
-	if {[tk windowingsystem] ne "x11"} {
-	    set privateData(tearoff) 0
-	}
     }
 }
 
 proc ::blt::ComboMenu::PostMenu { w item } {
-    variable privateData
+    variable _private
 
-    puts stderr "proc ComboMenu::PostMenu $w, item=$item"
+    trace "proc ComboMenu::PostMenu $w, item=$item"
     if { [$w item cget $item -state] == "disabled" } {
 	return
     }
@@ -323,7 +340,7 @@ proc ::blt::ComboMenu::PostMenu { w item } {
 	return
     }
     #$menu activate none
-    set privateData(focus) [focus]
+    set _private(lastFocus) [focus]
     GenerateSelect $menu
 
 
@@ -345,8 +362,8 @@ proc ::blt::ComboMenu::PostMenu { w item } {
     $menu activate first
     if { [winfo viewable $menu] } {
 	SaveGrab $menu
-	puts stderr "setting global grab on $menu"
-	#grab -global $menu
+	trace "setting global grab on $menu"
+	grab -global $menu
     }
 }
 
@@ -367,30 +384,30 @@ proc ::blt::ComboMenu::PostMenu { w item } {
 #			is a posted menubutton.
 
 proc ::blt::xxxComboMenuUnpost { w } {
-    variable privateData
+    variable _private
 
-    puts stderr "proc ComboMenuUnpost $w"
+    trace "proc ComboMenuUnpost $w"
     catch { 
 	# Restore focus right away (otherwise X will take focus away when the
 	# menu is unmapped and under some window managers (e.g. olvwm) we'll
 	# lose the focus completely).
-	focus $privateData(focus) 
+	focus $_private(lastFocus) 
     }
-    set privateData(focus) ""
+    set _private(lastFocus) ""
 
     # Unpost menu(s) and restore some stuff that's dependent on what was
     # posted.
 
     $w unpost
-    set privateData(postedMb) {}
-    $w configure -cursor $privateData(cursor)
+    #set _private(postingMenu) {}
+    $w configure -cursor $_private(cursor)
 
     if { [$w cget -state] != "disabled" } {
 	#$w configure -state normal
     }
     set menu [$w cget -menu]
-    puts MENU=$menu
-    puts GRAB=[grab current $menu]
+    trace MENU=$menu
+    trace GRAB=[grab current $menu]
     # Release grab, if any, and restore the previous grab, if there
     # was one.
     if { $menu != "" } {
@@ -403,7 +420,7 @@ proc ::blt::xxxComboMenuUnpost { w } {
 }
 
 # ::blt::SaveGrab --
-# Sets the variable blt::privateData(oldGrab) to record
+# Sets the variable blt::_private(oldGrab) to record
 # the state of any existing grab on the w's display.
 #
 # Arguments:
@@ -411,16 +428,16 @@ proc ::blt::xxxComboMenuUnpost { w } {
 #			whose grab information is to be recorded.
 
 proc blt::ComboMenu::SaveGrab { w } {
-    variable privateData
+    variable _private
 
     set grab [grab current $w]
-    set privateData(oldGrab) ""
+    set _private(oldGrab) ""
     if { $grab != "" } {
 	set type [grab status $grab]
 	if { $type == "global" } {
-	    #set privateData(oldGrab) [list grab set -global $grab]
+	    #set _private(oldGrab) [list grab set -global $grab]
 	} else {
-	    #set privateData(oldGrab) [list grab set $grab]
+	    #set _private(oldGrab) [list grab set $grab]
 	}	    
     }
 }
@@ -430,64 +447,59 @@ proc blt::ComboMenu::SaveGrab { w } {
 #
 
 proc ::blt::ComboMenu::RestoreOldGrab {} {
-    variable privateData
+    variable _private
 
-    puts stderr "RestoreOldGrab: current grab=[grab current]"
-    if { [info exists $privateData(oldGrab)] } {
-	puts stderr "restore old=$privateData(oldGrab)"
-    }
-    if { $privateData(oldGrab) != "" } {
+    trace "RestoreOldGrab: current=[grab current] old=$_private(oldGrab)"
+    if { $_private(oldGrab) != "" } {
     	# Be careful restoring the old grab, since it's window may not
 	# be visible anymore.
-	catch $privateData(oldGrab)
-	set privateData(oldGrab) ""
+	catch $_private(oldGrab)
+	set _private(oldGrab) ""
     } else {
 	grab release [grab current]
     }	
 }
 
 proc ::blt::xxxComboMenuSetFocus {menu} {
-    variable privateData
-    if { ![info exists privateData(focus)] || $privateData(focus) == "" } {
-	set privateData(focus) [focus]
+    variable _private
+    if { $_private(lastFocus) == "" } {
+	set _private(lastFocus) [focus]
     }
     focus $menu
 }
     
 proc ::blt::ComboMenu::GenerateSelect {menu} {
-    variable privateData
+    variable _private
 
-    if {[string equal $privateData(activeComboMenu) $menu] \
-          && [string equal $privateData(activeItem) [$menu index active]]} {
+    if { $_private(activeComboMenu) == $menu &&  
+	 $_private(activeItem) == [$menu index active] } {
 	return
     }
-    set privateData(activeComboMenu) $menu
-    set privateData(activeItem) [$menu index active]
+    set _private(activeComboMenu) $menu
+    set _private(activeItem) [$menu index active]
     event generate $menu <<MenuSelect>>
 }
 
 
 bind ComboMenu <B1-Enter> {
-    if { $blt::ComboMenu::privateData(afterId) != "" } {
-	after cancel $blt::ComboMenu::privateData(afterId)
-    }
+    after cancel $blt::ComboMenu::_private(afterId)
+    set blt::ComboMenu::_private(afterId) -1
 }
 
 bind ComboMenu <B1-Leave> {
-    puts stderr "ComboMenu B1-Leave"
+    blt::ComboMenu::trace "ComboMenu B1-Leave"
     blt::ComboMenu::AutoScroll %W %x %y
 }
 
 bind ComboMenu <Unmap> {
-    if { $blt::ComboMenu::privateData(afterId) != "" } {
-	after cancel $blt::ComboMenu::privateData(afterId)
-    }
+    after cancel $blt::ComboMenu::_private(afterId)
+    set blt::ComboMenu::_private(afterId) -1
 }
 
 proc ::blt::ComboMenu::AutoScroll {w x y} {
-    variable privateData
+    variable _private
 
-    puts stderr "autoscan $w $y"
+    trace "autoscan $w $y"
     if { ![winfo exists $w] } {
 	return
     }
@@ -498,10 +510,67 @@ proc ::blt::ComboMenu::AutoScroll {w x y} {
 	set i [$w previous view.top]
     }
     if { $i > 0 } {
-	puts $i
+	trace $i
 	$w activate $i
 	$w see $i
     }
-    set privateData(afterId) \
-	[after 50 [list blt::ComboMenu::AutoScroll $w $x $y]]
+    set cmd [list blt::ComboMenu::AutoScroll $w $x $y]
+    set _private(afterId) [after 50 $cmd]
+}
+
+proc blt::ComboMenu::ConfigureScrollbars { menu } {
+    set ys [$menu cget -yscrollbar]
+    if { $ys != "" } {
+	if { [$menu cget -yscrollcommand] == "" } {
+	    $menu configure -yscrollcommand [list $ys set]
+	}
+	if { [$ys cget -command] == "" } {
+	    $ys configure -command [list $menu yview] -orient vertical \
+		-highlightthickness 0
+	}
+    }
+    set xs [$menu cget -xscrollbar]
+    if { $xs != "" } {
+	if { [$menu cget -xscrollcommand] == "" } {
+	    $menu configure -xscrollcommand [list $xs set]
+	}
+	if { [$xs cget -command] == "" } {
+	    $xs configure -command [list $menu xview] -orient horizontal \
+		-highlightthickness 0
+	}
+    }
+}
+
+# ::tk_popup --
+# This procedure pops up a menu and sets things up for traversing
+# the menu and its submenus.
+#
+# Arguments:
+# menu -		Name of the menu to be popped up.
+# x, y -		Root coordinates at which to pop up the
+#			menu.
+# entry -		Index of a menu entry to center over (x,y).
+#			If omitted or specified as {}, then menu's
+#			upper-left corner goes at (x,y).
+
+proc ::blt::ComboMenu::popup { menu x y } {
+    variable _private
+
+    blt::ComboMenu::trace "blt::ComboMenu::popup $menu $x $y"
+    blt::ComboMenu::trace "blt::ComboMenu::popup popup=$_private(popup)"
+    if { [grab current] == $menu } {
+	blt::ComboMenu::trace "blt::ComboMenu::popup unposting $menu"
+	UnpostMenu $menu
+    } else {
+	blt::ComboMenu::trace "blt::ComboMenu::popup posting $menu"
+	$menu post $x $y popup
+	if { [tk windowingsystem] == "x11" && [winfo viewable $menu] } {
+	    set _private(activeComboMenu) $menu
+	    set _private(popup) $menu
+	    SaveGrab $menu
+	    trace "popup: setting global grab on $menu"
+	    grab -global $menu
+	    focus $menu
+	}
+    }
 }

@@ -37,6 +37,8 @@
 #include "bltBgStyle.h"
 
 #define BG_PATTERN_THREAD_KEY	"BLT Background Pattern Data"
+#define TEXTURE_CHECKERED 1
+#define TEXTURE_STRIPED   0
 
 /* 
    bgpattern create pattern 
@@ -81,10 +83,10 @@
 
 
 enum PatternTypes {
-    PATTERN_GRADIENT,		/* Color gradient. */
-    PATTERN_TILE,		/* Tiled or resizable color picture. */
-    PATTERN_SOLID,		/* General pattern. */
-    PATTERN_TEXTURE,		/* Procedural texture. */
+    PATTERN_GRADIENT,			/* Color gradient. */
+    PATTERN_TILE,			/* Tiled or resizable color picture. */
+    PATTERN_SOLID,			/* General pattern. */
+    PATTERN_TEXTURE,			/* Procedural texture. */
 };
 
 
@@ -96,11 +98,12 @@ static const char *patternTypes[] = {
 };
 
 enum ReferenceTypes {
-    REFERENCE_SELF,		/* Current window. */
-    REFERENCE_TOPLEVEL,		/* Toplevel of current window. */
-    REFERENCE_WINDOW,		/* Specifically named window. */
-    REFERENCE_NONE,		/* Don't use reference window. Background
-				 * region will be defined by user. */
+    REFERENCE_SELF,			/* Current window. */
+    REFERENCE_TOPLEVEL,			/* Toplevel of current window. */
+    REFERENCE_WINDOW,			/* Specifically named window. */
+    REFERENCE_NONE,		        /* Don't use reference
+					 * window. Background region will be
+					 * defined by user. */
 };
 
 typedef struct {
@@ -114,14 +117,13 @@ typedef struct {
 } BgRegion;
 
 typedef struct {
-    Blt_HashTable patternTable;	/* Hash table of pattern structures keyed by
-				 * the name of the image. */
-
-    Tcl_Interp *interp;		/* Interpreter associated with this set of
-				 * background patterns. */
-
-    int nextId;			/* Serial number of the identifier to be used
-				 * for next background pattern created.  */
+    Blt_HashTable patternTable;		/* Hash table of pattern structures
+					 * keyed by the name of the image. */
+    Tcl_Interp *interp;			/* Interpreter associated with this set
+					 * of background patterns. */
+    int nextId;				/* Serial number of the identifier to be
+					 * used for next background pattern
+					 * created.  */
 } BackgroundInterpData;
 
 typedef struct _Pattern Pattern;
@@ -135,9 +137,8 @@ typedef void (DrawPolygonProc)(Tk_Window tkwin, Drawable drawable,
 	Pattern *patternPtr, int nPoints, XPoint *points);
 
 typedef struct {
-    enum PatternTypes type;	/* Type of pattern style: solid, tile,
-				 * texture, or gradient. */
-
+    enum PatternTypes type;		/* Type of pattern style: solid, tile,
+					 * texture, or gradient. */
     Blt_ConfigSpec *configSpecs;
     DestroyPatternProc *destroyProc;
     ConfigurePatternProc *configProc;
@@ -147,226 +148,174 @@ typedef struct {
 
 
 struct _Pattern {
-    const char *name;		/* Generated name of background pattern. */
+    const char *name;			/* Generated name of background
+					 * pattern. */
     PatternClass *classPtr;
     BackgroundInterpData *dataPtr;
-    Tk_Window tkwin;		/* Main window. Used to query background pattern
-				 * options. */
-    Display *display;		/* Display of this background pattern. */
-    unsigned int flags;		/* See definitions below. */
-    Blt_HashEntry *hashPtr;	/* Hash entry in pattern table. */
-    Blt_Chain chain;		/* List of pattern tokens.  Used to register
-				 * callbacks for each client of the background
-				 * pattern. */
-    Blt_ChainLink link;		/* Background token that is associated with
-				 * the pattern creation "bgpattern create...".
-				 */
-    Tk_3DBorder border;		/* 3D Border.  May be used for all background
-				 * types. */
-    Tk_Window refWindow;	/* Refer to coordinates in this window when
-				 * determining the tile/gradient origin. */
+    Tk_Window tkwin;			/* Main window. Used to query background
+					 * pattern options. */
+    Display *display;			/* Display of this background
+					 * pattern. */
+    unsigned int flags;			/* See definitions below. */
+    Blt_HashEntry *hashPtr;		/* Hash entry in pattern table. */
+    Blt_Chain chain;			/* List of pattern tokens.  Used to
+					 * register callbacks for each client of
+					 * the background pattern. */
+    Blt_ChainLink link;			/* Background token that is associated
+					 * with the pattern creation "bgpattern
+					 * create...". */
+    Tk_3DBorder border;			/* 3D Border.  May be used for all
+					 * background types. */
+    Tk_Window refWindow;		/* Refer to coordinates in this window
+					 * when determining the tile/gradient
+					 * origin. */
     BgRegion refRegion;
-    Blt_HashTable pictTable;	/* Table of pictures cached for each
-				 * pattern reference. */
-    int reference;		/* "self", "toplevel", or "window". */
+    Blt_HashTable pictTable;		/* Table of pictures cached for each
+					 * pattern reference. */
+    int reference;			/* "self", "toplevel", or "window". */
     int xOrigin, yOrigin;
 };
 
 typedef struct {
-    const char *name;		/* Generated name of background pattern. */
-
+    const char *name;			/* Generated name of background
+					 * pattern. */
     PatternClass *classPtr;
-
     BackgroundInterpData *dataPtr;
-
-    Tk_Window tkwin;		/* Main window. Used to query background pattern
-				 * options. */
-
-    Display *display;		/* Display of this background pattern. */
-
-    unsigned int flags;		/* See definitions below. */
-
-    Blt_HashEntry *hashPtr;	/* Link to original client. */
-
-    Blt_Chain chain;		/* List of pattern tokens.  Used to register
-				 * callbacks for each client of the background
-				 * pattern. */
-
-    Blt_ChainLink link;		/* Background token that is associated with
-				 * the pattern creation "bgpattern create...".
-				 */
-    Tk_3DBorder border;		/* 3D Border.  May be used for all pattern
-				 * types. */
-    
-    Tk_Window refWindow;	/* Refer to coordinates in this window when
-				 * determining the tile/gradient origin. */
-
+    Tk_Window tkwin;			/* Main window. Used to query background
+					 * pattern options. */
+    Display *display;			/* Display of this background
+					 * pattern. */
+    unsigned int flags;			/* See definitions below. */
+    Blt_HashEntry *hashPtr;		/* Link to original client. */
+    Blt_Chain chain;			/* List of pattern tokens.  Used to
+					 * register callbacks for each client of
+					 * the background pattern. */
+    Blt_ChainLink link;			/* Background token that is associated
+					 * with the pattern creation "bgpattern
+					 * create...". */
+    Tk_3DBorder border;			/* 3D Border.  May be used for all
+					 * pattern types. */
+    Tk_Window refWindow;		/* Refer to coordinates in this window
+					 * when determining the tile/gradient
+					 * origin. */
     BgRegion refRegion;
-
-    Blt_HashTable pictTable;	/* Table of pictures cached for each pattern
-				 * reference. */
-
-    int reference;		/* "self", "toplevel", or "window". */
-
+    Blt_HashTable pictTable;		/* Table of pictures cached for each
+					 * pattern reference. */
+    int reference;			/* "self", "toplevel", or "window". */
     int xOrigin, yOrigin;
 
     /* Solid pattern specific fields. */
-    int alpha;			/* Transparency value. */
-
+    int alpha;				/* Transparency value. */
 } SolidPattern;
 
 typedef struct {
-    const char *name;		/* Generated name of background pattern. */
-
+    const char *name;			/* Generated name of background
+					 * pattern. */
     PatternClass *classPtr;
-
     BackgroundInterpData *dataPtr;
-
-    Tk_Window tkwin;		/* Main window. Used to query background
-				 * pattern options. */
-
-    Display *display;		/* Display of this background pattern. */
-
-    unsigned int flags;		/* See definitions below. */
-
-    Blt_HashEntry *hashPtr;	/* Link to original client. */
-
-    Blt_Chain chain;		/* List of pattern tokens.  Used to register
-				 * callbacks for each client of the background
-				 * pattern. */
-
-    Blt_ChainLink link;		/* Background token that is associated with
-				 * the pattern creation "bgpattern create...".
-				 */
-    Tk_3DBorder border;		/* 3D Border.  May be used for all pattern
-				 * types. */
-    
-    Tk_Window refWindow;	/* Refer to coordinates in this window when
-				 * determining the tile/gradient origin. */
-
+    Tk_Window tkwin;			/* Main window. Used to query background
+					 * pattern options. */
+    Display *display;			/* Display of this background
+					 * pattern. */
+    unsigned int flags;			/* See definitions below. */
+    Blt_HashEntry *hashPtr;		/* Link to original client. */
+    Blt_Chain chain;			/* List of pattern tokens.  Used to
+					 * register callbacks for each client of
+					 * the background pattern. */
+    Blt_ChainLink link;			/* Background token that is associated
+					 * with the pattern creation "bgpattern
+					 * create...". */
+    Tk_3DBorder border;			/* 3D Border.  May be used for all
+					 * pattern types. */
+    Tk_Window refWindow;		/* Refer to coordinates in this window
+					 * when determining the tile/gradient
+					 * origin. */
     BgRegion refRegion;
-
-    Blt_HashTable pictTable;	/* Table of pictures cached for each pattern
-				 * reference. */
-
-    int reference;		/* "self", "toplevel", or "window". */
-
+    Blt_HashTable pictTable;		/* Table of pictures cached for each
+					 * pattern reference. */
+    int reference;			/* "self", "toplevel", or "window". */
     int xOrigin, yOrigin;
-
     /* Image pattern specific fields. */
-
-    Tk_Image tkImage;		/* Original image (before resampling). */
-
-    Blt_ResampleFilter filter;	/* 1-D image filter to use to when resizing
-				 * the original picture. */
-
+    Tk_Image tkImage;			/* Original image (before
+					 * resampling). */
+    Blt_ResampleFilter filter;		/* 1-D image filter to use to when
+					 * resizing the original picture. */
 } TilePattern;
 
 typedef struct {
-    const char *name;		/* Generated name of background pattern. */
-
+    const char *name;			/* Generated name of background
+					 * pattern. */
     PatternClass *classPtr;
-
     BackgroundInterpData *dataPtr;
-
-    Tk_Window tkwin;		/* Main window. Used to query background
-				 * pattern options. */
-
-    Display *display;		/* Display of this background pattern. */
-
-    unsigned int flags;		/* See definitions below. */
-
-    Blt_HashEntry *hashPtr;	/* Link to original client. */
-
-    Blt_Chain chain;		/* List of pattern tokens.  Used to register
-				 * callbacks for each client of the background
-				 * pattern. */
-
-    Blt_ChainLink link;		/* Background token that is associated with
-				 * the pattern creation "bgpattern create...".
-				 */
-    Tk_3DBorder border;		/* 3D Border.  May be used for all pattern
-				 * types. */
-    
-    Tk_Window refWindow;	/* Refer to coordinates in this window when
-				 * determining the tile/gradient origin. */
-
+    Tk_Window tkwin;			/* Main window. Used to query background
+					 * pattern options. */
+    Display *display;			/* Display of this background
+					 * pattern. */
+    unsigned int flags;			/* See definitions below. */
+    Blt_HashEntry *hashPtr;		/* Link to original client. */
+    Blt_Chain chain;			/* List of pattern tokens.  Used to
+					 * register callbacks for each client of
+					 * the background pattern. */
+    Blt_ChainLink link;			/* Background token that is associated
+					 * with the pattern creation "bgpattern
+					 * create...". */
+    Tk_3DBorder border;			/* 3D Border.  May be used for all
+					 * pattern types. */
+    Tk_Window refWindow;		/* Refer to coordinates in this window
+					 * when determining the tile/gradient
+					 * origin. */
     BgRegion refRegion;
-
-    Blt_HashTable pictTable;	/* Table of pictures cached for each
-				 * pattern reference. */
-
-    int reference;		/* "self", "toplevel", or "window". */
-
+    Blt_HashTable pictTable;		/* Table of pictures cached for each
+					 * pattern reference. */
+    int reference;			/* "self", "toplevel", or "window". */
     int xOrigin, yOrigin;
-
     /* Gradient pattern specific fields. */
-
     Blt_Gradient gradient;
-
-    Blt_Pixel low, high;	/* Texture or gradient colors. */
-
-    int alpha;			/* Transparency value. */
-
+    Blt_Pixel low, high;		/* Texture or gradient colors. */
+    int alpha;				/* Transparency value. */
 } GradientPattern;
 
 typedef struct {
-    const char *name;		/* Generated name of background pattern. */
-
+    const char *name;			/* Generated name of background
+					 * pattern. */
     PatternClass *classPtr;
-
     BackgroundInterpData *dataPtr;
-
-    Tk_Window tkwin;		/* Main window. Used to query background
-				 * pattern options. */
-
-    Display *display;		/* Display of this background pattern. */
-
-    unsigned int flags;		/* See definitions below. */
-
-    Blt_HashEntry *hashPtr;	/* Link to original client. */
-
-    Blt_Chain chain;		/* List of pattern tokens.  Used to register
-				 * callbacks for each client of the background
-				 * pattern. */
-
-    Blt_ChainLink link;		/* Background token that is associated with
-				 * the pattern creation "bgpattern create...".
-				 */
-    Tk_3DBorder border;		/* 3D Border.  May be used for all pattern
-				 * types. */
-    
-    Tk_Window refWindow;	/* Refer to coordinates in this window when
-				 * determining the tile/gradient origin. */
-
+    Tk_Window tkwin;			/* Main window. Used to query background
+					 * pattern options. */
+    Display *display;			/* Display of this background
+					 * pattern. */
+    unsigned int flags;			/* See definitions below. */
+    Blt_HashEntry *hashPtr;		/* Link to original client. */
+    Blt_Chain chain;			/* List of pattern tokens.  Used to
+					 * register callbacks for each client of
+					 * the background pattern. */
+    Blt_ChainLink link;			/* Background token that is associated
+					 * with the pattern creation "bgpattern
+					 * create...". */
+    Tk_3DBorder border;			/* 3D Border.  May be used for all
+					 * pattern types. */
+    Tk_Window refWindow;		/* Refer to coordinates in this window
+					 * when determining the tile/gradient
+					 * origin. */
     BgRegion refRegion;
-
-    Blt_HashTable pictTable;	/* Table of pictures cached for each
-				 * pattern reference. */
-
-    int reference;		/* "self", "toplevel", or "window". */
-
+    Blt_HashTable pictTable;		/* Table of pictures cached for each
+					 * pattern reference. */
+    int reference;			/* "self", "toplevel", or "window". */
     int xOrigin, yOrigin;
 
     /* Texture pattern specific fields. */
-
-    Blt_Pixel low, high;	/* Texture colors. */
-
-    int alpha;			/* Transparency value. */
-
+    Blt_Pixel low, high;		/* Texture colors. */
+    int alpha;				/* Transparency value. */
+    int type;
 } TexturePattern;
 
 struct _Blt_Background {
-    Pattern *corePtr;		/* Pointer to master background pattern
-				 * object. */
-
+    Pattern *corePtr;			/* Pointer to master background pattern
+					 * object. */
     Blt_BackgroundChangedProc *notifyProc;
-
-    ClientData clientData;	/* Data to be passed on notifier
-				 * callbacks.  */
-
-    Blt_ChainLink link;		/* Link of this entry in notifier list. */
-
+    ClientData clientData;		/* Data to be passed on notifier
+					 * callbacks.  */
+    Blt_ChainLink link;			/* Entry in notifier list. */
 };
 
 #define DELETE_PENDING		(1<<0)
@@ -428,6 +377,13 @@ static Blt_OptionPrintProc OpacityToObjProc;
 static Blt_CustomOption opacityOption =
 {
     ObjToOpacityProc, OpacityToObjProc, NULL, (ClientData)0
+};
+
+static Blt_OptionParseProc ObjToTypeProc;
+static Blt_OptionPrintProc TypeToObjProc;
+static Blt_CustomOption typeOption =
+{
+    ObjToTypeProc, TypeToObjProc, NULL, (ClientData)0
 };
 
 static Blt_ConfigSpec solidConfigSpecs[] =
@@ -500,9 +456,9 @@ static Blt_ConfigSpec gradientConfigSpecs[] =
 	Blt_Offset(GradientPattern, gradient.shape), 
 	BLT_CONFIG_DONT_SET_DEFAULT, &shapeOption},
     {BLT_CONFIG_PIXELS, "-xorigin", "xOrigin", "XOrigin", DEF_ORIGIN_X,
-        Blt_Offset(TilePattern, xOrigin), BLT_CONFIG_DONT_SET_DEFAULT},
+        Blt_Offset(GradientPattern, xOrigin), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_PIXELS, "-yorigin", "yOrigin", "YOrigin", DEF_ORIGIN_Y,
-        Blt_Offset(TilePattern, yOrigin), BLT_CONFIG_DONT_SET_DEFAULT},
+        Blt_Offset(GradientPattern, yOrigin), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
 };
 
@@ -518,6 +474,9 @@ static Blt_ConfigSpec textureConfigSpecs[] =
     {BLT_CONFIG_CUSTOM, "-relativeto", "relativeTo", "RelativeTo", 
 	DEF_REFERENCE, Blt_Offset(TexturePattern, reference), 
 	BLT_CONFIG_DONT_SET_DEFAULT, &referenceToOption},
+    {BLT_CONFIG_CUSTOM, "-type", "type", "Type", 
+	DEF_REFERENCE, Blt_Offset(TexturePattern, type), 
+	BLT_CONFIG_DONT_SET_DEFAULT, &typeOption},
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
 };
 
@@ -526,23 +485,10 @@ static void NotifyClients(Pattern *corePtr);
 static Blt_Picture
 ImageToPicture(TilePattern *patternPtr, int *isFreePtr)
 {
-    Blt_Picture picture;
+    Tcl_Interp *interp;
 
-    picture = NULL;
-    *isFreePtr = FALSE;
-    if (Blt_IsPicture(patternPtr->tkImage)) {
-	picture = Blt_GetPictureFromImage(patternPtr->tkImage);
-    } else {
-	Tk_PhotoHandle photo;
-
-	photo = Tk_FindPhoto(patternPtr->dataPtr->interp, 
-			     Blt_NameOfImage(patternPtr->tkImage));
-	if (photo != NULL) {
-	    picture = Blt_PhotoToPicture(photo);
-	    *isFreePtr = TRUE;
-	}
-    }
-    return picture;
+    interp = patternPtr->dataPtr->interp;
+    return Blt_GetPictureFromImage(interp, patternPtr->tkImage, isFreePtr);
 }
 
 /*
@@ -572,7 +518,7 @@ ImageChangedProc(
 static void
 FreeImageProc(
     ClientData clientData,
-    Display *display,		/* Not used. */
+    Display *display,			/* Not used. */
     char *widgRec,
     int offset)
 {
@@ -599,12 +545,13 @@ FreeImageProc(
 /*ARGSUSED*/
 static int
 ObjToImageProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representation of value. */
-    char *widgRec,		/* Widget record. */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,		        /* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation of value. */
+    char *widgRec,			/* Widget record. */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     TilePattern *patternPtr = (TilePattern *)(widgRec);
@@ -634,11 +581,11 @@ ObjToImageProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 ImageToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     TilePattern *patternPtr = (TilePattern *)(widgRec);
@@ -646,7 +593,7 @@ ImageToObjProc(
     if (patternPtr->tkImage == NULL) {
 	return Tcl_NewStringObj("", -1);
     }
-    return Tcl_NewStringObj(Blt_NameOfImage(patternPtr->tkImage), -1);
+    return Tcl_NewStringObj(Blt_Image_Name(patternPtr->tkImage), -1);
 }
 
 /*
@@ -664,12 +611,13 @@ ImageToObjProc(
 /*ARGSUSED*/
 static int
 ObjToReferenceProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representation of value. */
-    char *widgRec,		/* Widget record. */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,		        /* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation of value. */
+    char *widgRec,			/* Widget record. */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Pattern *patternPtr = (Pattern *)(widgRec);
@@ -709,7 +657,7 @@ ObjToReferenceProc(
 /*
  *---------------------------------------------------------------------------
  *
- * ReferenceToObj --
+ * ReferenceToObjProc --
  *
  *	Convert the picture filter into a string Tcl_Obj.
  *
@@ -721,11 +669,11 @@ ObjToReferenceProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 ReferenceToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     int reference = *(int *)(widgRec + offset);
@@ -775,12 +723,13 @@ ReferenceToObjProc(
 /*ARGSUSED*/
 static int
 ObjToShapeProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representation of value. */
-    char *widgRec,		/* Widget record. */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation of value. */
+    char *widgRec,			/* Widget record. */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Blt_GradientShape *shapePtr = (Blt_GradientShape *)(widgRec + offset);
@@ -797,7 +746,7 @@ ObjToShapeProc(
 	*shapePtr = BLT_GRADIENT_SHAPE_RECTANGULAR;
     } else {
 	Tcl_AppendResult(interp, "unknown gradient type \"", string, "\"",
-			 (char *) NULL);
+			 (char *)NULL);
 	return TCL_ERROR;
     }
     return TCL_OK;
@@ -818,11 +767,11 @@ ObjToShapeProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 ShapeToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Blt_GradientShape shape = *(Blt_GradientShape *)(widgRec + offset);
@@ -867,12 +816,13 @@ ShapeToObjProc(
 /*ARGSUSED*/
 static int
 ObjToPathProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representation of value. */
-    char *widgRec,		/* Widget record. */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation of value. */
+    char *widgRec,			/* Widget record. */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Blt_GradientPath *pathPtr = (Blt_GradientPath *)(widgRec + offset);
@@ -889,7 +839,7 @@ ObjToPathProc(
 	*pathPtr = BLT_GRADIENT_PATH_YX;
     } else {
 	Tcl_AppendResult(interp, "unknown gradient path \"", string, "\"",
-			 (char *) NULL);
+			 (char *)NULL);
 	return TCL_ERROR;
     }
     return TCL_OK;
@@ -910,11 +860,11 @@ ObjToPathProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 PathToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Blt_GradientPath path = *(Blt_GradientPath *)(widgRec + offset);
@@ -959,12 +909,13 @@ PathToObjProc(
 /*ARGSUSED*/
 static int
 ObjToOpacityProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representation of value. */
-    char *widgRec,		/* Widget record. */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation of value. */
+    char *widgRec,			/* Widget record. */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     int *alphaPtr = (int *)(widgRec + offset);
@@ -998,11 +949,11 @@ ObjToOpacityProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 OpacityToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     int *alphaPtr = (int *)(widgRec + offset);
@@ -1010,6 +961,87 @@ OpacityToObjProc(
 
     opacity = (*alphaPtr / 255.0) * 100.0;
     return Tcl_NewDoubleObj(opacity);
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ObjToTypeProc --
+ *
+ *	Translate the given string to the gradient shape is represents.  Value
+ *	shapes are "linear", "bilinear", "radial", and "rectangular".
+ *
+ * Results:
+ *	The return value is a standard TCL result.  
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ObjToTypeProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation of value. */
+    char *widgRec,			/* Widget record. */
+    int offset,				/* Offset to field in structure */
+    int flags)	
+{
+    int *typePtr = (int *)(widgRec + offset);
+    char *string;
+
+    string = Tcl_GetString(objPtr);
+    if (strcmp(string, "striped") == 0) {
+	*typePtr = TEXTURE_STRIPED;
+    } else if (strcmp(string, "checkered") == 0) {
+	*typePtr = TEXTURE_CHECKERED;
+    } else {
+	Tcl_AppendResult(interp, "unknown pattern type \"", string, "\"",
+			 (char *)NULL);
+	return TCL_ERROR;
+    }
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * TypeToObjProc --
+ *
+ *	Returns the string representing the current pattern type.
+ *
+ * Results:
+ *	The string representation of the pattern is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static Tcl_Obj *
+TypeToObjProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
+    int flags)	
+{
+    int type = *(int *)(widgRec + offset);
+    const char *string;
+    
+    switch (type) {
+    case TEXTURE_STRIPED:
+	string = "striped";
+	break;
+
+    case TEXTURE_CHECKERED:
+	string = "checkered";
+	break;
+
+    default:
+	string = "???";
+    }
+    return Tcl_NewStringObj(string, -1);
 }
 
 /*
@@ -1167,13 +1199,14 @@ Tile(
     Tk_Window tkwin,
     Drawable drawable,
     Pattern *patternPtr,
-    Blt_Picture picture,	/* Picture used as the tile. */
-    int x, int y, int w, int h)	/* Region of destination picture to be
-				 * tiled. */
+    Blt_Picture picture,		/* Picture used as the tile. */
+    int x, int y, int w, int h)		/* Region of destination picture to be
+					 * tiled. */
 {
     Blt_Painter painter;
-    int xOffset, yOffset;	/* Starting upper left corner of region. */
-    int tileWidth, tileHeight;	/* Tile dimensions. */
+    int xOffset, yOffset;		/* Starting upper left corner of
+					 * region. */
+    int tileWidth, tileHeight;		/* Tile dimensions. */
     int right, bottom, left, top;
 
     tileWidth = Blt_PictureWidth(picture);
@@ -1230,8 +1263,8 @@ Tile(
 }
 
 static void
-GetPolygonBBox(XPoint *points, int n, int *leftPtr, int *rightPtr, 
-	       int *topPtr, int *bottomPtr)
+GetPolygonBBox(XPoint *points, int n, int *leftPtr, int *rightPtr, int *topPtr, 
+	       int *bottomPtr)
 {
     XPoint *p, *pend;
     int left, right, bottom, top;
@@ -1252,6 +1285,385 @@ GetPolygonBBox(XPoint *points, int n, int *leftPtr, int *rightPtr,
 	if (p->y > bottom) {
 	    bottom = p->y;
 	}
+    }
+    if (leftPtr != NULL) {
+	*leftPtr = left;
+    }
+    if (rightPtr != NULL) {
+	*rightPtr = right;
+    }
+    if (topPtr != NULL) {
+	*topPtr = top;
+    }
+    if (bottomPtr != NULL) {
+	*bottomPtr = bottom;
+    }
+}
+
+/* 
+ * The following routines are directly from tk3d.c.  
+ *
+ *       tk3d.c --
+ *
+ *	This module provides procedures to draw borders in
+ *	the three-dimensional Motif style.
+ *
+ *      Copyright (c) 1990-1994 The Regents of the University of California.
+ *      Copyright (c) 1994-1997 Sun Microsystems, Inc.
+ *
+ *      See the file "license.terms" for information on usage and redistribution
+ *      of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+ *
+ *  They fix a problem in the Intersect procedure when the polygon is big (e.q
+ *  1600x1200).  The computation overflows the 32-bit integers used.
+ */
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ShiftLine --
+ *
+ *	Given two points on a line, compute a point on a new line that is
+ *	parallel to the given line and a given distance away from it.
+ *
+ * Results:
+ *	None.
+ *
+ * Side effects:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+ShiftLine(
+    XPoint *p,				/* First point on line. */
+    XPoint *q,				/* Second point on line. */
+    int distance,			/* New line is to be this many units
+					 * to the left of original line, when
+					 * looking from p1 to p2.  May be
+					 * negative. */
+    XPoint *r)				/* Store coords of point on new line
+					 * here. */
+{
+    int dx, dy, dxNeg, dyNeg;
+
+    /*
+     * The table below is used for a quick approximation in computing the new
+     * point.  An index into the table is 128 times the slope of the original
+     * line (the slope must always be between 0 and 1).  The value of the
+     * table entry is 128 times the amount to displace the new line in y for
+     * each unit of perpendicular distance.  In other words, the table maps
+     * from the tangent of an angle to the inverse of its cosine.  If the
+     * slope of the original line is greater than 1, then the displacement is
+     * done in x rather than in y.
+     */
+    static int shiftTable[129];
+
+    /*
+     * Initialize the table if this is the first time it is
+     * used.
+     */
+
+    if (shiftTable[0] == 0) {
+	int i;
+	double tangent, cosine;
+
+	for (i = 0; i <= 128; i++) {
+	    tangent = i/128.0;
+	    cosine = 128/cos(atan(tangent)) + .5;
+	    shiftTable[i] = (int) cosine;
+	}
+    }
+
+    *r = *p;
+    dx = q->x - p->x;
+    dy = q->y - p->y;
+    if (dy < 0) {
+	dyNeg = 1;
+	dy = -dy;
+    } else {
+	dyNeg = 0;
+    }
+    if (dx < 0) {
+	dxNeg = 1;
+	dx = -dx;
+    } else {
+	dxNeg = 0;
+    }
+    if (dy <= dx) {
+	dy = ((distance * shiftTable[(dy<<7)/dx]) + 64) >> 7;
+	if (!dxNeg) {
+	    dy = -dy;
+	}
+	r->y += dy;
+    } else {
+	dx = ((distance * shiftTable[(dx<<7)/dy]) + 64) >> 7;
+	if (dyNeg) {
+	    dx = -dx;
+	}
+	r->x += dx;
+    }
+}
+
+/*
+ *----------------------------------------------------------------------------
+ *
+ * Intersect --
+ *
+ *	Find the intersection point between two lines.
+ *
+ * Results:
+ *	Under normal conditions 0 is returned and the point at *iPtr is filled
+ *	in with the intersection between the two lines.  If the two lines are
+ *	parallel, then -1 is returned and *iPtr isn't modified.
+ *
+ * Side effects:
+ *	None.
+ *
+ *----------------------------------------------------------------------------
+ */
+static int
+Intersect(a1Ptr, a2Ptr, b1Ptr, b2Ptr, iPtr)
+    XPoint *a1Ptr;		/* First point of first line. */
+    XPoint *a2Ptr;		/* Second point of first line. */
+    XPoint *b1Ptr;		/* First point of second line. */
+    XPoint *b2Ptr;		/* Second point of second line. */
+    XPoint *iPtr;		/* Filled in with intersection point. */
+{
+    float dxadyb, dxbdya, dxadxb, dyadyb, p, q;
+
+    /*
+     * The code below is just a straightforward manipulation of two
+     * equations of the form y = (x-x1)*(y2-y1)/(x2-x1) + y1 to solve
+     * for the x-coordinate of intersection, then the y-coordinate.
+     */
+
+    dxadyb = (a2Ptr->x - a1Ptr->x)*(b2Ptr->y - b1Ptr->y);
+    dxbdya = (b2Ptr->x - b1Ptr->x)*(a2Ptr->y - a1Ptr->y);
+    dxadxb = (a2Ptr->x - a1Ptr->x)*(b2Ptr->x - b1Ptr->x);
+    dyadyb = (a2Ptr->y - a1Ptr->y)*(b2Ptr->y - b1Ptr->y);
+
+    if (dxadyb == dxbdya) {
+	return -1;
+    }
+    p = (a1Ptr->x*dxbdya - b1Ptr->x*dxadyb + (b1Ptr->y - a1Ptr->y)*dxadxb);
+    q = dxbdya - dxadyb;
+    if (q < 0) {
+	p = -p;
+	q = -q;
+    }
+    if (p < 0) {
+	iPtr->x = - ((-p + q/2)/q);
+    } else {
+	iPtr->x = (p + q/2)/q;
+    }
+    p = (a1Ptr->y*dxadyb - b1Ptr->y*dxbdya + (b1Ptr->x - a1Ptr->x)*dyadyb);
+    q = dxadyb - dxbdya;
+    if (q < 0) {
+	p = -p;
+	q = -q;
+    }
+    if (p < 0) {
+	iPtr->y = (int)(- ((-p + q/2)/q));
+    } else {
+	iPtr->y = (int)((p + q/2)/q);
+    }
+    return 0;
+}
+
+/*
+ *--------------------------------------------------------------
+ *
+ * Draw3DPolygon --
+ *
+ *	Draw a border with 3-D appearance around the edge of a given polygon.
+ *
+ * Results:
+ *	None.
+ *
+ * Side effects:
+ *	Information is drawn in "drawable" in the form of a 3-D border
+ *	borderWidth units width wide on the left of the trajectory given by
+ *	pointPtr and n (or -borderWidth units wide on the right side,
+ *	if borderWidth is negative).
+ *
+ *--------------------------------------------------------------
+ */
+
+static void
+Draw3DPolygon(
+    Tk_Window tkwin,			/* Window for which border was
+					   allocated. */
+    Drawable drawable,			/* X window or pixmap in which to
+					 * draw. */
+    Tk_3DBorder border,			/* Token for border to draw. */
+    XPoint *points,			/* Array of points describing polygon.
+					 * All points must be absolute
+					 * (CoordModeOrigin). */
+    int n,				/* Number of points at *points. */
+    int borderWidth,			/* Width of border, measured in
+					 * pixels to the left of the polygon's
+					 * trajectory.   May be negative. */
+    int leftRelief)			/* TK_RELIEF_RAISED or
+					 * TK_RELIEF_SUNKEN: indicates how 
+					 * stuff to left of trajectory looks 
+					 * relative to stuff on right. */
+{
+    XPoint poly[4], b1, b2, newB1, newB2;
+    XPoint perp, c, shift1, shift2;	/* Used for handling parallel lines. */
+    XPoint *p, *q;
+    GC gc;
+    int i, lightOnLeft, dx, dy, parallel, pointsSeen;
+
+    /* Handle grooves and ridges with recursive calls. */
+    if ((leftRelief == TK_RELIEF_GROOVE) || (leftRelief == TK_RELIEF_RIDGE)) {
+	int halfWidth, relief;
+
+	halfWidth = borderWidth / 2;
+	relief = (leftRelief == TK_RELIEF_GROOVE) 
+	    ? TK_RELIEF_RAISED : TK_RELIEF_SUNKEN;
+	Draw3DPolygon(tkwin, drawable, border, points, n, halfWidth, relief);
+	Draw3DPolygon(tkwin, drawable, border, points, n, -halfWidth, relief);
+	return;
+    }
+    /*
+     * If the polygon is already closed, drop the last point from it
+     * (we'll close it automatically).
+     */
+    p = points + (n-1);
+    q = points;
+    if ((p->x == q->x) && (p->y == q->y)) {
+	n--;
+    }
+
+    /*
+     * The loop below is executed once for each vertex in the polgon.
+     * At the beginning of each iteration things look like this:
+     *
+     *          poly[1]       /
+     *             *        /
+     *             |      /
+     *             b1   * poly[0] (points[i-1])
+     *             |    |
+     *             |    |
+     *             |    |
+     *             |    |
+     *             |    |
+     *             |    | *p            *q
+     *             b2   *--------------------*
+     *             |
+     *             |
+     *             x-------------------------
+     *
+     * The job of this iteration is to do the following:
+     * (a) Compute x (the border corner corresponding to
+     *     points[i]) and put it in poly[2].  As part of
+     *	   this, compute a new b1 and b2 value for the next
+     *	   side of the polygon.
+     * (b) Put points[i] into poly[3].
+     * (c) Draw the polygon given by poly[0..3].
+     * (d) Advance poly[0], poly[1], b1, and b2 for the
+     *     next side of the polygon.
+     */
+
+    /*
+     * The above situation doesn't first come into existence until two points
+     * have been processed; the first two points are used to "prime the pump",
+     * so some parts of the processing are ommitted for these points.  The
+     * variable "pointsSeen" keeps track of the priming process; it has to be
+     * separate from i in order to be able to ignore duplicate points in the
+     * polygon.
+     */
+    pointsSeen = 0;
+    for (i = -2, p = points + (n-2), q = p+1; i < n; i++, p = q, q++) {
+	if ((i == -1) || (i == n-1)) {
+	    q = points;
+	}
+	if ((q->x == p->x) && (q->y == p->y)) {
+	    /*
+	     * Ignore duplicate points (they'd cause core dumps in
+	     * ShiftLine calls below).
+	     */
+	    continue;
+	}
+	ShiftLine(p, q, borderWidth, &newB1);
+	newB2.x = newB1.x + (q->x - p->x);
+	newB2.y = newB1.y + (q->y - p->y);
+	poly[3] = *p;
+	parallel = 0;
+	if (pointsSeen >= 1) {
+	    parallel = Intersect(&newB1, &newB2, &b1, &b2, &poly[2]);
+
+	    /*
+	     * If two consecutive segments of the polygon are parallel,
+	     * then things get more complex.  Consider the following
+	     * diagram:
+	     *
+	     * poly[1]
+	     *    *----b1-----------b2------a
+	     *                                \
+	     *                                  \
+	     *         *---------*----------*    b
+	     *        poly[0]  *q   *p  /
+	     *                                /
+	     *              --*--------*----c
+	     *              newB1    newB2
+	     *
+	     * Instead of using x and *p for poly[2] and poly[3], as
+	     * in the original diagram, use a and b as above.  Then instead
+	     * of using x and *p for the new poly[0] and poly[1], use
+	     * b and c as above.
+	     *
+	     * Do the computation in three stages:
+	     * 1. Compute a point "perp" such that the line p-perp
+	     *    is perpendicular to p-q.
+	     * 2. Compute the points a and c by intersecting the lines
+	     *    b1-b2 and newB1-newB2 with p-perp.
+	     * 3. Compute b by shifting p-perp to the right and
+	     *    intersecting it with p-q.
+	     */
+
+	    if (parallel) {
+		perp.x = p->x + (q->y - p->y);
+		perp.y = p->y - (q->x - p->x);
+		Intersect(p, &perp, &b1, &b2, &poly[2]);
+		Intersect(p, &perp, &newB1, &newB2, &c);
+		ShiftLine(p, &perp, borderWidth, &shift1);
+		shift2.x = shift1.x + (perp.x - p->x);
+		shift2.y = shift1.y + (perp.y - p->y);
+		Intersect(p, q, &shift1, &shift2, &poly[3]);
+	    }
+	}
+	if (pointsSeen >= 2) {
+	    dx = poly[3].x - poly[0].x;
+	    dy = poly[3].y - poly[0].y;
+	    if (dx > 0) {
+		lightOnLeft = (dy <= dx);
+	    } else {
+		lightOnLeft = (dy < dx);
+	    }
+	    if (lightOnLeft ^ (leftRelief == TK_RELIEF_RAISED)) {
+		gc = Tk_3DBorderGC(tkwin, border, TK_3D_LIGHT_GC);
+	    } else {
+		gc = Tk_3DBorderGC(tkwin, border, TK_3D_DARK_GC);
+	    }   
+	    XFillPolygon(Tk_Display(tkwin), drawable, gc, poly, 4, Convex,
+			 CoordModeOrigin);
+	}
+	b1.x = newB1.x;
+	b1.y = newB1.y;
+	b2.x = newB2.x;
+	b2.y = newB2.y;
+	poly[0].x = poly[3].x;
+	poly[0].y = poly[3].y;
+	if (parallel) {
+	    poly[1].x = c.x;
+	    poly[1].y = c.y;
+	} else if (pointsSeen >= 1) {
+	    poly[1].x = poly[2].x;
+	    poly[1].y = poly[2].y;
+	}
+	pointsSeen++;
     }
 }
 
@@ -1315,7 +1727,7 @@ DrawSolidRectangle(Tk_Window tkwin, Drawable drawable, Pattern *corePtr,
 	
 	picture = Blt_DrawableToPicture(tkwin, drawable, x, y, w, h, 1.0);
 	if (picture == NULL) {
-	    return;		/* Background is obscured. */
+	    return;			/* Background is obscured. */
 	}
 	color = Blt_XColorToPixel(Tk_3DBorderColor(patternPtr->border));
 	color.Alpha = patternPtr->alpha;
@@ -1342,12 +1754,13 @@ DrawSolidPolygon(Tk_Window tkwin, Drawable drawable, Pattern *corePtr, int n,
 {
     SolidPattern *patternPtr = (SolidPattern *)corePtr;
 
-    if (n <= 2) {
-	return;			/* Not enough points for polygon */
+    if (n < 3) {
+	return;				/* Not enough points for polygon */
     }
     if (patternPtr->alpha == 0xFF) {
-	Tk_Fill3DPolygon(tkwin, drawable, patternPtr->border, points, n,
-		0, TK_RELIEF_FLAT);
+	XFillPolygon(Tk_Display(tkwin), drawable, 
+		     Tk_3DBorderGC(tkwin, patternPtr->border, TK_3D_FLAT_GC),
+		     points, n, Complex, CoordModeOrigin);
     } else if (patternPtr->alpha != 0x00) {
 	Blt_Picture picture;
 	Blt_Painter painter;
@@ -1369,7 +1782,7 @@ DrawSolidPolygon(Tk_Window tkwin, Drawable drawable, Pattern *corePtr, int n,
 	h = y2 - y1 + 1;
 	picture = Blt_DrawableToPicture(tkwin, drawable, x1, y1, w, h, 1.0);
 	if (picture == NULL) {
-	    return;		/* Background is obscured. */
+	    return;			/* Background is obscured. */
 	}
 	color = Blt_XColorToPixel(Tk_3DBorderColor(patternPtr->border));
 	color.Alpha = patternPtr->alpha;
@@ -1384,7 +1797,7 @@ DrawSolidPolygon(Tk_Window tkwin, Drawable drawable, Pattern *corePtr, int n,
 static PatternClass solidPatternClass = {
     PATTERN_SOLID,
     solidConfigSpecs,
-    NULL, /* DestroySolidPattern */
+    NULL,				/* DestroySolidPattern */
     ConfigureSolidPattern,
     DrawSolidRectangle,
     DrawSolidPolygon
@@ -1445,7 +1858,7 @@ DestroyTilePattern(Pattern *corePtr)
  */
 static void
 DrawTileRectangle(Tk_Window tkwin, Drawable drawable, Pattern *corePtr,
-	int x, int y, int w, int h)
+		  int x, int y, int w, int h)
 {
     TilePattern *patternPtr = (TilePattern *)corePtr;
     Blt_Painter painter;
@@ -1539,9 +1952,11 @@ ConfigureTilePattern(Tcl_Interp *interp, Pattern *corePtr, int objc,
 static PatternClass tilePatternClass = {
     PATTERN_TILE,
     tileConfigSpecs,
-    NULL, /* DestroyTilePattern, */
+    NULL,				/* DestroyTilePattern, */
     ConfigureTilePattern,
-    DrawTileRectangle
+    DrawTileRectangle,
+    DrawSolidPolygon
+
 };
 
 /*
@@ -1620,7 +2035,7 @@ DrawGradientRectangle(Tk_Window tkwin, Drawable drawable, Pattern *corePtr,
     } else if (patternPtr->reference == REFERENCE_NONE) {
 	refWindow = NULL;
     } else {
-	return;		/* Unknown reference window. */
+	return;				/* Unknown reference window. */
     }
 
     hPtr = NULL;
@@ -1693,6 +2108,74 @@ DrawGradientRectangle(Tk_Window tkwin, Drawable drawable, Pattern *corePtr,
 #endif
 }
 
+/*
+ *---------------------------------------------------------------------------
+ *
+ * DrawGradientRectangle --
+ *
+ * Results:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+DrawGradientPolygon(Tk_Window tkwin, Drawable drawable, Pattern *corePtr, 
+		    int n, XPoint *points)
+{
+    GradientPattern *patternPtr = (GradientPattern *)corePtr;
+    Tk_Window refWindow;
+
+    if (patternPtr->reference == REFERENCE_SELF) {
+	refWindow = tkwin;
+    } else if (patternPtr->reference == REFERENCE_TOPLEVEL) {
+	refWindow = Blt_Toplevel(tkwin);
+    } else if (patternPtr->reference == REFERENCE_WINDOW) {
+	refWindow = patternPtr->refWindow;
+    } else if (patternPtr->reference == REFERENCE_NONE) {
+	refWindow = NULL;
+    } else {
+	return;				/* Unknown reference window. */
+    }
+    if (n < 3) {
+	return;				/* Not enough points for polygon */
+    }
+    if (patternPtr->alpha == 0xFF) {
+	XFillPolygon(Tk_Display(tkwin), drawable, 
+		     Tk_3DBorderGC(tkwin, patternPtr->border, TK_3D_FLAT_GC),
+		     points, n, Complex, CoordModeOrigin);
+    } else if (patternPtr->alpha != 0x00) {
+	Blt_Picture picture;
+	Blt_Painter painter;
+	Blt_Pixel color;
+	int x1, x2, y1, y2;
+	int i;
+	Point2f *vertices;
+	int w, h;
+
+	/* Get polygon bounding box. */
+	GetPolygonBBox(points, n, &x1, &x2, &y1, &y2);
+	vertices = Blt_AssertMalloc(n * sizeof(Point2f));
+	/* Translate the polygon */
+	for (i = 0; i < n; i++) {
+	    vertices[i].x = (float)(points[i].x - x1);
+	    vertices[i].y = (float)(points[i].y - y1);
+	}
+	w = x2 - x1 + 1;
+	h = y2 - y1 + 1;
+	picture = Blt_DrawableToPicture(tkwin, drawable, x1, y1, w, h, 1.0);
+	if (picture == NULL) {
+	    return;			/* Background is obscured. */
+	}
+	color = Blt_XColorToPixel(Tk_3DBorderColor(patternPtr->border));
+	color.Alpha = patternPtr->alpha;
+	Blt_PaintPolygon(picture, n, vertices, &color);
+	Blt_Free(vertices);
+	painter = Blt_GetPainter(tkwin, 1.0);
+	Blt_PaintPicture(painter, drawable, picture, 0, 0, w, h, x1, y1, 0);
+	Blt_FreePicture(picture);
+    }
+}
+
 static int
 ConfigureGradientPattern(Tcl_Interp *interp, Pattern *corePtr, int objc, 
 	Tcl_Obj *const *objv, unsigned int flags)
@@ -1711,12 +2194,14 @@ ConfigureGradientPattern(Tcl_Interp *interp, Pattern *corePtr, int objc,
     return TCL_OK;
 }
 
+
 static PatternClass gradientPatternClass = {
     PATTERN_GRADIENT,
     gradientConfigSpecs,
     NULL, /* DestroyGradientPattern, */
     ConfigureGradientPattern, 
-    DrawGradientRectangle
+    DrawGradientRectangle,
+    DrawGradientPolygon,
 };
 
 /*
@@ -1746,6 +2231,7 @@ CreateGradientPattern(void)
     patternPtr->gradient.path = BLT_GRADIENT_PATH_Y;
     patternPtr->gradient.jitter = FALSE;
     patternPtr->gradient.logScale = TRUE;
+    patternPtr->alpha = 255;
     return (Pattern *)patternPtr;
 }
 
@@ -1799,7 +2285,7 @@ DrawTextureRectangle(Tk_Window tkwin, Drawable drawable, Pattern *corePtr,
     } else if (patternPtr->reference == REFERENCE_NONE) {
 	refWindow = NULL;
     } else {
-	return;		/* Unknown reference window. */
+	return;				/* Unknown reference window. */
     }
     painter = Blt_GetPainter(tkwin, 1.0);
 
@@ -1835,7 +2321,8 @@ DrawTextureRectangle(Tk_Window tkwin, Drawable drawable, Pattern *corePtr,
 	} else {
 	    Blt_ResizePicture(picture, refWidth, refHeight);
 	}
-	Blt_TexturePicture(picture, &patternPtr->high, &patternPtr->low, 0);
+	Blt_TexturePicture(picture, &patternPtr->high, &patternPtr->low, 
+		patternPtr->type);
     }
     Blt_PaintPicture(painter, drawable, picture, 0, 0, w, h, x, y, 0);
 }
@@ -1857,9 +2344,10 @@ ConfigureTexturePattern(Tcl_Interp *interp, Pattern *corePtr, int objc,
 static PatternClass texturePatternClass = {
     PATTERN_TEXTURE,
     textureConfigSpecs,
-    NULL, /* DestroyTexturePattern, */
+    NULL,				/* DestroyTexturePattern, */
     ConfigureTexturePattern,
-    DrawTextureRectangle
+    DrawTextureRectangle,
+    DrawSolidPolygon
 };
 
 /*
@@ -2163,7 +2651,7 @@ DeleteOp(ClientData clientData, Tcl_Interp *interp, int objc,
 	 * associated with the command. Need to known when pattern was created
 	 * by bgpattern command.  Does bgpattern delete #ffffff make sense? */
 	/* 
-	 * Look up clientData from command hash table. If it's found it 
+	 * Look up clientData from command hash table. If it's found it
 	 * represents a command?
 	 */
 	if (patternPtr->link != NULL) {
@@ -2176,7 +2664,7 @@ DeleteOp(ClientData clientData, Tcl_Interp *interp, int objc,
 				patternPtr->hashPtr);
 	    patternPtr->name = NULL;
 	    patternPtr->hashPtr = NULL;
-	    patternPtr->link = NULL;  /* Disconnect pattern. */
+	    patternPtr->link = NULL;	/* Disconnect pattern. */
 	    DestroyBackground(bgPtr);
 	}
     }
@@ -2341,12 +2829,12 @@ Blt_GetBackground(Tcl_Interp *interp, Tk_Window tkwin, const char *name)
 	 * (i.e. something that Tk_Get3DBorder will accept). */
 	border = Tk_Get3DBorder(interp, tkwin, name);
 	if (border == NULL) {
-	    goto error;		/* Nope. It's an error. */
+	    goto error;			/* Nope. It's an error. */
 	} 
 	patternPtr = CreatePattern(dataPtr, interp, PATTERN_SOLID);
 	if (patternPtr == NULL) {
 	    Tk_Free3DBorder(border);
-	    goto error;		/* Can't allocate new pattern. */
+	    goto error;			/* Can't allocate new pattern. */
 	}
 	patternPtr->border = border;
 	patternPtr->hashPtr = hPtr;
@@ -2408,7 +2896,8 @@ Blt_GetBackgroundFromObj(Tcl_Interp *interp, Tk_Window tkwin, Tcl_Obj *objPtr)
 /*LINTLIBRARY*/
 void
 Blt_SetBackgroundChangedProc(
-    Background *bgPtr,		/* Background to register callback with. */
+    Background *bgPtr,			/* Background to register callback
+					 * with. */
     Blt_BackgroundChangedProc *notifyProc, /* Function to call when pattern
 					    * has changed. NULL indicates to
 					    * unset the callback.*/
@@ -2554,12 +3043,9 @@ Blt_BackgroundBorder(Background *bgPtr)
  *---------------------------------------------------------------------------
  */
 void
-Blt_DrawBackgroundRectangle(
-    Tk_Window tkwin, 
-    Drawable drawable, 
-    Background *bgPtr, 
-    int x, int y, int w, int h, 
-    int borderWidth, int relief)
+Blt_DrawBackgroundRectangle(Tk_Window tkwin, Drawable drawable, 
+			    Background *bgPtr, int x, int y, int w, int h, 
+			    int borderWidth, int relief)
 {
     Tk_Draw3DRectangle(tkwin, drawable, bgPtr->corePtr->border, x, y, w, h, 
 	borderWidth, relief);
@@ -2578,16 +3064,13 @@ Blt_DrawBackgroundRectangle(
  *---------------------------------------------------------------------------
  */
 void
-Blt_FillBackgroundRectangle(
-    Tk_Window tkwin, 
-    Drawable drawable, 
-    Background *bgPtr, 
-    int x, int y, int w, int h, 
-    int borderWidth, int relief)
+Blt_FillBackgroundRectangle(Tk_Window tkwin, Drawable drawable, 
+			    Background *bgPtr, int x, int y, int w, int h, 
+			    int borderWidth, int relief)
 {
     Pattern *patternPtr;
 
-    if ((h <= 0) || (w <= 0)) {
+    if ((h < 1) || (w < 1)) {
 	return;
     }
     patternPtr = bgPtr->corePtr;
@@ -2612,12 +3095,8 @@ Blt_FillBackgroundRectangle(
  *---------------------------------------------------------------------------
  */
 void
-Blt_DrawBackgroundPolygon(
-    Tk_Window tkwin, 
-    Drawable drawable, 
-    Background *bgPtr, 
-    XPoint *points, int n,
-    int borderWidth, int relief)
+Blt_DrawBackgroundPolygon(Tk_Window tkwin, Drawable drawable, Background *bgPtr,
+			  XPoint *points, int n, int borderWidth, int relief)
 {
     Pattern *patternPtr;
 
@@ -2627,7 +3106,7 @@ Blt_DrawBackgroundPolygon(
     }
 #endif
     patternPtr = bgPtr->corePtr;
-    Tk_Draw3DPolygon(tkwin, drawable, patternPtr->border, points, n,
+    Draw3DPolygon(tkwin, drawable, patternPtr->border, points, n,
 	borderWidth, relief);
 }
 
@@ -2644,12 +3123,8 @@ Blt_DrawBackgroundPolygon(
  *---------------------------------------------------------------------------
  */
 void
-Blt_FillBackgroundPolygon(
-    Tk_Window tkwin, 
-    Drawable drawable, 
-    Background *bgPtr, 
-    XPoint *points, int n,
-    int borderWidth, int relief)
+Blt_FillBackgroundPolygon(Tk_Window tkwin, Drawable drawable, Background *bgPtr,
+			  XPoint *points, int n, int borderWidth, int relief)
 {
     Pattern *patternPtr;
 
@@ -2660,7 +3135,7 @@ Blt_FillBackgroundPolygon(
     (*patternPtr->classPtr->drawPolygonProc)(tkwin, drawable, patternPtr, 
 	n, points);
     if ((relief != TK_RELIEF_FLAT) && (borderWidth != 0)) {
-	Tk_Draw3DPolygon(tkwin, drawable, patternPtr->border, points, n,
+	Draw3DPolygon(tkwin, drawable, patternPtr->border, points, n,
 		borderWidth, relief);
     }
 }
@@ -2741,12 +3216,8 @@ Blt_DrawFocusBackground(Tk_Window tkwin, Background *bgPtr,
 
 #ifdef notdef
 static void 
-Draw3DRectangle(
-    Tk_Window tkwin, 
-    Drawable drawable, 
-    Background *bgPtr, 
-    int x, int y, int w, int h,
-    int borderWidth, int relief)
+Draw3DRectangle(Tk_Window tkwin, Drawable drawable, Background *bgPtr, 
+		int x, int y, int w, int h, int borderWidth, int relief)
 {
     int nSegments;
     XSegment *segments, *sp;
@@ -2813,3 +3284,41 @@ Blt_BackgroundBorderGC(Tk_Window tkwin, Background *bgPtr, int which)
     return Tk_3DBorderGC(tkwin, bgPtr->corePtr->border, which);
 }
 
+void
+Blt_SetBackgroundClipRegion(Tk_Window tkwin, Background *bgPtr, TkRegion rgn)
+{
+    Blt_Painter painter;
+    Display *display;
+    GC gc;
+
+    display = Tk_Display(tkwin);
+    gc = Tk_3DBorderGC(tkwin, bgPtr->corePtr->border, TK_3D_LIGHT_GC);
+    TkSetRegion(display, gc, rgn);
+    gc = Tk_3DBorderGC(tkwin, bgPtr->corePtr->border, TK_3D_DARK_GC);
+    TkSetRegion(display, gc, rgn);
+    gc = Tk_3DBorderGC(tkwin, bgPtr->corePtr->border, TK_3D_FLAT_GC);
+    TkSetRegion(display, gc, rgn);
+    painter = Blt_GetPainter(tkwin, 1.0);
+    gc = Blt_PainterGC(painter);
+    TkSetRegion(display, gc, rgn);
+}
+
+
+void
+Blt_UnsetBackgroundClipRegion(Tk_Window tkwin, Background *bgPtr)
+{
+    Blt_Painter painter;
+    Display *display;
+    GC gc;
+
+    display = Tk_Display(tkwin);
+    gc = Tk_3DBorderGC(tkwin, bgPtr->corePtr->border, TK_3D_LIGHT_GC);
+    XSetClipMask(display, gc, None);
+    gc = Tk_3DBorderGC(tkwin, bgPtr->corePtr->border, TK_3D_DARK_GC);
+    XSetClipMask(display, gc, None);
+    gc = Tk_3DBorderGC(tkwin, bgPtr->corePtr->border, TK_3D_FLAT_GC);
+    XSetClipMask(display, gc, None);
+    painter = Blt_GetPainter(tkwin, 1.0);
+    gc = Blt_PainterGC(painter);
+    XSetClipMask(display, gc, None);
+}

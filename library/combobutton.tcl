@@ -1,13 +1,20 @@
 
 namespace eval blt::ComboButton {
-    variable privateData
-    array set privateData {
+    variable _private
+    array set _private {
 	activeMenu  {}
 	posted      {}
         activeItem  {}
         cursor      {}
         focus       {}
         oldGrab     {}
+	trace	    0
+    }
+    proc trace { mesg } {
+	variable _private 
+	if { $_private(trace) } {
+	    puts stderr $mesg
+	}
     }
 }
 
@@ -20,20 +27,19 @@ bind ComboButton <Leave> {
 }
 
 bind ComboButton <B1-Motion> {
-    puts stderr "ComboButton <B1-Motion> %W state=[%W cget -state]"
+    blt::ComboButton::trace "ComboButton <B1-Motion> %W state=[%W cget -state]"
     blt::ComboButton::NextButton %W %X %Y
 }
 
 bind ComboButton <B1-Leave> {
-    puts stderr "ComboButton <B1-Leave> state=[%W cget -state]"
+    blt::ComboButton::trace "ComboButton <B1-Leave> state=[%W cget -state]"
 }
 
 # Standard Motif bindings:
 
 bind ComboButton <ButtonPress-1> {
-    puts stderr "ComboButton <ButtonPress-1> state=[%W cget -state]"
+    blt::ComboButton::trace "ComboButton <ButtonPress-1> state=[%W cget -state]"
     if { [%W cget -state] == "posted" } {
-	puts stderr "unpost"
 	%W unpost
 	blt::ComboButton::UnpostMenu %W
     } else {
@@ -43,13 +49,14 @@ bind ComboButton <ButtonPress-1> {
 }
 
 bind ComboButton <ButtonRelease-1> {
-    puts stderr "ComboButton <ButtonRelease-1> state=[%W cget -state]"
+    blt::ComboButton::trace \
+	"ComboButton <ButtonRelease-1> state=[%W cget -state]"
     if { [winfo containing -display  %W %X %Y] == "%W" } {
-	puts stderr "invoke"
+	blt::ComboButton::trace "invoke"
 	%W invoke
     } else { 
 	%W activate off
-	puts stderr "unpost"
+	blt::ComboButton::trace "unpost"
 	blt::ComboButton::UnpostMenu %W
     }	
 }
@@ -78,16 +85,16 @@ if {[string equal [tk windowingsystem] "classic"] ||
 
 
 proc blt::ComboButton::SaveGrab { w } {
-    variable privateData
+    variable _private
 
     set grab [grab current $w]
-    set privateData(oldGrab) ""
+    set _private(oldGrab) ""
     if { $grab != "" } {
 	set type [grab status $grab]
 	if { $type == "global" } {
-	    #set privateData(oldGrab) [list grab set -global $grab]
+	    #set _private(oldGrab) [list grab set -global $grab]
 	} else {
-	    #set privateData(oldGrab) [list grab set $grab]
+	    #set _private(oldGrab) [list grab set $grab]
 	}	    
     } 
 }
@@ -97,13 +104,13 @@ proc blt::ComboButton::SaveGrab { w } {
 #
 
 proc ::blt::ComboButton::RestoreOldGrab {} {
-    variable privateData
+    variable _private
 
-    if { $privateData(oldGrab) != "" } {
+    if { $_private(oldGrab) != "" } {
     	# Be careful restoring the old grab, since it's window may not be
     	# visible anymore.
-	catch $privateData(oldGrab)
-	set privateData(oldGrab) ""
+	catch $_private(oldGrab)
+	set _private(oldGrab) ""
     }
 }
 
@@ -120,9 +127,9 @@ proc ::blt::ComboButton::RestoreOldGrab {} {
 #			of the menubutton is used for an option menu.
 
 proc ::blt::ComboButton::PostMenu { cbutton } {
-    variable privateData
+    variable _private
 
-    puts stderr "proc ComboButton::PostMenu $cbutton, state=[$cbutton cget -state]"
+    trace "proc ComboButton::PostMenu $cbutton, state=[$cbutton cget -state]"
     if { [$cbutton cget -state] == "disabled" } {
 	return
     }
@@ -134,15 +141,15 @@ proc ::blt::ComboButton::PostMenu { cbutton } {
     if { $menu == "" } {
 	return
     }
-    set last $privateData(posted)
+    set last $_private(posted)
     if { $last != "" } {
 	UnpostMenu $last
     }
-    set privateData(cursor) [$cbutton cget -cursor]
+    set _private(cursor) [$cbutton cget -cursor]
     $cbutton configure -cursor arrow
     
-    set privateData(posted) $cbutton
-    set privateData(focus) [focus]
+    set _private(posted) $cbutton
+    set _private(focus) [focus]
     $menu activate none
     GenerateMenuSelect $menu
 
@@ -164,7 +171,7 @@ proc ::blt::ComboButton::PostMenu { cbutton } {
     focus $menu
     if { [winfo viewable $menu] } {
 	SaveGrab $menu
-	puts stderr "setting global grab on $menu"
+	trace "setting global grab on $menu"
 	#grab -global $menu
     }
 }
@@ -186,30 +193,29 @@ proc ::blt::ComboButton::PostMenu { cbutton } {
 #			is a posted menubutton.
 
 proc ::blt::ComboButton::UnpostMenu { cbutton } {
-    variable privateData
+    variable _private
 
-    puts stderr "proc ComboButton::UnpostMenu $cbutton"
+    trace "proc ComboButton::UnpostMenu $cbutton"
 
     # Restore focus right away (otherwise X will take focus away when the
     # menu is unmapped and under some window managers (e.g. olvwm) we'll
     # lose the focus completely).
-    catch { focus $privateData(focus) }
-    set privateData(focus) ""
+    catch { focus $_private(focus) }
+    set _private(focus) ""
 
     # Unpost menu(s) and restore some stuff that's dependent on what was
     # posted.
-    puts stderr "unposting $cbutton"
     $cbutton unpost
-    set privateData(posted) {}
-    if { [info exists privateData(cursor)] } {
-	$cbutton configure -cursor $privateData(cursor)
+    set _private(posted) {}
+    if { [info exists _private(cursor)] } {
+	$cbutton configure -cursor $_private(cursor)
     }
     if { [$cbutton cget -state] != "disabled" } {
 	#$cbutton configure -state normal
     }
     set menu [$cbutton cget -menu]
-    puts MENU=$menu
-    puts GRAB=[grab current $menu]
+    trace MENU=$menu
+    trace GRAB=[grab current $menu]
     # Release grab, if any, and restore the previous grab, if there
     # was one.
     if { $menu != "" } {
@@ -222,22 +228,22 @@ proc ::blt::ComboButton::UnpostMenu { cbutton } {
 }
 
 proc blt::ComboButton::GenerateMenuSelect {menu} {
-    variable privateData
+    variable _private
 
     set item [$menu index active]
-    if { $privateData(activeMenu) != $menu || 
-	 $privateData(activeItem) != $item } {
-	set privateData(activeMenu) $menu
-	set privateData(activeItem) $item
+    if { $_private(activeMenu) != $menu || 
+	 $_private(activeItem) != $item } {
+	set _private(activeMenu) $menu
+	set _private(activeItem) $item
 	event generate $menu <<MenuSelect>>
     }
 }
 
 proc blt::ComboButton::NextButton { cbutton rootx rooty } {
-    variable privateData
+    variable _private
 
     set next [winfo containing -display $cbutton $rootx $rooty]
-    if { $next == "" || $next == $privateData(posted) || 
+    if { $next == "" || $next == $_private(posted) || 
 	 [winfo class $next] != "ComboButton" } {
 	return
     }
@@ -247,3 +253,4 @@ proc blt::ComboButton::NextButton { cbutton rootx rooty } {
     # Simulate pressing the new combobutton widget.
     event generate $next <ButtonPress-1>
 }
+

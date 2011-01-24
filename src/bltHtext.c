@@ -89,30 +89,34 @@ static Tk_GeomRequestProc EmbeddedWidgetGeometryProc;
 static Tk_GeomLostSlaveProc EmbeddedWidgetCustodyProc;
 static Tk_GeomMgr htextMgrInfo =
 {
-    (char *)"htext",		/* Name of geometry manager used by winfo */
-    EmbeddedWidgetGeometryProc,	/* Procedure to for new geometry requests */
-    EmbeddedWidgetCustodyProc,	/* Procedure when window is taken away */
+    (char *)"htext",			/* Name of geometry manager used by
+					 * winfo */
+    EmbeddedWidgetGeometryProc,		/* Procedure to for new geometry
+					 * requests */
+    EmbeddedWidgetCustodyProc,		/* Procedure when window is taken
+					 * away */
 };
 
 
 /*
  * Line --
  *
- *	Structure to contain the contents of a single line of text and
- *	the widgets on that line.
+ *	Structure to contain the contents of a single line of text and the
+ *	widgets on that line.
  *
- * 	Individual lines are not configurable, although changes to the
- * 	size of widgets do effect its values.
+ * 	Individual lines are not configurable, although changes to the size of
+ * 	widgets do effect its values.
  */
 typedef struct {
-    int offset;			/* Offset of line from y-origin (0) in
-				 * world coordinates */
-    int baseline;		/* Baseline y-coordinate of the text */
-    short int width, height;	/* Dimensions of the line */
-    int textStart, textEnd;	/* Start and end indices of characters
-				 * forming the line in the text array */
-    Blt_Chain chain;		/* Chain of embedded widgets on the line of 
-				 * text */
+    int offset;				/* Offset of line from y-origin (0) in
+					 * world coordinates */
+    int baseline;			/* Baseline y-coordinate of the
+					 * text */
+    short int width, height;		/* Dimensions of the line */
+    int textStart, textEnd;		/* Start and end indices of characters
+					 * forming the line in the text array */
+    Blt_Chain chain;			/* Chain of embedded widgets on the
+					 * line of text */
 } Line;
 
 typedef struct {
@@ -128,60 +132,66 @@ typedef struct {
  * Hypertext widget.
  */
 typedef struct {
-    Tk_Window tkwin;		/* Window that embodies the widget.
-                                 * NULL means that the window has been
-                                 * destroyed but the data structures
-                                 * haven't yet been cleaned up.*/
-    Display *display;		/* Display containing widget; needed,
-                                 * among other things, to release
-                                 * resources after tkwin has already
-                                 * gone away. */
-    Tcl_Interp *interp;		/* Interpreter associated with widget. */
-
-    Tcl_Command cmdToken;	/* Token for htext's widget command. */
+    Tk_Window tkwin;			/* Window that embodies the widget.
+					 * NULL means that the window has been
+					 * destroyed but the data structures
+					 * haven't yet been cleaned up.*/
+    Display *display;			/* Display containing widget; needed,
+					 * among other things, to release
+					 * resources after tkwin has already
+					 * gone away. */
+    Tcl_Interp *interp;			/* Interpreter associated with
+					 * widget. */
+    Tcl_Command cmdToken;	       /* Token for htext's widget command. */
     int flags;
 
     /* User-configurable fields */
 
     XColor *normalFg;
     Blt_Background normalBg;
-    Blt_Font font;		/* Font for normal text. May affect the size
-				 * of the viewport if the width/height is
-				 * specified in columns/rows */
-    GC drawGC;			/* Graphics context for normal text */
-    int tileOffsetPage;		/* Set tile offset to top of page instead
-				 * of toplevel window */
-    GC fillGC;			/* GC for clearing the window in the
-				 * designated background color. The
-				 * background color is the foreground
-				 * attribute in GC.  */
+    Blt_Font font;			/* Font for normal text. May affect
+					 * the size of the viewport if the
+					 * width/height is specified in
+					 * columns/rows */
+    GC drawGC;				/* Graphics context for normal text */
+    int tileOffsetPage;			/* Set tile offset to top of page
+					 * instead of toplevel window */
+    GC fillGC;				/* GC for clearing the window in the
+					 * designated background color. The
+					 * background color is the foreground
+					 * attribute in GC.  */
 
-    int nRows, nColumns;	/* # of characters of the current font
-				 * for a row or column of the viewport.
-				 * Used to determine the width and height
-				 * of the text window (i.e. viewport) */
-    int reqWidth, reqHeight;	/* Requested dimensions of the viewport */
-    int maxWidth, maxHeight;	/* Maximum dimensions allowed for the viewport,
-				 * regardless of the size of the text */
+    int nRows, nColumns;		/* # of characters of the current font
+					 * for a row or column of the viewport.
+					 * Used to determine the width and height
+					 * of the text window (i.e. viewport) */
+    int reqWidth, reqHeight;		/* Requested dimensions of the
+					 * viewport */
+    int maxWidth, maxHeight;		/* Maximum dimensions allowed for the
+					 * viewport, regardless of the size of
+					 * the text */
 
-    Tk_Cursor cursor;		/* X Cursor */
+    Tk_Cursor cursor;			/* X Cursor */
 
-    char *fileName;		/* If non-NULL, indicates the name of a
-				 * hypertext file to be read into the widget.
-				 * If NULL, the *text* field is considered
-				 * instead */
-    char *text;			/* Hypertext to be loaded into the widget. This
-				 * value is ignored if *fileName* is non-NULL */
-    int specChar;		/* Special character designating a TCL
-			         * command block in a hypertext file. */
-    int leader;			/* # of pixels between lines */
+    char *fileName;		       /* If non-NULL, indicates the name of a
+					* hypertext file to be read into the
+					* widget. If NULL, the *text* field is
+					* considered instead */
+    char *text;				/* Hypertext to be loaded into the
+					 * widget. This value is ignored if
+					 * *fileName* * is non-NULL */
+    int specChar;			/* Special character designating a TCL
+					 * command block in a hypertext
+					 * file. */
+    int leader;				/* # of pixels between lines */
 
-    Tcl_Obj *yScrollCmdObjPtr;	/* Name of vertical scrollbar to invoke */
-    int yScrollUnits;		/* # of pixels per vertical scroll */
-    Tcl_Obj *xScrollCmdObjPtr;	/* Name of horizontal scroll bar to invoke */
-    int xScrollUnits;		/* # of pixels per horizontal scroll */
+    Tcl_Obj *yScrollCmdObjPtr;		/* Name of vertical scrollbar to invoke */
+    int yScrollUnits;			/* # of pixels per vertical scroll */
+    Tcl_Obj *xScrollCmdObjPtr;		/* Name of horizontal scroll bar to invoke */
+    int xScrollUnits;			/* # of pixels per horizontal
+					   # scroll */
 
-    int reqLineNum;		/* Line requested by "goto" command */
+    int reqLineNum;			/* Line requested by "goto" command */
 
     /*
      * The view port is the width and height of the window and the
@@ -205,7 +215,7 @@ typedef struct {
      * Selection display information:
      */
     Blt_Background selBg;	/* Border and background color */
-    int selBorderWidth;		/* Border width */
+    int selBW;		/* Border width */
     XColor *selFgColor;		/* Text foreground color */
     GC selectGC;		/* GC for drawing selected text */
     int selAnchor;		/* Fixed end of selection
@@ -328,7 +338,7 @@ static Blt_ConfigSpec configSpecs[] =
 	DEF_HTEXT_SELECT_BACKGROUND, Blt_Offset(HText, selBg), 0},
     {BLT_CONFIG_PIXELS_NNEG, "-selectborderwidth", "selectBorderWidth", 
 	"BorderWidth", DEF_HTEXT_SELECT_BORDERWIDTH, 
-	Blt_Offset(HText, selBorderWidth), BLT_CONFIG_DONT_SET_DEFAULT},
+	Blt_Offset(HText, selBW), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_COLOR, "-selectforeground", "selectForeground", "Foreground",
 	DEF_HTEXT_SELECT_FOREGROUND, Blt_Offset(HText, selFgColor), 0},
     {BLT_CONFIG_INT, "-specialchar", "specialChar", "SpecialChar",
@@ -2794,7 +2804,7 @@ DrawSegment(
 	    nextX - lastX;
 	Blt_FillBackgroundRectangle(htPtr->tkwin, draw, htPtr->selBg,
 	    lastX, y + linePtr->baseline - fontMetrics.ascent,
-	    width, fontMetrics.linespace, htPtr->selBorderWidth,
+	    width, fontMetrics.linespace, htPtr->selBW,
 	    TK_RELIEF_RAISED);
 	Blt_DrawChars(Tk_Display(htPtr->tkwin), draw, htPtr->selectGC, 
 		htPtr->font, Tk_Depth(htPtr->tkwin), 0.0f, 
@@ -3229,13 +3239,11 @@ DisplayText(ClientData clientData) /* Information about widget. */
 	    htPtr->yScrollUnits, BLT_SCROLL_MODE_LISTBOX);
 	if (htPtr->xScrollCmdObjPtr != NULL) {
 	    Blt_UpdateScrollbar(htPtr->interp, htPtr->xScrollCmdObjPtr,
-		(double)htPtr->xOffset / htPtr->worldWidth,
-		(double)(htPtr->xOffset + width) / htPtr->worldWidth);
+		htPtr->xOffset, htPtr->xOffset + width, htPtr->worldWidth);
 	}
 	if (htPtr->yScrollCmdObjPtr != NULL) {
 	    Blt_UpdateScrollbar(htPtr->interp, htPtr->yScrollCmdObjPtr,
-		(double)htPtr->yOffset / htPtr->worldHeight,
-		(double)(htPtr->yOffset + height) / htPtr->worldHeight);
+		htPtr->yOffset, htPtr->yOffset + height, htPtr->worldHeight);
 	}
 	/*
 	 * Given a new viewport or text height, find the first and
@@ -4368,8 +4376,8 @@ TextCmd(
     Tcl_Obj *const *objv)	/* Argument strings. */
 {
     HText *htPtr;
-    Screen *screenPtr;
     Tk_Window tkwin;
+    int screenWidth, screenHeight;
 
     if (objc < 2) {
 	Tcl_AppendResult(interp, "wrong # args: should be \"", 
@@ -4398,10 +4406,10 @@ TextCmd(
     htPtr->selFirst = htPtr->selLast = -1;
     htPtr->selAnchor = 0;
     htPtr->exportSelection = TRUE;
-    htPtr->selBorderWidth = 2;
-    screenPtr = Tk_Screen(htPtr->tkwin);
-    htPtr->maxWidth = WidthOfScreen(screenPtr);
-    htPtr->maxHeight = HeightOfScreen(screenPtr);
+    htPtr->selBW = 2;
+    Blt_SizeOfScreen(tkwin, &screenWidth, &screenHeight);
+    htPtr->maxWidth = screenWidth;
+    htPtr->maxHeight = screenHeight;
     Blt_InitHashTable(&htPtr->widgetTable, BLT_ONE_WORD_KEYS);
 
     Tk_CreateSelHandler(tkwin, XA_PRIMARY, XA_STRING, TextSelectionProc,
@@ -4411,14 +4419,14 @@ TextCmd(
     Blt_SetWindowInstanceData(tkwin, htPtr);
 
     /*
-     *-------------------------------------------------------------------------------
+     *------------------------------------------------------------------------
      *
      *  Create the widget command before configuring the widget. This
      *  is because the "-file" and "-text" options may have embedded
      *  commands that self-reference the widget through the
      *  "$blt_htext(widget)" variable.
      *
-     *-------------------------------------------------------------------------------
+     *------------------------------------------------------------------------
      */
     htPtr->cmdToken = Tcl_CreateObjCommand(interp, Tcl_GetString(objv[1]), 
 	TextWidgetCmd, htPtr, TextDeleteCmdProc);

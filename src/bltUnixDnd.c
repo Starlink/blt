@@ -323,7 +323,7 @@ typedef struct {
     Tk_3DBorder normalBorder;	/* Border/background for token window */
     Tk_3DBorder activeBorder;	/* Border/background for token window */
     int activeRelief;
-    int activeBorderWidth;	/* Border width in pixels */
+    int activeBW;	/* Border width in pixels */
     XColor *fillColor;		/* Color used to draw rejection fg: (\) */
     XColor *outlineColor;	/* Color used to draw rejection bg: (\) */
     Pixmap rejectStipple;	/* Stipple used to draw rejection: (\) */
@@ -552,7 +552,7 @@ static Blt_ConfigSpec tokenConfigSpecs[] =
 	DEF_TOKEN_ANCHOR, Blt_Offset(Token, anchor), 0},
     {BLT_CONFIG_PIXELS_NNEG, "-activeborderwidth", "activeBorderWidth",
 	"ActiveBorderWidth", DEF_TOKEN_ACTIVE_BORDERWIDTH, 
-	Blt_Offset(Token, activeBorderWidth), 0},
+	Blt_Offset(Token, activeBW), 0},
     {BLT_CONFIG_BORDER, "-background", "background", "Background",
 	DEF_TOKEN_BACKGROUND, Blt_Offset(Token, normalBorder),
 	BLT_CONFIG_COLOR_ONLY},
@@ -1274,7 +1274,7 @@ DisplayToken(ClientData clientData)
     if (tokenPtr->status == DROP_OK) {
 	relief = tokenPtr->activeRelief;
 	border = tokenPtr->activeBorder;
-	borderWidth = tokenPtr->activeBorderWidth;
+	borderWidth = tokenPtr->activeBW;
 	if ((dndPtr->cursors != NULL) && (dndPtr->cursorPos == 0)) {
 	    StartActiveCursor(dndPtr);
 	}
@@ -1487,16 +1487,16 @@ GetTokenPosition(Dnd *dndPtr, int x, int y)
     Token *tokenPtr = dndPtr->tokenPtr;
     int maxX, maxY;
     int vx, vy, dummy;
-    Screen *screenPtr;
+    int screenWidth, screenHeight;
 
     /* Adjust current location for virtual root windows.  */
     Tk_GetVRootGeometry(dndPtr->tkwin, &vx, &vy, &dummy, &dummy);
     x += vx - TOKEN_OFFSET;
     y += vy - TOKEN_OFFSET;
 
-    screenPtr = Tk_Screen(tokenPtr->tkwin);
-    maxX = WidthOfScreen(screenPtr) - Tk_Width(tokenPtr->tkwin);
-    maxY = HeightOfScreen(screenPtr) - Tk_Height(tokenPtr->tkwin);
+    Blt_SizeOfScreen(tokenPtr->tkwin, &screenWidth, &screenHeight);
+    maxX = screenWidth - Tk_Width(tokenPtr->tkwin);
+    maxY = screenHeight - Tk_Height(tokenPtr->tkwin);
     Blt_TranslateAnchor(x, y, Tk_Width(tokenPtr->tkwin),
 	Tk_Height(tokenPtr->tkwin), tokenPtr->anchor, &x, &y);
     if (x > maxX) {
@@ -1746,7 +1746,7 @@ CreateToken(
     tokenPtr->anchor = TK_ANCHOR_SE;
     tokenPtr->relief = TK_RELIEF_RAISED;
     tokenPtr->activeRelief = TK_RELIEF_SUNKEN;
-    tokenPtr->borderWidth = tokenPtr->activeBorderWidth = 3;
+    tokenPtr->borderWidth = tokenPtr->activeBW = 3;
 
     /* Create toplevel on parent's screen. */
     tkwin = Tk_CreateWindow(interp, dndPtr->tkwin, "dndtoken", "");
@@ -2622,14 +2622,8 @@ GetSourceFormats(Dnd *dndPtr, Window window, int timestamp)
  
 
 static int
-InvokeCallback(
-    Dnd *dndPtr,
-    const char **cmd,
-    int x, int y,
-    const char *formats,
-    int button, 
-    int keyState, 
-    int timestamp)
+InvokeCallback(Dnd *dndPtr, const char **cmd, int x, int y, const char *formats,
+	       int button, int keyState, int timestamp)
 {
     Tcl_DString dString, savedResult;
     Tcl_Interp *interp = dndPtr->interp;

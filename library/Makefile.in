@@ -15,11 +15,12 @@ so_ext =	@BLT_SO_EXT@
 lib_suffix =	@BLT_LIB_SUFFIX@
 pkgdir =	@BLT_LIBRARY@
 
-INSTALL      = @INSTALL@
-INSTALL_DATA = @INSTALL_DATA@
+INSTALL =	@INSTALL@
+INSTALL_DATA =  @INSTALL_DATA@
+RM =		rm -f
+SHELL =		/bin/sh
 INSTALL_ROOT = 
-RM           = rm -f
-SHELL        = /bin/sh
+MKDIR_P =	@MKDIR_P@
 
 cursors = 	treeview.xbm \
 		treeview_m.xbm
@@ -29,7 +30,7 @@ ifneq ("$(WIN32)", "")
 cursors += 	treeview.cur
 endif
 
-miscFiles     = \
+libraryFiles = \
 		bltCanvEps.pro \
 		bltGraph.pro \
 		combobutton.tcl \
@@ -38,8 +39,15 @@ miscFiles     = \
 		combotree.tcl \
 		dnd.tcl \
 		dragdrop.tcl \
+		drawer.tcl \
+		filmstrip.tcl \
 		graph.tcl \
-		hierbox.tcl \
+		listview.tcl \
+		paneset.tcl \
+		pushbutton.tcl \
+		unixButton.tcl \
+		macButton.tcl \
+		winButton.tcl \
 		scrollbar.tcl \
 		scrollset.tcl \
 		tabset.tcl \
@@ -52,9 +60,6 @@ ddFiles      =  dd-color.tcl \
 		dd-number.tcl \
 		dd-text.tcl \
 		tclIndex
-
-instdirs     =  $(prefix) $(exec_prefix) \
-		$(libdir) $(prefix)/lib $(pkgdir) $(pkgdir)/dd_protocols
 
 all: pkgIndex
 
@@ -70,22 +75,17 @@ pkgIndex:
 install: mkdirs pkgIndex
 	for i in $(ddFiles) ; do \
 	    $(INSTALL_DATA) $(srcdir)/dd_protocols/$$i \
-			$(INSTALL_ROOT)$(pkgdir)/dd_protocols ; \
+			$(DESTDIR)$(pkgdir)/dd_protocols ; \
 	done 
-	for i in $(miscFiles) ; do \
-	    $(INSTALL_DATA) $(srcdir)/$$i $(INSTALL_ROOT)$(pkgdir) ; \
+	for i in $(libraryFiles) ; do \
+	    $(INSTALL_DATA) $(srcdir)/$$i $(DESTDIR)$(pkgdir) ; \
 	done 
 	$(INSTALL_DATA) pkgIndex.tcl $(INSTALL_ROOT)$(pkgdir)
+	$(MAKE) -C afm install
 
 mkdirs:
-	@for i in $(instdirs) ; do \
-          if test -d $(INSTALL_ROOT)$$i ; then \
-            : ; \
-          else \
-            echo " mkdir -p $(INSTALL_ROOT)$$i" ; \
-            mkdir -p $(INSTALL_ROOT)$$i ; \
-          fi ; \
-        done
+	$(MKDIR_P) $(DESTDIR)/$(pkgdir)
+	$(MKDIR_P) $(DESTDIR)/$(pkgdir)/dd_protocols
 
 clean:
 	$(RM) pkgIndex.tcl

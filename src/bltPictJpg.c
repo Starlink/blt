@@ -682,26 +682,21 @@ ReadJpg(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer)
 }
 
 static Tcl_Obj *
-WriteJpg(Tcl_Interp *interp, Blt_Chain chain)
+WriteJpg(Tcl_Interp *interp, Blt_Picture picture)
 {
     Tcl_Obj *objPtr;
     Blt_DBuffer dbuffer;
     JpgExportSwitches switches;
-    Blt_Picture picture;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
-    switches.quality = 75;
+    switches.quality = 100;
     switches.smoothing = 0;
     switches.flags = 0;		/* No progressive or compression. */
     switches.bg.u32 = 0xFFFFFFFF; /* white */
-    
-    dbuffer = Blt_DBuffer_Create();
+
     objPtr = NULL;
-    picture = Blt_GetNthPicture(chain, 0);
-    if (picture == NULL) {
-	return Blt_EmptyStringObj();
-    }
+    dbuffer = Blt_DBuffer_Create();
     if (PictureToJpg(interp, picture, dbuffer, &switches) == TCL_OK) {
 	char *bytes;
 
@@ -743,7 +738,7 @@ ImportJpg(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv,
 	int nBytes;
 
 	bytes = Tcl_GetByteArrayFromObj(switches.dataObjPtr, &nBytes);
-	if (Blt_IsBase64((const char *)bytes, nBytes)) {
+	if (Blt_IsBase64(bytes, nBytes)) {
 	    if (Blt_DBuffer_DecodeBase64(interp, string, nBytes, dbuffer) 
 		!= TCL_OK) {
 		goto error;
@@ -768,19 +763,21 @@ ImportJpg(Tcl_Interp *interp, int objc, Tcl_Obj *const *objv,
 }
 
 static int
-ExportJpg(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
+ExportJpg(Tcl_Interp *interp, unsigned int index, Blt_Chain chain, int objc, 
+	  Tcl_Obj *const *objv)
 {
-    JpgExportSwitches switches;
     Blt_DBuffer dbuffer;
-    int result;
     Blt_Picture picture;
+    JpgExportSwitches switches;
+    int result;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
-    switches.quality = 75;
+    switches.quality = 100;
     switches.smoothing = 0;
     switches.flags = 0;		/* No progressive or compression. */
     switches.bg.u32 = 0xFFFFFFFF; /* white */
+    switches.index = index;
 
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, 
 	&switches, BLT_SWITCH_DEFAULTS) < 0) {
@@ -801,7 +798,7 @@ ExportJpg(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
 	return TCL_ERROR;
     }
     if (switches.quality == 0) {
-	switches.quality = 75; /* Default quality setting. */
+	switches.quality = 100; /* Default quality setting. */
     } else if (switches.quality > 100) {
 	switches.quality = 100; /* Maximum quality setting. */
     }

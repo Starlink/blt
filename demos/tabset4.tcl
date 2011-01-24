@@ -47,7 +47,7 @@ proc ResizePicture { src dest maxSize } {
     $dest configure -width $w -height $h
     
     global horzFilter vertFilter
-    $dest resize $src -filter $horzFilter 
+    $dest resample $src -filter $horzFilter 
 }
 
 image create picture src

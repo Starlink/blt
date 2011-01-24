@@ -39,6 +39,7 @@
 static Tcl_InterpDeleteProc TreeInterpDeleteProc;
 static Blt_TreeApplyProc SizeApplyProc;
 static Tcl_IdleProc NotifyIdleProc;
+static Tcl_IdleProc TraceIdleProc;
 
 #define TREE_THREAD_KEY		"BLT Tree Data"
 #define TREE_MAGIC		((unsigned int) 0x46170277)
@@ -151,18 +152,32 @@ typedef struct {
     Blt_TreeNotifyEvent event;
     unsigned int mask;
     int notifyPending;
-} EventHandler;
+} NotifyEventHandler;
 
 typedef struct {
+    /* This must match _Blt_TreeTrace in bltTree.h */
     ClientData clientData;
-    const char *keyPattern;
-    const char *withTag;
-    Node *nodePtr;
+    const char *keyPattern;		/* Pattern to be matched */
+    Node *nodePtr;			/* Node to be matched.  */
+    unsigned int mask;
     Blt_TreeTraceProc *proc;
+
+    /* Private fields */
+    const char *withTag;
     Tree *treePtr;
     Blt_ChainLink link;
-    unsigned int mask;
+    Blt_HashTable idleTable;
+    Tcl_Interp *interp;
 } TraceHandler;
+
+typedef struct {
+    TraceHandler *tracePtr;		/* Trace trace matched. */
+    Tcl_Interp *interp;			/* Source interpreter. */
+    Blt_TreeKey key;			/* Key that matched. */
+    int flags;				/* Flags that matched. */
+    long inode;				/* Node that matched. */
+    Blt_HashEntry *hashPtr;
+} TraceWhenIdle;
 
 /*
  *---------------------------------------------------------------------------
@@ -207,6 +222,32 @@ Blt_Tree_NodeIdAscii(Node *nodePtr)
     return stringRep;
 }
 
+static Tree *
+FirstClient(TreeObject *corePtr)
+{
+    Blt_ChainLink link;
+
+    link = Blt_Chain_FirstLink(corePtr->clients); 
+    if (link == NULL) {
+	return NULL;
+    }
+    return Blt_Chain_GetValue(link);
+}
+
+static Tree *
+NextClient(Tree *treePtr)
+{
+    Blt_ChainLink link;
+
+    if (treePtr == NULL) {
+	return NULL;
+    }
+    link = Blt_Chain_NextLink(treePtr->link); 
+    if (link == NULL) {
+	return NULL;
+    }
+    return Blt_Chain_GetValue(link);
+}
 
 /*
  *---------------------------------------------------------------------------
@@ -785,13 +826,17 @@ ResetTree(Tree *treePtr)
 	if (tracePtr->keyPattern != NULL) {
 	    Blt_Free(tracePtr->keyPattern);
 	}
+	if (tracePtr->idleTable.numEntries > 0) {
+	    Tcl_CancelIdleCall(TraceIdleProc, tracePtr);
+	}
 	Blt_Free(tracePtr);
     }
     Blt_Chain_Reset(treePtr->traces);
+
     /* And any event handlers. */
     for(link = Blt_Chain_FirstLink(treePtr->events); 
 	link != NULL; link = Blt_Chain_NextLink(link)) {
-	EventHandler *notifyPtr;
+	NotifyEventHandler *notifyPtr;
 
 	notifyPtr = Blt_Chain_GetValue(link);
 	if (notifyPtr->notifyPending) {
@@ -878,7 +923,7 @@ TreeInterpDeleteProc(ClientData clientData, Tcl_Interp *interp)
 static void
 NotifyIdleProc(ClientData clientData)
 {
-    EventHandler *notifyPtr = clientData;
+    NotifyEventHandler *notifyPtr = clientData;
     int result;
 
     notifyPtr->notifyPending = FALSE;
@@ -920,17 +965,18 @@ CheckEventHandlers(Tree *treePtr, int isSource, Blt_TreeNotifyEvent *eventPtr)
     eventPtr->tree = treePtr;
     for (link = Blt_Chain_FirstLink(treePtr->events); link != NULL; 
 	link = next) {
-	EventHandler *notifyPtr;
+	NotifyEventHandler *notifyPtr;
 
 	next = Blt_Chain_NextLink(link);
 	notifyPtr = Blt_Chain_GetValue(link);
 	if ((notifyPtr->mask & TREE_NOTIFY_ACTIVE) ||
 	    (notifyPtr->mask & eventPtr->type) == 0) {
-	    continue;		/* Ignore callbacks that are generated inside
-				 * of a notify handler routine. */
+	    continue;			/* Ignore callbacks that are generated
+					 * inside of a notify handler
+					 * routine. */
 	}
 	if ((isSource) && (notifyPtr->mask & TREE_NOTIFY_FOREIGN_ONLY)) {
-	    continue;		/* Don't notify yourself. */
+	    continue;			/* Don't notify yourself. */
 	}
 	if (notifyPtr->mask & TREE_NOTIFY_WHENIDLE) {
 	    if (!notifyPtr->notifyPending) {
@@ -966,22 +1012,20 @@ static void
 NotifyClients(Tree *sourcePtr, TreeObject *corePtr, Node *nodePtr, 
 	      int eventFlag)
 {
-    Blt_ChainLink link;
     Blt_TreeNotifyEvent event;
+    Tree *treePtr;
 
     event.type = eventFlag;
     event.inode = nodePtr->inode;
-
+    event.node = nodePtr;
     /* 
      * Issue callbacks to each client indicating that a new node has been
      * created.
      */
-    for (link = Blt_Chain_FirstLink(corePtr->clients); link != NULL; 
-	link = Blt_Chain_NextLink(link)) {
-	Tree *treePtr;
+    for (treePtr = FirstClient(corePtr); treePtr != NULL; 
+	 treePtr = NextClient(treePtr)) {
 	int isSource;
 
-	treePtr = Blt_Chain_GetValue(link);
 	isSource = (treePtr == sourcePtr);
 	CheckEventHandlers(treePtr, isSource, &event);
     }
@@ -1650,7 +1694,7 @@ RestoreValues(
 	if ((i + 1) < nValues) {
 	    valueObjPtr = GetStringObj(restorePtr, values[i + 1], -1);
 	} else {
-	    valueObjPtr = Blt_EmptyStringObj();
+	    valueObjPtr = Tcl_NewStringObj("", -1);
 	}
 	Tcl_IncrRefCount(valueObjPtr);
 	result = Blt_Tree_SetValue(interp, restorePtr->treePtr, nodePtr, 
@@ -2158,11 +2202,8 @@ Blt_Tree_CreateNodeWithId(
  */
 /*ARGSUSED*/
 int
-Blt_Tree_MoveNode(
-    Tree *treePtr,
-    Node *nodePtr, 
-    Node *parentPtr, 
-    Node *beforePtr)
+Blt_Tree_MoveNode(Tree *treePtr, Node *nodePtr, Node *parentPtr, 
+		  Node *beforePtr)
 {
     TreeObject *corePtr = nodePtr->corePtr;
     size_t newDepth;
@@ -2233,14 +2274,9 @@ Blt_Tree_GetNode(Tree *treePtr, long inode)
 }
 
 Blt_TreeTrace
-Blt_Tree_CreateTrace(
-    Tree *treePtr,
-    Node *nodePtr,
-    const char *keyPattern,
-    const char *tagName,
-    unsigned int mask,
-    Blt_TreeTraceProc *proc,
-    ClientData clientData)
+Blt_Tree_CreateTrace(Tree *treePtr, Node *nodePtr, const char *keyPattern,
+		     const char *tagName, unsigned int mask, 
+		     Blt_TreeTraceProc *proc, ClientData clientData)
 {
     TraceHandler *tracePtr;
 
@@ -2257,6 +2293,8 @@ Blt_Tree_CreateTrace(
     tracePtr->clientData = clientData;
     tracePtr->mask = mask;
     tracePtr->nodePtr = nodePtr;
+    tracePtr->interp = treePtr->interp;
+    Blt_InitHashTable(&tracePtr->idleTable, sizeof(TraceWhenIdle)/sizeof(int));
     return (Blt_TreeTrace)tracePtr;
 }
 
@@ -2554,6 +2592,52 @@ Blt_Tree_IsBefore(Node *n1Ptr, Node *n2Ptr)
     return FALSE;
 }
 
+/*
+ *---------------------------------------------------------------------------
+ *
+ * TraceIdleProc --
+ *
+ *	Used to invoke event handler routines at some idle point.  This
+ *	routine is called from the TCL event loop.  Errors generated by the
+ *	event handler routines are backgrounded.
+ *	
+ * Results:
+ *	None.
+ *
+ *---------------------------------------------------------------------------
+ */
+static void
+TraceIdleProc(ClientData clientData)
+{
+    Blt_HashEntry *hashPtr = clientData;
+    TraceWhenIdle *idlePtr;
+    TraceHandler *tracePtr;
+    int result;
+    Node *nodePtr;
+    Tcl_Interp *interp;
+    Blt_TreeKey key;
+    int flags;
+
+    idlePtr = Blt_GetHashValue(hashPtr);
+    tracePtr = idlePtr->tracePtr;
+    interp = idlePtr->interp;
+
+    /* Get the node from the inode since the node may be been deleted in the
+     * time between the idle proc was issued and invoked. */
+    nodePtr = Blt_Tree_GetNode(tracePtr->treePtr, idlePtr->inode);
+    if (nodePtr != NULL) {
+	key = idlePtr->key;
+	flags = idlePtr->flags;
+	Blt_DeleteHashEntry(&tracePtr->idleTable, hashPtr);
+	result = (*tracePtr->proc) (tracePtr->clientData, interp, nodePtr, 
+		key, flags);
+	if (result != TCL_OK) {
+	    Tcl_BackgroundError(interp);
+	}
+	nodePtr->flags &= ~TREE_TRACE_ACTIVE;
+    }
+}
+
 static void
 CallTraces(
     Tcl_Interp *interp,
@@ -2565,45 +2649,63 @@ CallTraces(
     Blt_TreeKey key,
     unsigned int flags)
 {
-    Blt_ChainLink link1;
+    Tree *treePtr;
 
-    for(link1 = Blt_Chain_FirstLink(corePtr->clients); link1 != NULL; 
-	link1 = Blt_Chain_NextLink(link1)) {
-	Blt_ChainLink link2;
-	Tree *treePtr;
+    for(treePtr = FirstClient(corePtr); treePtr != NULL; 
+	treePtr = NextClient(treePtr)) {
+	Blt_ChainLink link;
 
-	treePtr = Blt_Chain_GetValue(link1);
-	for(link2 = Blt_Chain_FirstLink(treePtr->traces); link2 != NULL; 
-	    link2 = Blt_Chain_NextLink(link2)) {
+	for(link = Blt_Chain_FirstLink(treePtr->traces); link != NULL; 
+	    link = Blt_Chain_NextLink(link)) {
 	    TraceHandler *tracePtr;	
 
-	    tracePtr = Blt_Chain_GetValue(link2);
+	    tracePtr = Blt_Chain_GetValue(link);
 	    if ((tracePtr->keyPattern != NULL) && 
 		(!Tcl_StringMatch(key, tracePtr->keyPattern))) {
-		continue;	/* Key pattern doesn't match. */
+		continue;		/* Key pattern doesn't match. */
 	    }
 	    if ((tracePtr->withTag != NULL) && 
 		(!Blt_Tree_HasTag(treePtr, nodePtr, tracePtr->withTag))) {
-		continue;	/* Doesn't have the tag. */
+		continue;		/* Doesn't have the tag. */
 	    }
 	    if ((tracePtr->mask & flags) == 0) {
-		continue;	/* Flags don't match. */
+		continue;		/* Flags don't match. */
 	    }
 	    if ((treePtr == sourcePtr) && 
 		(tracePtr->mask & TREE_TRACE_FOREIGN_ONLY)) {
-		continue;	/* This client initiated the trace. */
+		continue;		/* This client initiated the trace. */
 	    }
 	    if ((tracePtr->nodePtr != NULL) && (tracePtr->nodePtr != nodePtr)) {
-		continue;	/* Nodes don't match. */
+		continue;		/* Nodes don't match. */
 	    }
-	    nodePtr->flags |= TREE_TRACE_ACTIVE;
-	    if ((*tracePtr->proc) (tracePtr->clientData, sourcePtr->interp, 
-		nodePtr, key, flags) != TCL_OK) {
-		if (interp != NULL) {
-		    Tcl_BackgroundError(interp);
+	    if (tracePtr->mask & TREE_TRACE_WHENIDLE) {
+		TraceWhenIdle idle;
+		int isNew;
+		Blt_HashEntry *hPtr;
+
+		memset(&idle, 0, sizeof(idle));
+		idle.interp = sourcePtr->interp;
+		idle.tracePtr = tracePtr;
+		idle.key = key;
+		idle.flags = flags;
+		idle.inode = nodePtr->inode;
+		hPtr = Blt_CreateHashEntry(&tracePtr->idleTable, (char *)&idle, 
+			&isNew);
+		if (isNew) {
+		    Blt_SetHashValue(hPtr, 
+			Blt_GetHashKey(&tracePtr->idleTable, hPtr));
+		    Tcl_DoWhenIdle(TraceIdleProc, hPtr);
 		}
+	    } else {
+		nodePtr->flags |= TREE_TRACE_ACTIVE;
+		if ((*tracePtr->proc) (tracePtr->clientData, sourcePtr->interp, 
+				       nodePtr, key, flags) != TCL_OK) {
+		    if (interp != NULL) {
+			Tcl_BackgroundError(interp);
+		    }
+		}
+		nodePtr->flags &= ~TREE_TRACE_ACTIVE;
 	    }
-	    nodePtr->flags &= ~TREE_TRACE_ACTIVE;
 	}
     }
 }
@@ -2715,8 +2817,8 @@ Blt_Tree_SetValueByKey(
 {
     TreeObject *corePtr = nodePtr->corePtr;
     Value *valuePtr;
-    unsigned int flags;
     int isNew;
+    unsigned int flags;
 
     if (valueObjPtr == NULL) {
 	return Blt_Tree_UnsetValueByKey(interp, treePtr, nodePtr, key);
@@ -2741,8 +2843,7 @@ Blt_Tree_SetValueByKey(
 	flags |= TREE_TRACE_CREATE;
     }
     if (!(nodePtr->flags & TREE_TRACE_ACTIVE)) {
-	CallTraces(interp, treePtr, corePtr, nodePtr, valuePtr->key, 
-		flags);
+	CallTraces(interp, treePtr, corePtr, nodePtr, valuePtr->key, flags);
     }
     return TCL_OK;
 }
@@ -3350,9 +3451,7 @@ Blt_Tree_Close(Tree *treePtr)
 }
 
 int
-Blt_Tree_Exists(
-    Tcl_Interp *interp,		/* Interpreter to report errors back to. */
-    const char *name)		/* Namespace-qualifed name of tree. */
+Blt_Tree_Exists(Tcl_Interp *interp, const char *name)
 {
     TreeInterpData *dataPtr;
 
@@ -3362,10 +3461,7 @@ Blt_Tree_Exists(
 
 /*ARGSUSED*/
 static int
-SizeApplyProc(
-    Node *nodePtr,		/* Not used. */
-    ClientData clientData,
-    int order)			/* Not used. */
+SizeApplyProc(Node *nodePtr, ClientData clientData, int order)
 {
     int *sumPtr = clientData;
     *sumPtr = *sumPtr + 1;
@@ -3384,14 +3480,12 @@ Blt_Tree_Size(Node *nodePtr)
 
 
 void
-Blt_Tree_CreateEventHandler(
-    Tree *treePtr,
-    unsigned int mask,
-    Blt_TreeNotifyEventProc *proc,
-    ClientData clientData)
+Blt_Tree_CreateEventHandler(Tree *treePtr, unsigned int mask, 
+			    Blt_TreeNotifyEventProc *proc, 
+			    ClientData clientData)
 {
     Blt_ChainLink link;
-    EventHandler *notifyPtr;
+    NotifyEventHandler *notifyPtr;
 
     notifyPtr = NULL;		/* Suppress compiler warning. */
 
@@ -3406,7 +3500,7 @@ Blt_Tree_CreateEventHandler(
 	}
     }
     if (link == NULL) {
-	notifyPtr = Blt_AssertMalloc(sizeof (EventHandler));
+	notifyPtr = Blt_AssertMalloc(sizeof (NotifyEventHandler));
 	link = Blt_Chain_Append(treePtr->events, notifyPtr);
     }
     if (proc == NULL) {
@@ -3422,17 +3516,16 @@ Blt_Tree_CreateEventHandler(
 }
 
 void
-Blt_Tree_DeleteEventHandler(
-    Tree *treePtr,
-    unsigned int mask,
-    Blt_TreeNotifyEventProc *proc,
-    ClientData clientData)
+Blt_Tree_DeleteEventHandler(Tree *treePtr, unsigned int mask, 
+			    Blt_TreeNotifyEventProc *proc, 
+			    ClientData clientData)
 {
     Blt_ChainLink link;
-    EventHandler *notifyPtr;
 
-    for(link = Blt_Chain_FirstLink(treePtr->events); 
-	link != NULL; link = Blt_Chain_NextLink(link)) {
+    for(link = Blt_Chain_FirstLink(treePtr->events); link != NULL; 
+	link = Blt_Chain_NextLink(link)) {
+	NotifyEventHandler *notifyPtr;
+
 	notifyPtr = Blt_Chain_GetValue(link);
 	if ((notifyPtr->proc == proc) && (notifyPtr->mask == mask) &&
 	    (notifyPtr->clientData == clientData)) {
@@ -3519,11 +3612,8 @@ Blt_Tree_NodePath(Node *nodePtr, Tcl_DString *dsPtr)
 }
 
 int
-Blt_Tree_ArrayValueExists(
-    Tree *treePtr,
-    Node *nodePtr,
-    const char *arrayName, 
-    const char *elemName)
+Blt_Tree_ArrayValueExists(Tree *treePtr, Node *nodePtr, const char *arrayName, 
+			  const char *elemName)
 {
     Blt_TreeKey key;
     Blt_HashEntry *hPtr;
@@ -3549,13 +3639,9 @@ Blt_Tree_ArrayValueExists(
 }
 
 int
-Blt_Tree_GetArrayValue(
-    Tcl_Interp *interp,
-    Tree *treePtr,
-    Node *nodePtr,
-    const char *arrayName,
-    const char *elemName,
-    Tcl_Obj **valueObjPtrPtr)
+Blt_Tree_GetArrayValue(Tcl_Interp *interp, Tree *treePtr, Node *nodePtr,
+		       const char *arrayName, const char *elemName,
+		       Tcl_Obj **valueObjPtrPtr)
 {
     Blt_TreeKey key;
     Blt_HashEntry *hPtr;
@@ -3594,13 +3680,9 @@ Blt_Tree_GetArrayValue(
 }
 
 int
-Blt_Tree_SetArrayValue(
-    Tcl_Interp *interp,
-    Tree *treePtr,
-    Node *nodePtr,		/* Node to be updated. */
-    const char *arrayName,
-    const char *elemName,
-    Tcl_Obj *valueObjPtr)	/* New value of element. */
+Blt_Tree_SetArrayValue(Tcl_Interp *interp, Tree *treePtr, Node *nodePtr,
+		       const char *arrayName, const char *elemName,
+		       Tcl_Obj *valueObjPtr)
 {
     Blt_TreeKey key;
     Blt_HashEntry *hPtr;
@@ -3665,12 +3747,8 @@ Blt_Tree_SetArrayValue(
 }
 
 int
-Blt_Tree_UnsetArrayValue(
-    Tcl_Interp *interp,
-    Tree *treePtr,
-    Node *nodePtr,		/* Node to be updated. */
-    const char *arrayName,
-    const char *elemName)
+Blt_Tree_UnsetArrayValue(Tcl_Interp *interp, Tree *treePtr, Node *nodePtr,
+			 const char *arrayName, const char *elemName)
 {
     Blt_TreeKey key;		/* Name of field in node. */
     Blt_HashEntry *hPtr;
@@ -3718,12 +3796,8 @@ Blt_Tree_UnsetArrayValue(
 }
 
 int
-Blt_Tree_ArrayNames(
-    Tcl_Interp *interp,
-    Tree *treePtr,
-    Node *nodePtr,
-    const char *arrayName,
-    Tcl_Obj *listObjPtr)
+Blt_Tree_ArrayNames(Tcl_Interp *interp, Tree *treePtr, Node *nodePtr,
+		    const char *arrayName, Tcl_Obj *listObjPtr)
 {
     Blt_HashEntry *hPtr;
     Blt_HashSearch cursor;
@@ -3866,10 +3940,7 @@ Blt_Tree_HasTag(
 }
 
 void
-Blt_Tree_AddTag(
-    Tree *treePtr,
-    Node *nodePtr,
-    const char *tagName)
+Blt_Tree_AddTag(Tree *treePtr, Node *nodePtr, const char *tagName)
 {
     Blt_TreeTagEntry *tePtr;
 
@@ -3889,10 +3960,7 @@ Blt_Tree_AddTag(
 }
 
 void
-Blt_Tree_RemoveTag(
-    Tree *treePtr,
-    Node *nodePtr,
-    const char *tagName)
+Blt_Tree_RemoveTag(Tree *treePtr, Node *nodePtr, const char *tagName)
 {
     Blt_HashEntry *hPtr;
     Blt_TreeTagEntry *tePtr;
@@ -4025,10 +4093,7 @@ Blt_Tree_DumpNode(Tree *treePtr, Node *rootPtr, Node *nodePtr,
  *---------------------------------------------------------------------------
  */
 int
-Blt_Tree_Dump(
-    Tree *treePtr,
-    Node *rootPtr,		/* Root node of sub-tree. */
-    Tcl_DString *dsPtr)
+Blt_Tree_Dump(Tree *treePtr, Node *rootPtr, Tcl_DString *dsPtr)
 {
     Node *np;
 
@@ -4062,7 +4127,7 @@ int
 Blt_Tree_DumpToFile(
     Tcl_Interp *interp,
     Tree *treePtr,
-    Node *rootPtr,		/* Root node of subtree. */
+    Node *rootPtr,			/* Root node of subtree. */
     const char *fileName)
 {
     Tcl_Channel channel;
@@ -4150,7 +4215,7 @@ int
 Blt_Tree_RestoreFromFile(
     Tcl_Interp *interp,
     Tree *treePtr,
-    Node *rootPtr,		/* Root node of branch to be restored. */
+    Node *rootPtr,		     /* Root node of branch to be restored. */
     const char *fileName,
     unsigned int flags)
 {
@@ -4178,7 +4243,7 @@ Blt_Tree_RestoreFromFile(
     } else {
 	channel = Tcl_OpenFileChannel(interp, fileName, "r", 0);
 	if (channel == NULL) {
-	    return TCL_ERROR;	/* Can't open dump file. */
+	    return TCL_ERROR;		/* Can't open dump file. */
 	}
     }
     memset((char *)&restore, 0, sizeof(restore));
@@ -4193,10 +4258,10 @@ Blt_Tree_RestoreFromFile(
     for (;;) {
 	result = ReadDumpRecord(interp, channel, &argc, &argv, &restore);
 	if (result != TCL_OK) {
-	    break;		/* Found error or EOF */
+	    break;			/* Found error or EOF */
 	}
 	if (argc == 0) {
-	    result = TCL_OK; /* Do nothing. */
+	    result = TCL_OK;		/* Do nothing. */
 	} else if (argc == 3) {
 	    result = RestoreNode3(interp, argc, argv, &restore);
 	} else if ((argc == 5) || (argc == 6)) {

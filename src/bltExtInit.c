@@ -56,8 +56,8 @@ static Tcl_AppInitProc *cmdProcs[] =
 #ifndef NO_PICTURE
     Blt_PictureCmdInitProc,
 #endif
-#ifndef NO_TABLE
-    Blt_TableCmdInitProc,
+#ifndef NO_TABLEMGR
+    Blt_TableMgrCmdInitProc,
 #endif
 #ifndef NO_TABSET
     Blt_TabsetCmdInitProc,
@@ -123,7 +123,9 @@ static Tcl_AppInitProc *cmdProcs[] =
     Blt_ComboEntryInitProc,
     Blt_ComboMenuInitProc,
     Blt_ComboTreeInitProc,
+    Blt_ListViewInitProc,
 #endif
+    Blt_AfmCmdInitProc,
     Blt_SendEventCmdInitProc,
     (Tcl_AppInitProc *) NULL
 };
@@ -170,7 +172,8 @@ Blt_x_Init(Tcl_Interp *interp) /* Interpreter to add extra commands */
     }
     Blt_RegisterPictureImageType(interp);
     Blt_RegisterEpsCanvasItem();
-    
+    Blt_InitXRandrConfig(interp);
+
     /* Initialize the BLT commands that only use Tk. */
     for (p = cmdProcs; *p != NULL; p++) {
 	if ((**p) (interp) != TCL_OK) {
@@ -206,3 +209,4 @@ Blt_Init(Tcl_Interp *interp)
 #ifdef USE_DLL
 #  include "bltWinDll.c"
 #endif
+

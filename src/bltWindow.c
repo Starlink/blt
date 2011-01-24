@@ -70,9 +70,10 @@ Blt_GetDrawableAttribs(Display *display, Drawable drawable)
 	DrawableKey key;
 
 	if (!initialized) {
-	    Blt_InitHashTable(&attribTable, sizeof(DrawableKey));
+	    Blt_InitHashTable(&attribTable, sizeof(DrawableKey)/sizeof(int));
 	    initialized = TRUE;
 	}
+	memset(&key, 0, sizeof(key));
 	key.drawable = drawable;
 	key.display = display;
 	hPtr = Blt_FindHashEntry(&attribTable, &key);
@@ -100,9 +101,10 @@ Blt_SetDrawableAttribs(
 	DrawableKey key;
 
 	if (!initialized) {
-	    Blt_InitHashTable(&attribTable, sizeof(DrawableKey));
+	    Blt_InitHashTable(&attribTable, sizeof(DrawableKey)/sizeof(int));
 	    initialized = TRUE;
 	}
+	memset(&key, 0, sizeof(key));
 	key.drawable = drawable;
 	key.display = display;
 	hPtr = Blt_CreateHashEntry(&attribTable, &key, &isNew);
@@ -140,9 +142,10 @@ Blt_FreeDrawableAttribs(Display *display, Drawable drawable)
 
     if (drawable != None) {
 	if (!initialized) {
-	    Blt_InitHashTable(&attribTable, sizeof(DrawableKey));
+	    Blt_InitHashTable(&attribTable, sizeof(DrawableKey)/sizeof(int));
 	    initialized = TRUE;
 	}
+	memset(&key, 0, sizeof(key));
 	key.drawable = drawable;
 	key.display = display;
 	hPtr = Blt_FindHashEntry(&attribTable, &key);
@@ -513,3 +516,86 @@ Blt_DeleteWindowInstanceData(Tk_Window tkwin)
 {
     /* empty */
 }
+
+
+#if HAVE_RANDR
+#include <X11/Xlib.h>
+#include <X11/Xlibint.h>
+#include <X11/Xproto.h>
+#include <X11/extensions/randr.h>
+#include <X11/extensions/Xrandr.h>
+#include <X11/extensions/Xrender.h>	/* we share subpixel information */
+
+typedef struct {
+    int major, minor;			/* XRandR version numbers. */
+    int eventNum, errorNum;		/* Event offset of XRandr */
+    Display *display;
+    Tk_Window mainWindow;		/* Main window of interpreter. */
+    Window root;			/* Root window of screen. */
+} XRandr;
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ *  XRandrEventProc --
+ *
+ *	Invoked by Tk_HandleEvent whenever a ConfigureNotify or
+ *	RRScreenChangeNotify event is received on the root window.
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+XRandrEventProc(ClientData clientData, XEvent *eventPtr)
+{
+    XRandr *rrPtr = clientData;
+
+    if (eventPtr->xany.window == rrPtr->root) {
+	if ((eventPtr->type + (rrPtr->eventNum + RRScreenChangeNotify)) ||
+	    (eventPtr->type == ConfigureNotify)) {
+	    if (!XRRUpdateConfiguration(eventPtr)) {
+		fprintf(stderr, "can't update screen configuration\n");
+	    }
+	}
+    }
+    return 0;
+}
+
+void
+Blt_InitXRandrConfig(Tcl_Interp *interp) 
+{
+    Tk_Window tkwin;
+    static XRandr rr;
+
+    tkwin = Tk_MainWindow(interp);
+    rr.mainWindow = tkwin;
+    rr.root = Tk_RootWindow(tkwin);
+    rr.display = Tk_Display(tkwin);
+    if (!XRRQueryExtension(rr.display, &rr.eventNum, &rr.errorNum)) {
+	fprintf(stderr, "Xserver does not support the RANDR extension.\n");
+	return;
+    }
+    if (!XRRQueryVersion(rr.display, &rr.major, &rr.minor)) {
+	fprintf(stderr, "Xserver didn't report RANDR version numbers?\n");
+    }
+    Tk_CreateGenericHandler(XRandrEventProc, &rr);
+    XRRSelectInput(rr.display, rr.root, RRScreenChangeNotifyMask);
+#ifdef notdef
+    XSelectInput(rr.display, rr.root, StructureNotifyMask);
+#endif
+}
+
+#else 
+void
+Blt_InitXRandrConfig(Tcl_Interp *interp) 
+{
+}
+#endif	/* HAVE_XRANDR */
+
+/* ARGSUSED */
+void
+Blt_SizeOfScreen(Tk_Window tkwin, int *widthPtr, int *heightPtr)
+{
+    *widthPtr = WidthOfScreen(Tk_Screen(tkwin));
+    *heightPtr = HeightOfScreen(Tk_Screen(tkwin));
+}
+

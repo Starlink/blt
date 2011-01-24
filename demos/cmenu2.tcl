@@ -267,25 +267,16 @@ blt::combomenu .e.m \
     -disabledforeground grey45  \
     -disabledbackground grey85  \
     -disabledacceleratorforeground grey45  \
-    -width -400 \
-    -height -2i \
-    -xscrollcommand { .e.m.xbar set } \
-    -yscrollcommand { .e.m.ybar set } \
+    -width { 0 400 } \
+    -height { 0 2i } \
     -yscrollbar .e.m.ybar \
     -xscrollbar .e.m.xbar
 
 .e.m listadd $labels \
     -icon $icon 
 
-blt::tk::scrollbar .e.m.xbar  \
-    -orient horizontal \
-    -command { .e.m xview } \
-    -width 17
-
-blt::tk::scrollbar .e.m.ybar \
-    -orient vertical \
-    -command { .e.m yview } \
-    -highlightthickness 0 -width 17 
+blt::tk::scrollbar .e.m.xbar  
+blt::tk::scrollbar .e.m.ybar 
 
 blt::tk::scrollbar .s -orient vertical -command { .e xview } 
 

@@ -61,8 +61,9 @@ typedef const char *Blt_TreeKey;
     (TREE_TRACE_UNSET | TREE_TRACE_WRITE | TREE_TRACE_READ | TREE_TRACE_CREATE)
 #define TREE_TRACE_MASK		(TREE_TRACE_ALL)
 
-#define TREE_TRACE_FOREIGN_ONLY	(1<<8)
-#define TREE_TRACE_ACTIVE	(1<<9)
+#define TREE_TRACE_WHENIDLE	(1<<8)
+#define TREE_TRACE_FOREIGN_ONLY	(1<<9)
+#define TREE_TRACE_ACTIVE	(1<<10)
 
 #define TREE_NOTIFY_CREATE	(1<<0)
 #define TREE_NOTIFY_DELETE	(1<<1)
@@ -87,6 +88,7 @@ typedef struct {
     int type;
     Blt_Tree tree;
     long inode;			/* Node of event */
+    Blt_TreeNode node;
     Tcl_Interp *interp;
 } Blt_TreeNotifyEvent;
 
@@ -406,6 +408,11 @@ BLT_EXTERN void Blt_Tree_DeleteTrace(Blt_TreeTrace token);
 
 BLT_EXTERN void Blt_Tree_CreateEventHandler(Blt_Tree tree, unsigned int mask, 
 	Blt_TreeNotifyEventProc *proc, ClientData clientData);
+BLT_EXTERN void Blt_Tree_CreateTagEventHandler(Blt_Tree tree, unsigned int mask,
+	const char *tag, Blt_TreeNotifyEventProc *proc, ClientData clientData);
+BLT_EXTERN void Blt_Tree_CreateNodeEventHandler(Blt_Tree tree, 
+	unsigned int mask, Blt_TreeNode node, Blt_TreeNotifyEventProc *proc, 
+	ClientData clientData);
 
 BLT_EXTERN void Blt_Tree_DeleteEventHandler(Blt_Tree tree, unsigned int mask, 
 	Blt_TreeNotifyEventProc *proc, ClientData clientData);

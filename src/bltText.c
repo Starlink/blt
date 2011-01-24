@@ -78,133 +78,6 @@ Blt_GetBitmapGC(Tk_Window tkwin)
 /*
  *---------------------------------------------------------------------------
  *
- * Blt_Ts_CreateLayout --
- *
- *	Get the extents of a possibly multiple-lined text string.
- *
- * Results:
- *	Returns via *widthPtr* and *heightPtr* the dimensions of the text
- *	string.
- *
- *---------------------------------------------------------------------------
- */
-TextLayout *
-Blt_Ts_CreateLayout(const char *text, int textLen, TextStyle *tsPtr)
-{
-    TextFragment *fp;
-    TextLayout *layoutPtr;
-    Blt_FontMetrics fm;
-    int count;			/* Count # of characters on each line */
-    int lineHeight;
-    size_t maxHeight, maxWidth;
-    size_t nFrags;
-    int width;			/* Running dimensions of the text */
-    const char *p, *endp, *start;
-    int i;
-    size_t size;
-
-    nFrags = 0;
-    endp = text + ((textLen < 0) ? strlen(text) : textLen);
-    for (p = text; p < endp; p++) {
-	if (*p == '\n') {
-	    nFrags++;
-	}
-    }
-    if ((p != text) && (*(p - 1) != '\n')) {
-	nFrags++;
-    }
-    size = sizeof(TextLayout) + (sizeof(TextFragment) * (nFrags - 1));
-
-    layoutPtr = Blt_AssertCalloc(1, size);
-    layoutPtr->nFrags = nFrags;
-
-    nFrags = count = 0;
-    width = maxWidth = 0;
-    maxHeight = tsPtr->padTop;
-    Blt_GetFontMetrics(tsPtr->font, &fm);
-    lineHeight = fm.linespace + tsPtr->leader;
-
-    fp = layoutPtr->fragments;
-    for (p = start = text; p < endp; p++) {
-	if (*p == '\n') {
-	    if (count > 0) {
-		width = Blt_TextWidth(tsPtr->font, start, count);
-		if (width > maxWidth) {
-		    maxWidth = width;
-		}
-	    } else {
-		width = 0;
-	    }
-	    fp->width = width;
-	    fp->count = count;
-	    fp->sy = fp->y = maxHeight + fm.ascent;
-	    fp->text = start;
-	    maxHeight += lineHeight;
-	    fp++;
-	    nFrags++;
-	    start = p + 1;	/* Start the text on the next line */
-	    count = 0;		/* Reset to indicate the start of a new
-				 * line */
-	    continue;
-	}
-	count++;
-    }
-    if (nFrags < layoutPtr->nFrags) {
-	width = Blt_TextWidth(tsPtr->font, start, count);
-	if (width > maxWidth) {
-	    maxWidth = width;
-	}
-	fp->width = width;
-	fp->count = count;
-	fp->sy = fp->y = maxHeight + fm.ascent;
-	fp->text = start;
-	maxHeight += lineHeight;
-	nFrags++;
-    }
-    maxHeight += tsPtr->padBottom;
-    maxWidth += PADDING(tsPtr->xPad);
-    fp = layoutPtr->fragments;
-    for (i = 0; i < nFrags; i++, fp++) {
-	switch (tsPtr->justify) {
-	default:
-	case TK_JUSTIFY_LEFT:
-	    /* No offset for left justified text strings */
-	    fp->x = fp->sx = tsPtr->padLeft;
-	    break;
-	case TK_JUSTIFY_RIGHT:
-	    fp->x = fp->sx = (maxWidth - fp->width) - tsPtr->padRight;
-	    break;
-	case TK_JUSTIFY_CENTER:
-	    fp->x = fp->sx = (maxWidth - fp->width) / 2;
-	    break;
-	}
-    }
-    if (tsPtr->underline >= 0) {
-	fp = layoutPtr->fragments;
-	for (i = 0; i < nFrags; i++, fp++) {
-	    int first, last;
-
-	    first = fp->text - text;
-	    last = first + fp->count;
-	    if ((tsPtr->underline >= first) && (tsPtr->underline < last)) {
-		layoutPtr->underlinePtr = fp;
-		layoutPtr->underline = tsPtr->underline - first;
-		break;
-	    }
-	}
-    }
-    layoutPtr->width = maxWidth;
-    layoutPtr->height = maxHeight - tsPtr->leader;
-#ifdef notdef
-    fprintf(stderr, "w = %d, h = %d\n", maxWidth, maxHeight);
-#endif
-    return layoutPtr;
-}
-
-
-/*
- *---------------------------------------------------------------------------
- *
  * Blt_GetTextExtents --
  *
  *	Get the extents of a possibly multiple-lined text string.
@@ -590,6 +463,208 @@ SizeOfUtfChar(const char *s)	/* Buffer in which the UTF-8 representation of
 /*
  *---------------------------------------------------------------------------
  *
+ * Blt_MeasureText --
+ *
+ *	Draw a string of characters on the screen.  Blt_DrawChars()
+ *	expands control characters that occur in the string to 
+ *	\xNN sequences.  
+ *
+ * Results:
+ *	None.
+ *
+ * Side effects:
+ *	Information gets drawn on the screen.
+ *
+ *---------------------------------------------------------------------------
+ */
+int
+Blt_MeasureText(
+    Blt_Font font,		/* Font in which characters will be drawn;
+				 * must be the same as font used in GC. */
+    const char *text,		/* UTF-8 string to be displayed.  Need not be
+				 * '\0' terminated.  All Tk meta-characters
+				 * (tabs, control characters, and newlines)
+				 * should be stripped out of the string that
+				 * is passed to this function.  If they are
+				 * not stripped out, they will be displayed as
+				 * regular printing characters. */
+    int textLen,		/* # of bytes to draw in text string. */
+    int maxLength, 
+    int *countPtr)
+{
+    int elWidth;
+    const char *s, *send;
+    int accum, count, threshold;
+    int nBytes;
+
+    if (maxLength < 0) {
+	if (countPtr != NULL) {
+	    nBytes = textLen;
+	}
+	return Blt_TextWidth(font, text, textLen);
+    }
+    elWidth = Blt_TextWidth(font, "...", 3);
+    threshold = maxLength - elWidth;
+    if (threshold <= 0) {
+	return 0;
+    }
+#if !HAVE_UTF
+    nBytes = 1;
+#endif /* !HAVE_UTF */
+    count = accum = 0;
+    for (s = text, send = s + textLen; s < send; s += nBytes) {
+#if HAVE_UTF
+	Tcl_UniChar ch;
+#endif /* HAVE_UTF */
+	int w;
+#if HAVE_UTF
+	nBytes =  Tcl_UtfToUniChar (s, &ch);
+#endif /* HAVE_UTF */
+	w = Blt_TextWidth(font, s, nBytes);
+	if ((accum + w) > threshold) {
+	    if (countPtr != NULL) {
+		*countPtr = count;
+	    }
+	    return accum + elWidth;
+	}
+	accum += w;
+	count += nBytes;
+    }
+    if (countPtr != NULL) {
+	*countPtr = count;
+    }
+    return accum;
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_Ts_CreateLayout --
+ *
+ *	Get the extents of a possibly multiple-lined text string.
+ *
+ * Results:
+ *	Returns via *widthPtr* and *heightPtr* the dimensions of the text
+ *	string.
+ *
+ *---------------------------------------------------------------------------
+ */
+TextLayout *
+Blt_Ts_CreateLayout(const char *text, int textLen, TextStyle *tsPtr)
+{
+    TextFragment *fp;
+    TextLayout *layoutPtr;
+    Blt_FontMetrics fm;
+    int count;			/* Count # of characters on each line */
+    int lineHeight;
+    size_t maxHeight, maxWidth;
+    size_t nFrags;
+    int width;			/* Running dimensions of the text */
+    const char *p, *endp, *start;
+    int i;
+    size_t size;
+
+    nFrags = 0;
+    endp = text + ((textLen < 0) ? strlen(text) : textLen);
+    for (p = text; p < endp; p++) {
+	if (*p == '\n') {
+	    nFrags++;
+	}
+    }
+    if ((p != text) && (*(p - 1) != '\n')) {
+	nFrags++;
+    }
+    size = sizeof(TextLayout) + (sizeof(TextFragment) * (nFrags - 1));
+
+    layoutPtr = Blt_AssertCalloc(1, size);
+    layoutPtr->nFrags = nFrags;
+
+    nFrags = count = 0;
+    width = maxWidth = 0;
+    maxHeight = tsPtr->padTop;
+    Blt_GetFontMetrics(tsPtr->font, &fm);
+    lineHeight = fm.linespace + tsPtr->leader;
+
+    fp = layoutPtr->fragments;
+    for (p = start = text; p < endp; p++) {
+	if (*p == '\n') {
+	    if (count > 0) {
+		width = Blt_TextWidth(tsPtr->font, start, count);
+		if (width > maxWidth) {
+		    maxWidth = width;
+		}
+	    } else {
+		width = 0;
+	    }
+	    fp->width = width;
+	    fp->count = count;
+	    fp->sy = fp->y = maxHeight + fm.ascent;
+	    fp->text = start;
+	    maxHeight += lineHeight;
+	    fp++;
+	    nFrags++;
+	    start = p + 1;	/* Start the text on the next line */
+	    count = 0;		/* Reset to indicate the start of a new
+				 * line */
+	    continue;
+	}
+	count++;
+    }
+
+    if (nFrags < layoutPtr->nFrags) {
+	width = Blt_TextWidth(tsPtr->font, start, count);
+	if (width > maxWidth) {
+	    maxWidth = width;
+	}
+	fp->width = width;
+	fp->count = count;
+	fp->sy = fp->y = maxHeight + fm.ascent;
+	fp->text = start;
+	maxHeight += lineHeight;
+	nFrags++;
+    }
+    maxHeight += tsPtr->padBottom;
+    maxWidth += PADDING(tsPtr->xPad);
+    fp = layoutPtr->fragments;
+    for (i = 0; i < nFrags; i++, fp++) {
+	switch (tsPtr->justify) {
+	default:
+	case TK_JUSTIFY_LEFT:
+	    /* No offset for left justified text strings */
+	    fp->x = fp->sx = tsPtr->padLeft;
+	    break;
+	case TK_JUSTIFY_RIGHT:
+	    fp->x = fp->sx = (maxWidth - fp->width) - tsPtr->padRight;
+	    break;
+	case TK_JUSTIFY_CENTER:
+	    fp->x = fp->sx = (maxWidth - fp->width) / 2;
+	    break;
+	}
+    }
+    if (tsPtr->underline >= 0) {
+	fp = layoutPtr->fragments;
+	for (i = 0; i < nFrags; i++, fp++) {
+	    int first, last;
+
+	    first = fp->text - text;
+	    last = first + fp->count;
+	    if ((tsPtr->underline >= first) && (tsPtr->underline < last)) {
+		layoutPtr->underlinePtr = fp;
+		layoutPtr->underline = tsPtr->underline - first;
+		break;
+	    }
+	}
+    }
+    layoutPtr->width = maxWidth;
+    layoutPtr->height = maxHeight - tsPtr->leader;
+    return layoutPtr;
+}
+
+
+/*
+ *---------------------------------------------------------------------------
+ *
  * Blt_DrawCharsWithEllipsis --
  *
  *	Draw a string of characters on the screen.  Blt_DrawChars()
@@ -625,15 +700,21 @@ Blt_DrawCharsWithEllipsis(
 				 * string when drawing. */
     int maxLength)
 {
+    int elWidth;
     const char *s, *send;
     Tcl_DString dString;
     int nBytes;
     int accum, threshold;
+
 #if HAVE_UTF
     Tcl_UniChar ch;
 #endif /* HAVE_UTF */
     accum = 0;
-    threshold = maxLength - Blt_TextWidth(font, "...", 3);
+    elWidth = Blt_TextWidth(font, "...", 3);
+    if (maxLength < elWidth) {
+	return;
+    }
+    threshold = maxLength - elWidth;
     Tcl_DStringInit(&dString);
 #if !HAVE_UTF
     nBytes = 1;
@@ -648,7 +729,9 @@ Blt_DrawCharsWithEllipsis(
 	}
 	Tcl_DStringAppend(&dString, s, nBytes);
     }
-    Tcl_DStringAppend(&dString, "...", 3);
+    if (s < send) {
+	Tcl_DStringAppend(&dString, "...", 3);
+    }
     Blt_DrawChars(Tk_Display(tkwin), drawable, gc, font, depth, angle, 
 	Tcl_DStringValue(&dString), Tcl_DStringLength(&dString), x, y);
     Tcl_DStringFree(&dString);
@@ -668,9 +751,9 @@ Blt_DrawLayout(Tk_Window tkwin, Drawable drawable, GC gc, Blt_Font font,
 	int sx, sy;
 
 	sx = x + fp->sx, sy = y + fp->sy;
-	if ((maxLength > 0) && ((fp->sx + fp->width) > maxLength)) {
+	if ((maxLength > 0) && ((fp->width + fp->x) > maxLength)) {
 	    Blt_DrawCharsWithEllipsis(tkwin, drawable, gc, font, depth, angle, 
-		fp->text, fp->count, sx, sy, maxLength);
+		fp->text, fp->count, sx, sy, maxLength - fp->x);
 	} else {
  	    Blt_DrawChars(Tk_Display(tkwin), drawable, gc, font, depth, angle, 
 		fp->text, fp->count, sx, sy);
@@ -678,9 +761,9 @@ Blt_DrawLayout(Tk_Window tkwin, Drawable drawable, GC gc, Blt_Font font,
     }
     if (layoutPtr->underlinePtr != NULL) {
 	fp = layoutPtr->underlinePtr;
-	Blt_UnderlineChars(Tk_Display(tkwin), drawable, gc, font, 
-		fp->text, x + fp->sx, y + fp->sy, layoutPtr->underline, 
-		layoutPtr->underline + 1);
+	Blt_UnderlineChars(Tk_Display(tkwin), drawable, gc, font, fp->text, 
+		fp->count, x + fp->sx, y + fp->sy, layoutPtr->underline, 
+		layoutPtr->underline + 1, maxLength);
     }
 }
 
@@ -706,12 +789,12 @@ Blt_DrawLayout(Tk_Window tkwin, Drawable drawable, GC gc, Blt_Font font,
 Pixmap
 Blt_Ts_Bitmap(
     Tk_Window tkwin,
-    TextLayout *layoutPtr,	/* Text string to draw */
-    TextStyle *tsPtr,		/* Text attributes: rotation, color, font,
-				 * linespacing, justification, etc. */
+    TextLayout *layoutPtr,		/* Text string to draw */
+    TextStyle *stylePtr,		/* Text attributes: rotation, color,
+					 * font, linespacing, justification,
+					 * etc. */
     int *bmWidthPtr,
-    int *bmHeightPtr,		/* Extents of rotated text string */
-    int maxLength)
+    int *bmHeightPtr)			/* Extents of rotated text string */
 {
     Pixmap bitmap;
     Window root;
@@ -734,10 +817,10 @@ Blt_Ts_Bitmap(
     PatBlt(hDC, 0, 0, layoutPtr->width, layoutPtr->height, WHITENESS);
     TkWinReleaseDrawableDC(bitmap, hDC, &state);
 
-    XSetFont(Tk_Display(tkwin), gc, Blt_FontId(tsPtr->font));
+    XSetFont(Tk_Display(tkwin), gc, Blt_FontId(stylePtr->font));
     XSetForeground(Tk_Display(tkwin), gc, 1);
-    Blt_DrawLayout(tkwin, bitmap, gc, tsPtr->font, 1, 0.0f, 0, 0, layoutPtr, 
-	maxLength);
+    Blt_DrawLayout(tkwin, bitmap, gc, stylePtr->font, 1, 0.0f, 0, 0, layoutPtr, 
+	stylePtr->maxLength);
 
     /*
      * Under Win32, 1 is off and 0 is on. That's why we're inverting the
@@ -771,12 +854,12 @@ Blt_Ts_Bitmap(
 Pixmap
 Blt_Ts_Bitmap(
     Tk_Window tkwin,
-    TextLayout *layoutPtr,	/* Text string to draw */
-    TextStyle *tsPtr,		/* Text attributes: rotation, color, font,
-				 * linespacing, justification, etc. */
+    TextLayout *layoutPtr,		/* Text string to draw */
+    TextStyle *stylePtr,		/* Text attributes: rotation, color,
+					 * font, linespacing, justification,
+					 * etc. */
     int *bmWidthPtr,
-    int *bmHeightPtr,		/* Extents of rotated text string */
-    int maxLength)
+    int *bmHeightPtr)			/* Extents of rotated text string */
 {
     Pixmap bitmap;
     GC gc;
@@ -792,14 +875,14 @@ Blt_Ts_Bitmap(
 
     /* Clear the bitmap.  Background is 0. */
     XSetForeground(Tk_Display(tkwin), gc, 0);
-    XFillRectangle(Tk_Display(tkwin), bitmap, gc, 0, 0, 
-		   layoutPtr->width, layoutPtr->height);
+    XFillRectangle(Tk_Display(tkwin), bitmap, gc, 0, 0, layoutPtr->width, 
+	layoutPtr->height);
 
     /* Draw the text into the bitmap. Foreground is 1. */
-    XSetFont(Tk_Display(tkwin), gc, Blt_FontId(tsPtr->font));
+    XSetFont(Tk_Display(tkwin), gc, Blt_FontId(stylePtr->font));
     XSetForeground(Tk_Display(tkwin), gc, 1);
-    Blt_DrawLayout(tkwin, bitmap, gc, tsPtr->font, 1, 0.0f, 0, 0, layoutPtr, 
-		   maxLength);
+    Blt_DrawLayout(tkwin, bitmap, gc, stylePtr->font, 1, 0.0f, 0, 0, layoutPtr, 
+	stylePtr->maxLength);
     *bmWidthPtr = layoutPtr->width, *bmHeightPtr = layoutPtr->height;
     return bitmap;
 }
@@ -807,7 +890,7 @@ Blt_Ts_Bitmap(
 
 void
 Blt_Ts_SetDrawStyle(
-    TextStyle *tsPtr,
+    TextStyle *stylePtr,
     Blt_Font font,
     GC gc,
     XColor *normalColor, 
@@ -816,88 +899,84 @@ Blt_Ts_SetDrawStyle(
     Tk_Justify justify,
     int leader)
 {
-    tsPtr->xPad.side1 = tsPtr->xPad.side2 = 0;
-    tsPtr->yPad.side1 = tsPtr->yPad.side2 = 0;
-    tsPtr->state = 0;
-    tsPtr->anchor = anchor;
-    tsPtr->color = normalColor;
-    tsPtr->font = font;
-    tsPtr->gc = gc;
-    tsPtr->justify = justify;
-    tsPtr->leader = leader;
-    tsPtr->angle = (float)angle;
+    stylePtr->xPad.side1 = stylePtr->xPad.side2 = 0;
+    stylePtr->yPad.side1 = stylePtr->yPad.side2 = 0;
+    stylePtr->state = 0;
+    stylePtr->anchor = anchor;
+    stylePtr->color = normalColor;
+    stylePtr->font = font;
+    stylePtr->gc = gc;
+    stylePtr->justify = justify;
+    stylePtr->leader = leader;
+    stylePtr->angle = (float)angle;
 }
 
 static void
-DrawStandardLayout(
-    Tk_Window tkwin,
-    Drawable drawable, 
-    TextStyle *tsPtr, 
-    TextLayout *layoutPtr, 
-    int x, int y, 
-    int maxLength)		/* If text crossing this threshold,
-				 * draw ellipsis.  */
+DrawStandardLayout(Tk_Window tkwin, Drawable drawable, TextStyle *stylePtr, 
+		   TextLayout *layoutPtr, int x, int y)			
 {
-    int width, height;
+    int w, h;
     /*
      * This is the easy case of no rotation. Simply draw the text
      * using the standard drawing routines.  Handle offset printing
      * for engraved (disabled) text.
      */
-    width = layoutPtr->width, height = layoutPtr->height;
-    Blt_TranslateAnchor(x, y, width, height, tsPtr->anchor, &x, &y);
-    if (tsPtr->state & (STATE_DISABLED | STATE_EMPHASIS)) {
-	TkBorder *borderPtr = (TkBorder *) Blt_BackgroundBorder(tsPtr->bg);
+    w = layoutPtr->width;
+    h = layoutPtr->height;
+    if ((stylePtr->maxLength > 0) && (stylePtr->maxLength < w)) {
+	w = stylePtr->maxLength;
+    }
+    Blt_TranslateAnchor(x, y, w, h, stylePtr->anchor, &x, &y);
+    if (stylePtr->state & (STATE_DISABLED | STATE_EMPHASIS)) {
+	TkBorder *borderPtr = (TkBorder *) Blt_BackgroundBorder(stylePtr->bg);
 	XColor *color1, *color2;
 
 	color1 = borderPtr->lightColor, color2 = borderPtr->darkColor;
-	if (tsPtr->state & STATE_EMPHASIS) {
+	if (stylePtr->state & STATE_EMPHASIS) {
 	    XColor *hold;
 	    
 	    hold = color1, color1 = color2, color2 = hold;
 	}
 	if (color1 != NULL) {
-	    XSetForeground(Tk_Display(tkwin), tsPtr->gc, color1->pixel);
+	    XSetForeground(Tk_Display(tkwin), stylePtr->gc, color1->pixel);
 	}
-	Blt_DrawLayout(tkwin, drawable, tsPtr->gc, tsPtr->font, Tk_Depth(tkwin),
-		0.0f, x + 1, y + 1, layoutPtr, maxLength);
+	Blt_DrawLayout(tkwin, drawable, stylePtr->gc, stylePtr->font, 
+		Tk_Depth(tkwin), 0.0f, x+1, y+1, layoutPtr,stylePtr->maxLength);
 	if (color2 != NULL) {
-	    XSetForeground(Tk_Display(tkwin), tsPtr->gc, color2->pixel);
+	    XSetForeground(Tk_Display(tkwin), stylePtr->gc, color2->pixel);
 	}
-	Blt_DrawLayout(tkwin, drawable, tsPtr->gc, tsPtr->font, Tk_Depth(tkwin),
-		0.0f, x, y, layoutPtr, maxLength);
+	Blt_DrawLayout(tkwin, drawable, stylePtr->gc, stylePtr->font, 
+		Tk_Depth(tkwin), 0.0f, x, y, layoutPtr, stylePtr->maxLength);
 	
 	/* Reset the foreground color back to its original setting, so not to
 	 * invalidate the GC cache. */
-	XSetForeground(Tk_Display(tkwin), tsPtr->gc, tsPtr->color->pixel);
+	XSetForeground(Tk_Display(tkwin), stylePtr->gc, stylePtr->color->pixel);
 	
 	return;		/* Done */
     }
-    Blt_DrawLayout(tkwin, drawable, tsPtr->gc, tsPtr->font, Tk_Depth(tkwin), 
-	0.0f, x, y, layoutPtr, maxLength);
+    Blt_DrawLayout(tkwin, drawable, stylePtr->gc, stylePtr->font, 
+	Tk_Depth(tkwin), 0.0f, x, y, layoutPtr, stylePtr->maxLength);
 }
 
 
-void
-Blt_RotateStartingTextPositions(TextLayout *textPtr, float angle)
+static void
+RotateStartingTextPositions(TextLayout *lPtr, int w, int h, float angle)
 {
     Point2d off1, off2;
     TextFragment *fp, *fend;
     double radians;
-    double rotWidth, rotHeight;
+    double rw, rh;
     double sinTheta, cosTheta;
     
-    Blt_GetBoundingBox(textPtr->width, textPtr->height, angle, &rotWidth, 
-		       &rotHeight, (Point2d *)NULL);
-    off1.x = (double)textPtr->width * 0.5;
-    off1.y = (double)textPtr->height * 0.5;
-    off2.x = rotWidth * 0.5;
-    off2.y = rotHeight * 0.5;
+    Blt_GetBoundingBox(w, h, angle, &rw, &rh, (Point2d *)NULL);
+    off1.x = (double)w * 0.5;
+    off1.y = (double)h * 0.5;
+    off2.x = rw * 0.5;
+    off2.y = rh * 0.5;
     radians = (-angle / 180.0) * M_PI;
     
     sinTheta = sin(radians), cosTheta = cos(radians);
-    for (fp = textPtr->fragments, fend = fp + textPtr->nFrags; fp < fend; 
-	 fp++) {
+    for (fp = lPtr->fragments, fend = fp + lPtr->nFrags; fp < fend; fp++) {
 	Point2d p, q;
 	
 	p.x = fp->x - off1.x;
@@ -911,50 +990,54 @@ Blt_RotateStartingTextPositions(TextLayout *textPtr, float angle)
     }
 }
 
+void
+Blt_RotateStartingTextPositions(TextLayout *lPtr, float angle)
+{
+    RotateStartingTextPositions(lPtr, lPtr->width, lPtr->height, angle);
+}
+
 int
 Blt_DrawTextWithRotatedFont(Tk_Window tkwin, Drawable drawable, float angle,
-			    TextStyle *tsPtr, TextLayout *layoutPtr, 
-			    int x, int y, int maxLength)
+			    TextStyle *stylePtr, TextLayout *layoutPtr, 
+			    int x, int y)
 {
-    double rotWidth, rotHeight;
+    double rw, rh;
+    int w, h;
 
-    Blt_RotateStartingTextPositions(layoutPtr, angle);
-    Blt_GetBoundingBox(layoutPtr->width, layoutPtr->height, angle, 
-		&rotWidth, &rotHeight, (Point2d *)NULL);
-    Blt_TranslateAnchor(x, y, (int)(rotWidth), (int)(rotHeight), tsPtr->anchor, 
-		&x, &y);
-#ifdef notdef
-    XFillRectangle(Tk_Display(tkwin), drawable, tsPtr->gc, x-1, y-1, 3, 3);
-    XFillRectangle(Tk_Display(tkwin), drawable, tsPtr->gc, x+rotWidth-1, y+rotHeight-1, 3, 3);
-#endif
-    if (tsPtr->state & (STATE_DISABLED | STATE_EMPHASIS)) {
-	TkBorder *borderPtr = (TkBorder *)Blt_BackgroundBorder(tsPtr->bg);
+    w = layoutPtr->width;
+    h = layoutPtr->height;
+    if ((stylePtr->maxLength > 0) && (stylePtr->maxLength < w)) {
+	w = stylePtr->maxLength;
+    }
+    RotateStartingTextPositions(layoutPtr, w, h, angle);
+    Blt_GetBoundingBox(w, h, angle, &rw, &rh, (Point2d *)NULL);
+    Blt_TranslateAnchor(x, y, (int)rw, (int)rh, stylePtr->anchor, &x, &y);
+    if (stylePtr->state & (STATE_DISABLED | STATE_EMPHASIS)) {
+	TkBorder *borderPtr = (TkBorder *)Blt_BackgroundBorder(stylePtr->bg);
 	XColor *color1, *color2;
 	
 	color1 = borderPtr->lightColor, color2 = borderPtr->darkColor;
-	if (tsPtr->state & STATE_EMPHASIS) {
+	if (stylePtr->state & STATE_EMPHASIS) {
 	    XColor *hold;
 	    
 	    hold = color1, color1 = color2, color2 = hold;
 	}
 	if (color1 != NULL) {
-	    XSetForeground(Tk_Display(tkwin), tsPtr->gc, color1->pixel);
-	    Blt_DrawLayout(tkwin, drawable, tsPtr->gc, tsPtr->font, 
-			   Tk_Depth(tkwin), angle, x, y, layoutPtr, maxLength); 
+	    XSetForeground(Tk_Display(tkwin), stylePtr->gc, color1->pixel);
+	    Blt_DrawLayout(tkwin, drawable, stylePtr->gc, stylePtr->font, 
+		Tk_Depth(tkwin), angle, x, y, layoutPtr, stylePtr->maxLength); 
 	}
 	if (color2 != NULL) {
-	    XSetForeground(Tk_Display(tkwin), tsPtr->gc, color2->pixel);
-	    Blt_DrawLayout(tkwin, drawable, tsPtr->gc, tsPtr->font, 
-			   Tk_Depth(tkwin), angle, x, y, layoutPtr, maxLength); 
+	    XSetForeground(Tk_Display(tkwin), stylePtr->gc, color2->pixel);
+	    Blt_DrawLayout(tkwin, drawable, stylePtr->gc, stylePtr->font, 
+		Tk_Depth(tkwin), angle, x, y, layoutPtr, stylePtr->maxLength); 
 	}
-	XSetForeground(Tk_Display(tkwin), tsPtr->gc, tsPtr->color->pixel);
+	XSetForeground(Tk_Display(tkwin), stylePtr->gc, stylePtr->color->pixel);
 	return TRUE;
     }
-    {
-	XSetForeground(Tk_Display(tkwin), tsPtr->gc, tsPtr->color->pixel);
-	Blt_DrawLayout(tkwin, drawable, tsPtr->gc, tsPtr->font, 
-		Tk_Depth(tkwin), angle, x, y, layoutPtr, maxLength); 
-    }
+    XSetForeground(Tk_Display(tkwin), stylePtr->gc, stylePtr->color->pixel);
+    Blt_DrawLayout(tkwin, drawable, stylePtr->gc, stylePtr->font, 
+	Tk_Depth(tkwin), angle, x, y, layoutPtr, stylePtr->maxLength); 
     return TRUE;
 }
 
@@ -963,10 +1046,9 @@ Blt_DrawTextWithRotatedBitmap(
     Tk_Window tkwin,
     Drawable drawable,
     float angle,
-    TextStyle *tsPtr,		/* Text attribute information */
+    TextStyle *stylePtr,		/* Text attribute information */
     TextLayout *layoutPtr,
-    int x, int y,		/* Window coordinates to draw text */
-    int maxLength)
+    int x, int y)			/* Window coordinates to draw text */
 {
     int width, height;
     Display *display;
@@ -978,53 +1060,53 @@ Blt_DrawTextWithRotatedBitmap(
      * bitmap.  Set the clip mask and origin in the GC first.  And make sure
      * we restore the GC because it may be shared.
      */
-    tsPtr->angle = angle;
+    stylePtr->angle = angle;
 
-    bitmap = Blt_Ts_Bitmap(tkwin, layoutPtr, tsPtr, &width, &height, maxLength);
+    bitmap = Blt_Ts_Bitmap(tkwin, layoutPtr, stylePtr, &width, &height);
     if (bitmap == None) {
 	return;
     }
-    if ((bitmap != None) && (tsPtr->angle != 0.0)) {
+    if ((bitmap != None) && (stylePtr->angle != 0.0)) {
 	Pixmap rotated;
 
-	rotated = Blt_RotateBitmap(tkwin, bitmap, width, height, tsPtr->angle, 
-		&width, &height);
+	rotated = Blt_RotateBitmap(tkwin, bitmap, width, height, 
+		stylePtr->angle, &width, &height);
 	Tk_FreePixmap(display, bitmap);
 	bitmap = rotated;
     }
-    Blt_TranslateAnchor(x, y, width, height, tsPtr->anchor, &x, &y);
-    XSetClipMask(display, tsPtr->gc, bitmap);
+    Blt_TranslateAnchor(x, y, width, height, stylePtr->anchor, &x, &y);
+    XSetClipMask(display, stylePtr->gc, bitmap);
 
-    if (tsPtr->state & (STATE_DISABLED | STATE_EMPHASIS)) {
-	TkBorder *borderPtr = (TkBorder *) Blt_BackgroundBorder(tsPtr->bg);
+    if (stylePtr->state & (STATE_DISABLED | STATE_EMPHASIS)) {
+	TkBorder *borderPtr = (TkBorder *) Blt_BackgroundBorder(stylePtr->bg);
 	XColor *color1, *color2;
 
 	color1 = borderPtr->lightColor, color2 = borderPtr->darkColor;
-	if (tsPtr->state & STATE_EMPHASIS) {
+	if (stylePtr->state & STATE_EMPHASIS) {
 	    XColor *hold;
 
 	    hold = color1, color1 = color2, color2 = hold;
 	}
 	if (color1 != NULL) {
-	    XSetForeground(display, tsPtr->gc, color1->pixel);
+	    XSetForeground(display, stylePtr->gc, color1->pixel);
 	}
-	XSetClipOrigin(display, tsPtr->gc, x + 1, y + 1);
-	XCopyPlane(display, bitmap, drawable, tsPtr->gc, 0, 0, width, 
+	XSetClipOrigin(display, stylePtr->gc, x + 1, y + 1);
+	XCopyPlane(display, bitmap, drawable, stylePtr->gc, 0, 0, width, 
 		height, x + 1, y + 1, 1);
 	if (color2 != NULL) {
-	    XSetForeground(display, tsPtr->gc, color2->pixel);
+	    XSetForeground(display, stylePtr->gc, color2->pixel);
 	}
-	XSetClipOrigin(display, tsPtr->gc, x, y);
-	XCopyPlane(display, bitmap, drawable, tsPtr->gc, 0, 0, width, 
+	XSetClipOrigin(display, stylePtr->gc, x, y);
+	XCopyPlane(display, bitmap, drawable, stylePtr->gc, 0, 0, width, 
 		height, x, y, 1);
-	XSetForeground(display, tsPtr->gc, tsPtr->color->pixel);
+	XSetForeground(display, stylePtr->gc, stylePtr->color->pixel);
     } else {
-	XSetForeground(display, tsPtr->gc, tsPtr->color->pixel);
-	XSetClipOrigin(display, tsPtr->gc, x, y);
-	XCopyPlane(display, bitmap, drawable, tsPtr->gc, 0, 0, width, height, 
+	XSetForeground(display, stylePtr->gc, stylePtr->color->pixel);
+	XSetClipOrigin(display, stylePtr->gc, x, y);
+	XCopyPlane(display, bitmap, drawable, stylePtr->gc, 0, 0, width, height, 
 		x, y, 1);
     }
-    XSetClipMask(display, tsPtr->gc, None);
+    XSetClipMask(display, stylePtr->gc, None);
     Tk_FreePixmap(display, bitmap);
 }
 
@@ -1056,16 +1138,15 @@ Blt_Ts_DrawLayout(
     Tk_Window tkwin,
     Drawable drawable,
     TextLayout *layoutPtr,
-    TextStyle *tsPtr,		/* Text attribute information */
-    int x, int y,		/* Window coordinates to draw text */
-    int xMax)
+    TextStyle *stylePtr,		/* Text attribute information */
+    int x, int y)			/* Window coordinates to draw text */
 {
     float angle;
 
-    if ((tsPtr->gc == NULL) || (tsPtr->flags & UPDATE_GC)) {
-	Blt_Ts_ResetStyle(tkwin, tsPtr);
+    if ((stylePtr->gc == NULL) || (stylePtr->flags & UPDATE_GC)) {
+	Blt_Ts_ResetStyle(tkwin, stylePtr);
     }
-    angle = (float)FMOD(tsPtr->angle, 360.0);
+    angle = (float)FMOD(stylePtr->angle, 360.0);
     if (angle < 0.0) {
 	angle += 360.0;
     }
@@ -1075,19 +1156,19 @@ Blt_Ts_DrawLayout(
 	 * the standard drawing routines.  Handle offset printing for engraved
 	 * (disabled) text.
 	 */
-	DrawStandardLayout(tkwin, drawable, tsPtr, layoutPtr, x, y, xMax);
+	DrawStandardLayout(tkwin, drawable, stylePtr, layoutPtr, x, y);
 	return;
     }
-    if (Blt_CanRotateFont(tsPtr->font, angle)) {
-	if (Blt_DrawTextWithRotatedFont(tkwin, drawable, angle, tsPtr, 
-		layoutPtr, x, y, xMax)) {
+    if (Blt_CanRotateFont(stylePtr->font, angle)) {
+	if (Blt_DrawTextWithRotatedFont(tkwin, drawable, angle, stylePtr, 
+		layoutPtr, x, y)) {
 	    return;		/* Success. */
 	}
     }
     /*Fallthru*/
-    tsPtr->angle = (float)angle;
-    Blt_DrawTextWithRotatedBitmap(tkwin, drawable, angle, tsPtr, layoutPtr,
-		x, y, xMax);
+    stylePtr->angle = (float)angle;
+    Blt_DrawTextWithRotatedBitmap(tkwin, drawable, angle, stylePtr, layoutPtr,
+		x, y);
 }
 
 void
@@ -1095,16 +1176,15 @@ Blt_Ts_UnderlineLayout(
     Tk_Window tkwin,
     Drawable drawable,
     TextLayout *layoutPtr,
-    TextStyle *tsPtr,		/* Text attribute information */
-    int x, int y,		/* Window coordinates to draw text */
-    int xMax)
+    TextStyle *stylePtr,		/* Text attribute information */
+    int x, int y)			/* Window coordinates to draw text */
 {
     float angle;
 
-    if ((tsPtr->gc == NULL) || (tsPtr->flags & UPDATE_GC)) {
-	Blt_Ts_ResetStyle(tkwin, tsPtr);
+    if ((stylePtr->gc == NULL) || (stylePtr->flags & UPDATE_GC)) {
+	Blt_Ts_ResetStyle(tkwin, stylePtr);
     }
-    angle = (float)FMOD(tsPtr->angle, 360.0);
+    angle = (float)FMOD(stylePtr->angle, 360.0);
     if (angle < 0.0) {
 	angle += 360.0;
     }
@@ -1116,10 +1196,50 @@ Blt_Ts_UnderlineLayout(
 	    int sx, sy;
 
 	    sx = x + fp->sx, sy = y + fp->sy;
-	    Blt_UnderlineChars(Tk_Display(tkwin), drawable, tsPtr->gc, 
-		tsPtr->font, fp->text, sx, sy, 0, fp->count);
+	    Blt_UnderlineChars(Tk_Display(tkwin), drawable, stylePtr->gc, 
+		stylePtr->font, fp->text, fp->count, sx, sy, 0, fp->count, 
+		stylePtr->maxLength);
 	}
     }
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * Blt_Ts_DrawLayout --
+ *
+ *	Draw a text string, possibly rotated, using the the given window
+ *	coordinates as an anchor for the text bounding box.  If the text is
+ *	not rotated, simply use the X text drawing routines. Otherwise,
+ *	generate a bitmap of the rotated text.
+ *
+ * Results:
+ *	Returns the x-coordinate to the right of the text.
+ *
+ * Side Effects:
+ *	Text string is drawn using the given font and GC at the the given
+ *	window coordinates.
+ *
+ *      The Stipple, FillStyle, and TSOrigin fields of the GC are modified for
+ *      rotated text.  This assumes the GC is private, *not* shared (via
+ *      Tk_GetGC)
+ *
+ *---------------------------------------------------------------------------
+ */
+void
+Blt_Ts_DrawText(
+    Tk_Window tkwin,
+    Drawable drawable,
+    const char *text,
+    int textLen,
+    TextStyle *stylePtr,		/* Text attribute information */
+    int x, int y)			/* Window coordinates to draw text */
+{
+    TextLayout *layoutPtr;
+
+    layoutPtr = Blt_Ts_CreateLayout(text, textLen, stylePtr);
+    Blt_Ts_DrawLayout(tkwin, drawable, layoutPtr, stylePtr, x, y);
+    Blt_Free(layoutPtr);
 }
 
 void
@@ -1127,7 +1247,7 @@ Blt_DrawText2(
     Tk_Window tkwin,
     Drawable drawable,
     const char *string,
-    TextStyle *tsPtr,		/* Text attribute information */
+    TextStyle *stylePtr,		/* Text attribute information */
     int x, int y,		/* Window coordinates to draw text */
     Dim2D *areaPtr)
 {
@@ -1138,9 +1258,9 @@ Blt_DrawText2(
     if ((string == NULL) || (*string == '\0')) {
 	return;			/* Empty string, do nothing */
     }
-    layoutPtr = Blt_Ts_CreateLayout(string, -1, tsPtr);
-    Blt_Ts_DrawLayout(tkwin, drawable, layoutPtr, tsPtr, x, y, -1);
-    angle = FMOD(tsPtr->angle, 360.0);
+    layoutPtr = Blt_Ts_CreateLayout(string, -1, stylePtr);
+    Blt_Ts_DrawLayout(tkwin, drawable, layoutPtr, stylePtr, x, y);
+    angle = FMOD(stylePtr->angle, 360.0);
     if (angle < 0.0) {
 	angle += 360.0;
     }
@@ -1164,7 +1284,7 @@ Blt_DrawText(
     Tk_Window tkwin,
     Drawable drawable,
     const char *string,
-    TextStyle *tsPtr,		/* Text attribute information */
+    TextStyle *stylePtr,		/* Text attribute information */
     int x, int y)		/* Window coordinates to draw text */
 {
     TextLayout *layoutPtr;
@@ -1172,221 +1292,39 @@ Blt_DrawText(
     if ((string == NULL) || (*string == '\0')) {
 	return;			/* Empty string, do nothing */
     }
-    layoutPtr = Blt_Ts_CreateLayout(string, -1, tsPtr);
-    Blt_Ts_DrawLayout(tkwin, drawable, layoutPtr, tsPtr, x, y, -1);
+    layoutPtr = Blt_Ts_CreateLayout(string, -1, stylePtr);
+    Blt_Ts_DrawLayout(tkwin, drawable, layoutPtr, stylePtr, x, y);
     Blt_Free(layoutPtr);
 }
 
 void
-Blt_Ts_ResetStyle(Tk_Window tkwin, TextStyle *tsPtr)
+Blt_Ts_ResetStyle(Tk_Window tkwin, TextStyle *stylePtr)
 {
     GC newGC;
     XGCValues gcValues;
     unsigned long gcMask;
 
     gcMask = GCFont;
-    gcValues.font = Blt_FontId(tsPtr->font);
-    if (tsPtr->color != NULL) {
+    gcValues.font = Blt_FontId(stylePtr->font);
+    if (stylePtr->color != NULL) {
 	gcMask |= GCForeground;
-	gcValues.foreground = tsPtr->color->pixel;
+	gcValues.foreground = stylePtr->color->pixel;
     }
     newGC = Tk_GetGC(tkwin, gcMask, &gcValues);
-    if (tsPtr->gc != NULL) {
-	Tk_FreeGC(Tk_Display(tkwin), tsPtr->gc);
+    if (stylePtr->gc != NULL) {
+	Tk_FreeGC(Tk_Display(tkwin), stylePtr->gc);
     }
-    tsPtr->gc = newGC;
-    tsPtr->flags &= ~UPDATE_GC;
+    stylePtr->gc = newGC;
+    stylePtr->flags &= ~UPDATE_GC;
 }
 
 void
-Blt_Ts_FreeStyle(Display *display, TextStyle *tsPtr)
+Blt_Ts_FreeStyle(Display *display, TextStyle *stylePtr)
 {
-    if (tsPtr->gc != NULL) {
-	Tk_FreeGC(display, tsPtr->gc);
+    if (stylePtr->gc != NULL) {
+	Tk_FreeGC(display, stylePtr->gc);
     }
 }
-
-
-#ifdef notdef
-int
-Blt_Ts_DrawLayoutPlus(
-    Tk_Window tkwin,
-    Drawable drawable,
-    TextLayout *layoutPtr,
-    TextStyle *tsPtr,		/* Text attribute information */
-    int x, int y,		/* Window coordinates to draw text */
-    int maxLength)
-{
-    Blt_Painter painter;
-    Blt_Picture picture, rotated;
-    Blt_Pixel fg, bg;
-    Pixmap bitmap;
-    int width, height;
-
-    bitmap = Blt_Ts_Bitmap(tkwin, layoutPtr, tsPtr, &width, &height, maxLength);
-    if (bitmap == None) {
-	return FALSE;
-    }
-    if (tsPtr->color == NULL) {
-	fg.u32 = 0x00000000;
-    } else {
-	fg.Red = tsPtr->color->red >> 8;
-	fg.Green = tsPtr->color->green >> 8;
-	fg.Blue = tsPtr->color->blue >> 8;
-	fg.Alpha = 0xFF;
-    }
-    if (tsPtr->bg == NULL) {
-	bg.u32 = fg.u32;	/* Transparent pixel. */
-	bg.Alpha = 0x00;
-    } else {
-	XColor *colorPtr;
-
-	colorPtr = Blt_BackgroundBorderColor(tsPtr->bg);
-	bg.Red = colorPtr->red >> 8;
-	bg.Green = colorPtr->green >> 8;
-	bg.Blue = colorPtr->blue >> 8;
-	bg.Alpha = 0xFF;
-    }
-    picture = Blt_BitmapToPicture(Tk_Display(tkwin), bitmap, width, height, 
-	&fg, &bg);
-    if (picture == NULL) {
-	return FALSE;
-    }
-    rotated = Blt_RotatePicture(picture, tsPtr->angle);
-    Blt_FreePicture(picture);
-    if (rotated == NULL) {
-	return FALSE;
-    }
-    picture = rotated;
-
-    Blt_TranslateRotatedAnchor(x, y, width, height, tsPtr->anchor, 
-	tsPtr->angle, &x, &y);
-    painter = Blt_GetPainter(tkwin, 1.0);
-    width = Blt_PictureWidth(picture);
-    height = Blt_PictureHeight(picture);
-    if ((x + width) > Tk_Width(tkwin)) {
-	width = Tk_Width(tkwin) - x;
-    }
-    if ((y + height) > Tk_Height(tkwin)) {
-	height = Tk_Height(tkwin) - y;
-    }
-    Blt_PaintPicture(painter, drawable, picture, 0, 0, width, height, x, y, 0);
-    Blt_FreePainter(painter);
-    Blt_FreePicture(picture);
-    return TRUE;
-}
-
-void
-Blt_DrawText3(
-    Tk_Window tkwin,
-    Drawable drawable,
-    char *string,
-    TextStyle *tsPtr,		/* Text attribute information */
-    int x, int y)		/* Window coordinates to draw text */
-{
-    TextLayout *layoutPtr;
-
-    if ((string == NULL) || (*string == '\0')) {
-	return;			/* Empty string, do nothing */
-    }
-    layoutPtr = Blt_Ts_CreateLayout(string, -1, tsPtr);
-    Blt_Ts_DrawLayoutPlus(tkwin, drawable, layoutPtr, tsPtr, x, y, -1);
-    Blt_Free(layoutPtr);
-}
-
-/*
- *---------------------------------------------------------------------------
- *
- * Blt_TranslateAnchor --
- *
- * 	Translate the coordinates of a given bounding box based upon the
- * 	anchor specified.  The anchor indicates where the given x-y position
- * 	is in relation to the bounding box.
- *
- *  		nw --- n --- ne
- *  		|            |
- *  		w   center   e
- *  		|            |
- *  		sw --- s --- se
- *
- * 	The coordinates returned are translated to the origin of the bounding
- * 	box (suitable for giving to XCopyArea, XCopyPlane, etc.)
- *
- * Results:
- *	The translated coordinates of the bounding box are returned.
- *
- *---------------------------------------------------------------------------
- */
-void
-Blt_TranslateRotatedAnchor(
-    int x, int y,		/* Window coordinates of anchor */
-    int width, int height,	/* Extents of the bounding box */
-    Tk_Anchor anchor,		/* Direction of the anchor */
-    float angle,
-    int *xPtr, int *yPtr)
-{
-    angle = FMOD(angle, 360.0);
-    if (FMOD(angle, (double)90.0) == 0.0) {
-	int quadrant;
-
-	quadrant = (int)(angle / 90.0);
-	if ((quadrant == ROTATE_270) || (quadrant == ROTATE_90)) {
-	    Blt_TranslateAnchor(x, y, height, width, anchor, xPtr, yPtr);
-	} else {
-	    Blt_TranslateAnchor(x, y, width, height, anchor, xPtr, yPtr);
-	}
-    } else {
-	double rWidth, rHeight;
-	Point2d points[4];
-
-	Blt_GetBoundingBox(width, height, angle, &rWidth, &rHeight, points);
-	if (anchor <= TK_ANCHOR_CENTER) {
-	    Blt_TranslateAnchor(x, y, ROUND(rWidth), ROUND(rHeight), anchor, 
-		xPtr, yPtr);
-	} else {
-	    Point2d top, bottom, left, right;
-	    int i;
-	    
-	    top = bottom = left = right = points[0];
-	    for (i = 1; i < 4; i++) {
-		if (points[i].y < top.y) {
-		    top = points[i];
-		} 
-		if (points[i].y > bottom.y) {
-		    bottom = points[i];
-		}
-		if (points[i].x < left.x) {
-		    left = points[i];
-		}
-		if (points[i].x > right.x) {
-		    right = points[i];
-		}
-	    }	
-	    switch ((int)anchor) {
-	    case BLT_ANCHOR_LEFT: /* Left */
-		y -= (rHeight / 2) - left.y;
-		break;
-		
-	    case BLT_ANCHOR_RIGHT: /* Right */
-		x -= rWidth;
-		y -= (rHeight / 2) - right.y;
-		break;
-		
-	    case BLT_ANCHOR_TOP: /* Top */
-		x -= (rWidth / 2) - top.x;
-		break;
-		
-	    case BLT_ANCHOR_BOTTOM: /* Bottom */
-		x -= (rWidth / 2) - bottom.x;
-		y -= height;
-		break;
-	    }
-	    *xPtr = x, *yPtr = y;
-	}
-    }
-}
-
-#endif
 
 /*
  * The following two structures are used to keep track of string

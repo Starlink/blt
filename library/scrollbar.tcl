@@ -1,10 +1,10 @@
 
-# scrlbar.tcl --
+# scrollbar.tcl --
 #
 # This file defines the default bindings for Tk scrollbar widgets.
 # It also provides procedures that help in implementing the bindings.
 #
-# RCS: @(#) $Id: scrollbar.tcl,v 1.4 2009/04/29 04:04:54 ghowlett Exp $
+# RCS: @(#) $Id: scrollbar.tcl,v 1.5 2010/02/03 00:54:37 ghowlett Exp $
 #
 # Copyright (c) 1994 The Regents of the University of California.
 # Copyright (c) 1994-1996 Sun Microsystems, Inc.
@@ -19,43 +19,29 @@
 
 # Standard Motif bindings:
 
-namespace eval ::blt::Scrollbar {
-    variable privateData
-    array set privateData {
+namespace eval ::blt::TkScrollbar {
+    variable _private
+
+    array set _private {
+	activeBg	""
 	afterId		-1
-	b1		{}
-        activeComboMenu {}
-        activeItem      {}
-        afterId         {}
-        buttons         0
-        buttonWindow    {}
-        dragging        0
-        focus           {}
-        grab            {}
-        initPos         {}
-        inComboMenubutton    {}
-        listboxPrev     {}
-        menuBar         {}
-        mouseMoved      0
-        oldGrab         {}
-        popup           {}
-        popup           {}
-        postedMb        {}
-        pressX          0
-        pressY          0
-        prevPos         0
-        selectMode      char
+	border		1
+	initPos		0
+	initValues	""
+	x		0
+	y		0
+	relief		flat
     }
 }
 
-bind ScrollBar <Enter> {
+bind TkScrollbar <Enter> {
     if {$tk_strictMotif} {
-	set tk::Priv(activeBg) [%W cget -activebackground]
+	set blt::TkScrollbar::_private(activeBg) [%W cget -activebackground]
 	%W configure -activebackground [%W cget -background]
     }
     %W activate [%W identify %x %y]
 }
-bind ScrollBar <Motion> {
+bind TkScrollbar <Motion> {
     %W activate [%W identify %x %y]
 }
 
@@ -64,117 +50,117 @@ bind ScrollBar <Motion> {
 # event.  This seems to happen on some systems (such as Solaris 2.4) for
 # unknown reasons.
 
-bind ScrollBar <Leave> {
-    if {$tk_strictMotif && [info exists tk::Priv(activeBg)]} {
-	%W configure -activebackground $tk::Priv(activeBg)
+bind TkScrollbar <Leave> {
+    if {$tk_strictMotif && [info exists blt::TkScrollbar::_private(activeBg)]} {
+	%W configure -activebackground $blt::TkScrollbar::_private(activeBg)
     }
     %W activate {}
 }
-bind ScrollBar <1> {
-    tk::ScrollButtonDown %W %x %y
+bind TkScrollbar <1> {
+    blt::TkScrollbar::ScrollButtonDown %W %x %y
 }
-bind ScrollBar <B1-Motion> {
-    tk::ScrollDrag %W %x %y
+bind TkScrollbar <B1-Motion> {
+    blt::TkScrollbar::ScrollDrag %W %x %y
 }
-bind ScrollBar <B1-B2-Motion> {
-    tk::ScrollDrag %W %x %y
+bind TkScrollbar <B1-B2-Motion> {
+    blt::TkScrollbar::ScrollDrag %W %x %y
 }
-bind ScrollBar <ButtonRelease-1> {
-    tk::ScrollButtonUp %W %x %y
+bind TkScrollbar <ButtonRelease-1> {
+    blt::TkScrollbar::ScrollButtonUp %W %x %y
 }
-bind ScrollBar <B1-Leave> {
+bind TkScrollbar <B1-Leave> {
     # Prevents <Leave> binding from being invoked.
 }
-bind ScrollBar <B1-Enter> {
+bind TkScrollbar <B1-Enter> {
     # Prevents <Enter> binding from being invoked.
 }
-bind ScrollBar <2> {
-    tk::ScrollButton2Down %W %x %y
+bind TkScrollbar <2> {
+    blt::TkScrollbar::ScrollButton2Down %W %x %y
 }
-bind ScrollBar <B1-2> {
+bind TkScrollbar <B1-2> {
     # Do nothing, since button 1 is already down.
 }
-bind ScrollBar <B2-1> {
+bind TkScrollbar <B2-1> {
     # Do nothing, since button 2 is already down.
 }
-bind ScrollBar <B2-Motion> {
-    tk::ScrollDrag %W %x %y
+bind TkScrollbar <B2-Motion> {
+    blt::TkScrollbar::ScrollDrag %W %x %y
 }
-bind ScrollBar <ButtonRelease-2> {
-    tk::ScrollButtonUp %W %x %y
+bind TkScrollbar <ButtonRelease-2> {
+    blt::TkScrollbar::ScrollButtonUp %W %x %y
 }
-bind ScrollBar <B1-ButtonRelease-2> {
+bind TkScrollbar <B1-ButtonRelease-2> {
     # Do nothing:  B1 release will handle it.
 }
-bind ScrollBar <B2-ButtonRelease-1> {
+bind TkScrollbar <B2-ButtonRelease-1> {
     # Do nothing:  B2 release will handle it.
 }
-bind ScrollBar <B2-Leave> {
+bind TkScrollbar <B2-Leave> {
     # Prevents <Leave> binding from being invoked.
 }
-bind ScrollBar <B2-Enter> {
+bind TkScrollbar <B2-Enter> {
     # Prevents <Enter> binding from being invoked.
 }
-bind ScrollBar <Control-1> {
-    tk::ScrollTopBottom %W %x %y
+bind TkScrollbar <Control-1> {
+    blt::TkScrollbar::ScrollTopBottom %W %x %y
 }
-bind ScrollBar <Control-2> {
-    tk::ScrollTopBottom %W %x %y
+bind TkScrollbar <Control-2> {
+    blt::TkScrollbar::ScrollTopBottom %W %x %y
 }
 
-bind ScrollBar <Up> {
-    tk::ScrollByUnits %W v -1
+bind TkScrollbar <Up> {
+    blt::TkScrollbar::ScrollByUnits %W v -1
 }
-bind ScrollBar <Down> {
-    tk::ScrollByUnits %W v 1
+bind TkScrollbar <Down> {
+    blt::TkScrollbar::ScrollByUnits %W v 1
 }
-bind ScrollBar <Control-Up> {
-    tk::ScrollByPages %W v -1
+bind TkScrollbar <Control-Up> {
+    blt::TkScrollbar::ScrollByPages %W v -1
 }
-bind ScrollBar <Control-Down> {
-    tk::ScrollByPages %W v 1
+bind TkScrollbar <Control-Down> {
+    blt::TkScrollbar::ScrollByPages %W v 1
 }
-bind ScrollBar <Left> {
-    tk::ScrollByUnits %W h -1
+bind TkScrollbar <Left> {
+    blt::TkScrollbar::ScrollByUnits %W h -1
 }
-bind ScrollBar <Right> {
-    tk::ScrollByUnits %W h 1
+bind TkScrollbar <Right> {
+    blt::TkScrollbar::ScrollByUnits %W h 1
 }
-bind ScrollBar <Control-Left> {
-    tk::ScrollByPages %W h -1
+bind TkScrollbar <Control-Left> {
+    blt::TkScrollbar::ScrollByPages %W h -1
 }
-bind ScrollBar <Control-Right> {
-    tk::ScrollByPages %W h 1
+bind TkScrollbar <Control-Right> {
+    blt::TkScrollbar::ScrollByPages %W h 1
 }
-bind ScrollBar <Prior> {
-    tk::ScrollByPages %W hv -1
+bind TkScrollbar <Prior> {
+    blt::TkScrollbar::ScrollByPages %W hv -1
 }
-bind ScrollBar <Next> {
-    tk::ScrollByPages %W hv 1
+bind TkScrollbar <Next> {
+    blt::TkScrollbar::ScrollByPages %W hv 1
 }
-bind ScrollBar <Home> {
-    tk::ScrollToPos %W 0
+bind TkScrollbar <Home> {
+    blt::TkScrollbar::ScrollToPos %W 0
 }
-bind ScrollBar <End> {
-    tk::ScrollToPos %W 1
+bind TkScrollbar <End> {
+    blt::TkScrollbar::ScrollToPos %W 1
 }
 
 
 if {[tk windowingsystem] eq "classic" || [tk windowingsystem] eq "aqua"} {
-    bind ScrollBar <MouseWheel> {
-        tk::ScrollByUnits %W v [expr {- (%D)}]
+    bind TkScrollbar <MouseWheel> {
+        blt::TkScrollbar::ScrollByUnits %W v [expr {- (%D)}]
     }
-    bind ScrollBar <Option-MouseWheel> {
-        tk::ScrollByUnits %W v [expr {-10 * (%D)}]
+    bind TkScrollbar <Option-MouseWheel> {
+        blt::TkScrollbar::ScrollByUnits %W v [expr {-10 * (%D)}]
     }
-    bind ScrollBar <Shift-MouseWheel> {
-        tk::ScrollByUnits %W h [expr {- (%D)}]
+    bind TkScrollbar <Shift-MouseWheel> {
+        blt::TkScrollbar::ScrollByUnits %W h [expr {- (%D)}]
     }
-    bind ScrollBar <Shift-Option-MouseWheel> {
-        tk::ScrollByUnits %W h [expr {-10 * (%D)}]
+    bind TkScrollbar <Shift-Option-MouseWheel> {
+        blt::TkScrollbar::ScrollByUnits %W h [expr {-10 * (%D)}]
     }
 }
-# tk::ScrollButtonDown --
+# blt::TkScrollbar::ScrollButtonDown --
 # This procedure is invoked when a button is pressed in a scrollbar.
 # It changes the way the scrollbar is displayed and takes actions
 # depending on where the mouse is.
@@ -183,10 +169,11 @@ if {[tk windowingsystem] eq "classic" || [tk windowingsystem] eq "aqua"} {
 # w -		The scrollbar widget.
 # x, y -	Mouse coordinates.
 
-proc tk::ScrollButtonDown {w x y} {
-    variable ::tk::Priv
-    set Priv(relief) [$w cget -activerelief]
-    set Priv(border) [$w cget -activebackground]
+proc blt::TkScrollbar::ScrollButtonDown {w x y} {
+    variable _private
+
+    set _private(relief) [$w cget -activerelief]
+    set _private(border) [$w cget -activebackground]
     $w configure -activerelief sunken
     set element [$w identify $x $y]
     $w select $element
@@ -197,7 +184,7 @@ proc tk::ScrollButtonDown {w x y} {
     }
 }
 
-# ::tk::ScrollButtonUp --
+# ScrollButtonUp --
 # This procedure is invoked when a button is released in a scrollbar.
 # It cancels scans and auto-repeats that were in progress, and restores
 # the way the active element is displayed.
@@ -206,12 +193,13 @@ proc tk::ScrollButtonDown {w x y} {
 # w -		The scrollbar widget.
 # x, y -	Mouse coordinates.
 
-proc ::tk::ScrollButtonUp {w x y} {
-    variable ::tk::Priv
-    tk::CancelRepeat
-    if {[info exists Priv(relief)]} {
+proc ::blt::TkScrollbar::ScrollButtonUp {w x y} {
+    variable _private
+
+    CancelRepeat
+    if {[info exists _private(relief)]} {
 	# Avoid error due to spurious release events
-	$w configure -activerelief $Priv(relief)
+	$w configure -activerelief $_private(relief)
 	ScrollEndDrag $w $x $y
 	set element [$w identify $x $y]
 	$w activate [$w identify $x $y]
@@ -219,7 +207,7 @@ proc ::tk::ScrollButtonUp {w x y} {
     }
 }
 
-# ::tk::ScrollSelect --
+# ScrollSelect --
 # This procedure is invoked when a button is pressed over the scrollbar.
 # It invokes one of several scrolling actions depending on where in
 # the scrollbar the button was pressed.
@@ -233,9 +221,12 @@ proc ::tk::ScrollButtonUp {w x y} {
 #		first action in an auto-repeat sequence, and "again"
 #		means this is the second repetition or later.
 
-proc ::tk::ScrollSelect {w element repeat} {
-    variable ::tk::Priv
-    if {![winfo exists $w]} return
+proc ::blt::TkScrollbar::ScrollSelect {w element repeat} {
+    variable _private
+
+    if {![winfo exists $w]} {
+	return
+    }
     switch -- $element {
 	"arrow1"	{ScrollByUnits $w hv -1}
 	"trough1"	{ScrollByPages $w hv -1}
@@ -243,19 +234,18 @@ proc ::tk::ScrollSelect {w element repeat} {
 	"arrow2"	{ScrollByUnits $w hv 1}
 	default		{return}
     }
+    set cmd [list blt::TkScrollbar::ScrollSelect $w $element again]
     if {$repeat eq "again"} {
-	set Priv(afterId) [after [$w cget -repeatinterval] \
-		[list tk::ScrollSelect $w $element again]]
+	set _private(afterId) [after [$w cget -repeatinterval] $cmd]
     } elseif {$repeat eq "initial"} {
 	set delay [$w cget -repeatdelay]
 	if {$delay > 0} {
-	    set Priv(afterId) [after $delay \
-		    [list tk::ScrollSelect $w $element again]]
+	    set _private(afterId) [after $delay $cmd]
 	}
     }
 }
 
-# ::tk::ScrollStartDrag --
+# ScrollStartDrag --
 # This procedure is called to initiate a drag of the slider.  It just
 # remembers the starting position of the mouse and slider.
 #
@@ -263,27 +253,27 @@ proc ::tk::ScrollSelect {w element repeat} {
 # w -		The scrollbar widget.
 # x, y -	The mouse position at the start of the drag operation.
 
-proc ::tk::ScrollStartDrag {w x y} {
-    variable ::tk::Priv
+proc ::blt::TkScrollbar::ScrollStartDrag {w x y} {
+    variable _private
 
     if {[$w cget -command] eq ""} {
 	return
     }
-    set Priv(pressX) $x
-    set Priv(pressY) $y
-    set Priv(initValues) [$w get]
-    set iv0 [lindex $Priv(initValues) 0]
-    if {[llength $Priv(initValues)] == 2} {
-	set Priv(initPos) $iv0
+    set _private(x) $x
+    set _private(y) $y
+    set _private(initValues) [$w get]
+    set iv0 [lindex $_private(initValues) 0]
+    if {[llength $_private(initValues)] == 2} {
+	set _private(initPos) $iv0
     } elseif {$iv0 == 0} {
-	set Priv(initPos) 0.0
+	set _private(initPos) 0.0
     } else {
-	set Priv(initPos) [expr {(double([lindex $Priv(initValues) 2])) \
-		/ [lindex $Priv(initValues) 0]}]
+	set _private(initPos) [expr {(double([lindex $_private(initValues) 2])) \
+		/ [lindex $_private(initValues) 0]}]
     }
 }
 
-# ::tk::ScrollDrag --
+# ScrollDrag --
 # This procedure is called for each mouse motion even when the slider
 # is being dragged.  It notifies the associated widget if we're not
 # jump scrolling, and it just updates the scrollbar if we are jump
@@ -293,29 +283,30 @@ proc ::tk::ScrollStartDrag {w x y} {
 # w -		The scrollbar widget.
 # x, y -	The current mouse position.
 
-proc ::tk::ScrollDrag {w x y} {
-    variable ::tk::Priv
+proc ::blt::TkScrollbar::ScrollDrag {w x y} {
+    variable _private
 
-    if {$Priv(initPos) eq ""} {
+    if {$_private(initPos) eq ""} {
 	return
     }
-    set delta [$w delta [expr {$x - $Priv(pressX)}] [expr {$y - $Priv(pressY)}]]
+    set delta \
+	[$w delta [expr {$x - $_private(x)}] [expr {$y - $_private(y)}]]
     if {[$w cget -jump]} {
-	if {[llength $Priv(initValues)] == 2} {
-	    $w set [expr {[lindex $Priv(initValues) 0] + $delta}] \
-		    [expr {[lindex $Priv(initValues) 1] + $delta}]
+	if {[llength $_private(initValues)] == 2} {
+	    $w set [expr {[lindex $_private(initValues) 0] + $delta}] \
+		    [expr {[lindex $_private(initValues) 1] + $delta}]
 	} else {
-	    set delta [expr {round($delta * [lindex $Priv(initValues) 0])}]
-	    eval [list $w] set [lreplace $Priv(initValues) 2 3 \
-		    [expr {[lindex $Priv(initValues) 2] + $delta}] \
-		    [expr {[lindex $Priv(initValues) 3] + $delta}]]
+	    set delta [expr {round($delta * [lindex $_private(initValues) 0])}]
+	    eval [list $w] set [lreplace $_private(initValues) 2 3 \
+		    [expr {[lindex $_private(initValues) 2] + $delta}] \
+		    [expr {[lindex $_private(initValues) 3] + $delta}]]
 	}
     } else {
-	ScrollToPos $w [expr {$Priv(initPos) + $delta}]
+	ScrollToPos $w [expr {$_private(initPos) + $delta}]
     }
 }
 
-# ::tk::ScrollEndDrag --
+# ScrollEndDrag --
 # This procedure is called to end an interactive drag of the slider.
 # It scrolls the window if we're in jump mode, otherwise it does nothing.
 #
@@ -323,21 +314,20 @@ proc ::tk::ScrollDrag {w x y} {
 # w -		The scrollbar widget.
 # x, y -	The mouse position at the end of the drag operation.
 
-proc ::tk::ScrollEndDrag {w x y} {
-    variable ::tk::Priv
+proc ::blt::TkScrollbar::ScrollEndDrag {w x y} {
+    variable _private
 
-    if {$Priv(initPos) eq ""} {
+    if {$_private(initPos) eq ""} {
 	return
     }
     if {[$w cget -jump]} {
-	set delta [$w delta [expr {$x - $Priv(pressX)}] \
-		[expr {$y - $Priv(pressY)}]]
-	ScrollToPos $w [expr {$Priv(initPos) + $delta}]
+	set delta [$w delta [expr {$x-$_private(x)}] [expr {$y-$_private(y)}]]
+	ScrollToPos $w [expr {$_private(initPos) + $delta}]
     }
-    set Priv(initPos) ""
+    set _private(initPos) ""
 }
 
-# ::tk::ScrollByUnits --
+# ScrollByUnits --
 # This procedure tells the scrollbar's associated widget to scroll up
 # or down by a given number of units.  It notifies the associated widget
 # in different ways for old and new command syntaxes.
@@ -348,7 +338,7 @@ proc ::tk::ScrollEndDrag {w x y} {
 #		horizontal, "v" for vertical, "hv" for both.
 # amount -	How many units to scroll:  typically 1 or -1.
 
-proc ::tk::ScrollByUnits {w orient amount} {
+proc ::blt::TkScrollbar::ScrollByUnits {w orient amount} {
     set cmd [$w cget -command]
     if {$cmd eq "" || ([string first [string index [$w cget -orient] 0] $orient] < 0)} {
 	return
@@ -361,7 +351,7 @@ proc ::tk::ScrollByUnits {w orient amount} {
     }
 }
 
-# ::tk::ScrollByPages --
+# ScrollByPages --
 # This procedure tells the scrollbar's associated widget to scroll up
 # or down by a given number of screenfuls.  It notifies the associated
 # widget in different ways for old and new command syntaxes.
@@ -372,7 +362,7 @@ proc ::tk::ScrollByUnits {w orient amount} {
 #		horizontal, "v" for vertical, "hv" for both.
 # amount -	How many screens to scroll:  typically 1 or -1.
 
-proc ::tk::ScrollByPages {w orient amount} {
+proc ::blt::TkScrollbar::ScrollByPages {w orient amount} {
     set cmd [$w cget -command]
     if {$cmd eq "" || ([string first [string index [$w cget -orient] 0] $orient] < 0)} {
 	return
@@ -385,7 +375,7 @@ proc ::tk::ScrollByPages {w orient amount} {
     }
 }
 
-# ::tk::ScrollToPos --
+# ScrollToPos --
 # This procedure tells the scrollbar's associated widget to scroll to
 # a particular location, given by a fraction between 0 and 1.  It notifies
 # the associated widget in different ways for old and new command syntaxes.
@@ -395,7 +385,7 @@ proc ::tk::ScrollByPages {w orient amount} {
 # pos -		A fraction between 0 and 1 indicating a desired position
 #		in the document.
 
-proc ::tk::ScrollToPos {w pos} {
+proc ::blt::TkScrollbar::ScrollToPos {w pos} {
     set cmd [$w cget -command]
     if {$cmd eq ""} {
 	return
@@ -408,47 +398,51 @@ proc ::tk::ScrollToPos {w pos} {
     }
 }
 
-# ::tk::ScrollTopBottom
-# Scroll to the top or bottom of the document, depending on the mouse
-# position.
+#
+# ScrollTopBottom --
+#
+#	Scroll to the top or bottom of the document, depending on the mouse
+#	position.
 #
 # Arguments:
-# w -		The scrollbar widget.
-# x, y -	Mouse coordinates within the widget.
+#	w 	The scrollbar widget.
+#	x, y 	Mouse coordinates within the widget.
+#
+proc ::blt::TkScrollbar::ScrollTopBottom {w x y} {
+    variable _private
 
-proc ::tk::ScrollTopBottom {w x y} {
-    variable ::tk::Priv
     set element [$w identify $x $y]
     if {[string match *1 $element]} {
 	ScrollToPos $w 0
     } elseif {[string match *2 $element]} {
 	ScrollToPos $w 1
     }
-
-    # Set Priv(relief), since it's needed by tk::ScrollButtonUp.
-
-    set Priv(relief) [$w cget -activerelief]
+    # Set _private(relief), since it's needed by ScrollButtonUp.
+    set _private(relief) [$w cget -activerelief]
 }
 
-# ::tk::ScrollButton2Down
-# This procedure is invoked when button 2 is pressed over a scrollbar.
-# If the button is over the trough or slider, it sets the scrollbar to
-# the mouse position and starts a slider drag.  Otherwise it just
-# behaves the same as button 1.
+#
+# ScrollButton2Down --
+#
+#	This procedure is invoked when button 2 is pressed over a scrollbar.
+#	If the button is over the trough or slider, it sets the scrollbar to
+#	the mouse position and starts a slider drag.  Otherwise it just
+#	behaves the same as button 1.
 #
 # Arguments:
-# w -		The scrollbar widget.
-# x, y -	Mouse coordinates within the widget.
+#	w 	The scrollbar widget.
+#	x, y 	Mouse coordinates within the widget.
 
-proc ::tk::ScrollButton2Down {w x y} {
-    variable ::tk::Priv
+proc ::blt::TkScrollbar::ScrollButton2Down {w x y} {
+    variable _private
+
     set element [$w identify $x $y]
     if {[string match {arrow[12]} $element]} {
 	ScrollButtonDown $w $x $y
 	return
     }
     ScrollToPos $w [$w fraction $x $y]
-    set Priv(relief) [$w cget -activerelief]
+    set _private(relief) [$w cget -activerelief]
 
     # Need the "update idletasks" below so that the widget calls us
     # back to reset the actual scrollbar position before we start the
@@ -458,4 +452,10 @@ proc ::tk::ScrollButton2Down {w x y} {
     $w configure -activerelief sunken 
     $w activate slider
     ScrollStartDrag $w $x $y
+}
+
+proc ::blt::TkScrollbar::CancelRepeat {} {
+    variable _private
+    after cancel $_private(afterId)
+    set _private(afterId) -1
 }

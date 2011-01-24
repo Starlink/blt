@@ -73,8 +73,8 @@
 #define PS_PREVIEW_WMF	1
 #define PS_PREVIEW_TIFF	2
 
-#define MAX_EPS_LINE_LENGTH 255	/* Maximum line length for a EPS file */
-
+#define MAX_EPS_LINE_LENGTH 255		/* Maximum line length for a EPS
+					 * file */
 /*
  * ParseInfo --
  *
@@ -82,19 +82,20 @@
  *	various routines while parsing the EPS file.
  */
 typedef struct {
-    int maxBytes;		/* Maximum length of PostScript code.  */
-    int lineNumber;		/* Current line number of EPS file */
-    char line[MAX_EPS_LINE_LENGTH + 1];
-				/* Buffer to contain a single line from
-				 * the PostScript file. */
-    unsigned char hexTable[256]; /* Table for converting ASCII hex digits to
-				 * values */
+    int maxBytes;			/* Maximum length of PostScript
+					 * code.  */
+    int lineNumber;			/* Current line number of EPS file */
+    char line[MAX_EPS_LINE_LENGTH + 1];	/* Buffer to contain a single line
+					 * from the PostScript file. */
+    unsigned char hexTable[256];	/* Table for converting ASCII hex
+					 * digits to values */
 
-    char *nextPtr;		/* Pointer to the next character to process on
-				 * the current line.  If NULL (or if nextPtr
-				 * points a NULL byte), this indicates the
-				 * the next line needs to be read. */
-    FILE *f;			/*  */
+    char *nextPtr;			/* Pointer to the next character to
+					 * process on the current line.  If
+					 * NULL (or if nextPtr points a NULL
+					 * byte), this indicates the the next
+					 * line needs to be read. */
+    FILE *f;				/*  */
 } ParseInfo;
 
 #define DEF_EPS_ANCHOR		"nw"
@@ -128,108 +129,109 @@ BLT_EXTERN Tk_CustomOption bltDistanceOption;
  * The structure below defines the record for each EPS item.
  */
 typedef struct {
-    Tk_Item item;		/* Generic stuff that's the same for all
-				 * types.  MUST BE FIRST IN STRUCTURE. */
-    Tk_Canvas canvas;		/* Canvas containing the EPS item. */
-
-    int lastWidth, lastHeight;	/* Last known dimensions of the EPS item.
-				 * This is used to know if the picture preview
-				 * needs to be resized. */
-
+    Tk_Item item;			/* Generic stuff that's the same for
+					 * all types.  MUST BE FIRST IN
+					 * STRUCTURE. */
+    Tk_Canvas canvas;			/* Canvas containing the EPS item. */
+    int lastWidth, lastHeight;		/* Last known dimensions of the EPS
+					 * item.  This is used to know if the
+					 * picture preview needs to be
+					 * resized. */
     Tcl_Interp *interp;
-
-    FILE *psFile;		/* File pointer to Encapsulated PostScript
-				 * file. We'll hold this as long as the EPS
-				 * item is using this file. */
-    unsigned int psStart;	/* File offset of PostScript code. */
-    unsigned int psLength;	/* Length of PostScript code. If zero,
-				 * indicates to read to EOF. */
-    unsigned int wmfStart;	/* File offset of Windows Metafile
-				 * preview.  */
-    unsigned int wmfLength;     /* Length of WMF portion in bytes. If zero,
-				 * indicates there is no WMF preview. */
-    unsigned int tiffStart;	/* File offset of TIFF preview. */
-    unsigned int tiffLength;    /* Length of TIFF portion in bytes. If zero,
-				 * indicates there is no TIFF preview. */
+    FILE *psFile;			/* File pointer to Encapsulated
+					 * PostScript file. We'll hold this as
+					 * long as the EPS item is using this
+					 * file. */
+    unsigned int psStart;		/* File offset of PostScript code. */
+    unsigned int psLength;		/* Length of PostScript code. If zero,
+					 * indicates to read to EOF. */
+    unsigned int wmfStart;		/* File offset of Windows Metafile
+					 * preview.  */
+    unsigned int wmfLength;		/* Length of WMF portion in bytes. If
+					 * zero, indicates there is no WMF
+					 * preview. */
+    unsigned int tiffStart;		/* File offset of TIFF preview. */
+    unsigned int tiffLength;		/* Length of TIFF portion in bytes. If
+					 * zero, indicates there is no TIFF *
+					 * preview. */
     const char *previewImageName;
     int previewFormat;
 
-    Tk_Image preview;		/* A Tk photo image provided as a preview of
-				 * the EPS contents. This image supersedes any
-				 * EPS preview embedded PostScript preview
-				 * (EPSI). */
-
+    Tk_Image preview;			/* A Tk photo image provided as a
+					 * preview of the EPS contents. This
+					 * image supersedes any EPS preview
+					 * embedded PostScript preview
+					 * (EPSI). */
     Blt_Painter painter;
-    Blt_Picture original;	/* The original photo or PostScript preview
-				 * image converted to a picture. */
+    Blt_Picture original;		/* The original photo or PostScript
+					 * preview image converted to a
+					 * picture. */
     int origFromPicture;
-
-    Blt_Picture picture;	/* Holds resized preview image.  Created and
-				 * deleted internally. */
-
-    int firstLine, lastLine; 
-				/* First and last line numbers of the
-				 * PostScript preview.  They are used to skip
-				 * over the preview when encapsulating
-				 * PostScript for the canvas item. */
-
-    GC fillGC;			/* Graphics context to fill background of
-				 * image outline if no preview image was
-				 * present. */
-
-    int llx, lly, urx, ury;	/* Lower left and upper right coordinates of
-				 * PostScript bounding box, retrieved from
-				 * file's "BoundingBox:" field. */
-
-    char *title;		/* Title, retrieved from the file's "Title:"
-				 * field, to be displayed over the top of the
-				 * EPS preview (malloc-ed).  */
-
-    Tcl_DString dString;	/* Contains the encapsulated PostScript. */
+    Blt_Picture picture;		/* Holds resized preview image.
+					 * Created and deleted internally. */
+    int firstLine, lastLine;		/* First and last line numbers of the
+					 * PostScript preview.  They are used
+					 * to skip over the preview when
+					 * encapsulating PostScript for the
+					 * canvas item. */
+    GC fillGC;				/* Graphics context to fill background
+					 * of image outline if no preview
+					 * image was present. */
+    int llx, lly, urx, ury;		/* Lower left and upper right
+					 * coordinates of PostScript bounding
+					 * box, retrieved from file's
+					 * "BoundingBox:" field. */
+    const char *title;			/* Title, retrieved from the file's
+					 * "Title:" field, to be displayed
+					 * over the top of the EPS preview
+					 * (malloc-ed).  */
+    Tcl_DString dString;		/* Contains the encapsulated
+					 * PostScript. */
 
     /* User configurable fields */
 
-    double x, y;		/* Requested anchor in canvas coordinates of
-				 * the item */
+    double x, y;			/* Requested anchor in canvas
+					 * coordinates of the item */
     Tk_Anchor anchor;
 
     Region2d bb;
 
-    char *fileName;		/* Name of the encapsulated PostScript file.
-				 * If NULL, indicates that no EPS file has be
-				 * successfully loaded yet. */
-
-    char *reqTitle;		/* Title to be displayed in the EPS item.
-				 * Supersedes the title found in the EPS
-				 * file. If NULL, indicates that the title
-				 * found in the EPS file should be used. */
-
-    int width, height;		/* Requested dimension of EPS item in canvas
-				 * coordinates.  If non-zero, this overrides
-				 * the dimension computed from the
-				 * "%%BoundingBox:" specification in the EPS
-				 * file used. */
-
-    int showImage;		/* Indicates if the image or the outline
-				 * rectangle should be displayed */
+    const char *fileName;		/* Name of the encapsulated PostScript
+					 * file.  If NULL, indicates that no
+					 * EPS file has be successfully
+					 * loaded yet. */
+    const char *reqTitle;		/* Title to be displayed in the EPS
+					 * item.  Supersedes the title found
+					 * in the EPS file. If NULL, indicates
+					 * that the title found in the EPS
+					 * file should be used. */
+    int width, height;			/* Requested dimension of EPS item in
+					 * canvas coordinates.  If non-zero,
+					 * this overrides the dimension
+					 * computed from the "%%BoundingBox:"
+					 * specification in the EPS file
+					 * used. */
+    int showImage;			/* Indicates if the image or the
+					 * outline rectangle should be
+					 * displayed */
 
     int quick;
     unsigned int flags;
 
-    XColor *fillColor;		/* Fill color of the image outline. */
+    XColor *fillColor;			/* Fill color of the image outline. */
 
-    Tk_3DBorder border;		/* Outline color */
+    Tk_3DBorder border;			/* Outline color */
 
     int borderWidth;
     int relief;
 
-    TextStyle titleStyle;	/* Font, color, etc. for title */
+    TextStyle titleStyle;		/* Font, color, etc. for title */
     Blt_Font font;		
-    Pixmap stipple;		/* Stipple for image fill */
+    Pixmap stipple;			/* Stipple for image fill */
 
     ClientData tiffPtr;
 #ifdef WIN32
-    HENHMETAFILE *hMetaFile;	/* Windows metafile. */
+    HENHMETAFILE *hMetaFile;		/* Windows metafile. */
 #endif
 } Eps;
 
@@ -324,12 +326,13 @@ static int ReadPostScript(Tcl_Interp *interp, Eps *epsPtr);
 /*ARGSUSED*/
 static int
 StringToFont(
-    ClientData clientData,	/* Indicated how to check distance */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Window */
-    const char *string,		/* Pixel value string */
-    char *widgRec,		/* Widget record */
-    int offset)			/* Offset of pixel size in record */
+    ClientData clientData,		/* Indicated how to check distance */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Window */
+    const char *string,			/* Pixel value string */
+    char *widgRec,			/* Widget record */
+    int offset)				/* Offset of pixel size in record */
 {
     Blt_Font *fontPtr = (Blt_Font *)(widgRec + offset);
     Blt_Font font;
@@ -352,11 +355,11 @@ StringToFont(
 /*ARGSUSED*/
 static char *
 FontToString(
-    ClientData clientData,	/* Not used. */
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget structure record */
-    int offset,			/* Offset in widget record */
-    Tcl_FreeProc **freeProcPtr)	/* Not used. */
+    ClientData clientData,		/* Not used. */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget structure record */
+    int offset,				/* Offset in widget record */
+    Tcl_FreeProc **freeProcPtr)		/* Not used. */
 {
     Blt_Font font = *(Blt_Font *)(widgRec + offset);
     const char *string;
@@ -461,7 +464,7 @@ GetHexValue(ParseInfo *piPtr, unsigned char *bytePtr)
 #if DEBUG_READER
 	    PurifyPrintf("short file\n");
 #endif
-	    return TCL_ERROR;	/* Short file */
+	    return TCL_ERROR;		/* Short file */
 	}
 	if (piPtr->line[0] != '%') {
 #if DEBUG_READER
@@ -479,7 +482,7 @@ GetHexValue(ParseInfo *piPtr, unsigned char *bytePtr)
 	p = piPtr->line + 1;
     }
     while (isspace((int)*p)) {
-	p++;			/* Skip spaces */
+	p++;				/* Skip spaces */
     }
     if (*p == '\0') {
 	goto nextLine;
@@ -581,7 +584,7 @@ ReadEPSI(Eps *epsPtr, ParseInfo *piPtr)
 	    unsigned char byte;
 
 	    bit = 8;
-	    byte = 0; 		/* Suppress compiler warning. */
+	    byte = 0;			/* Suppress compiler warning. */
 	    for (dp = destRowPtr, dend = dp + width; dp < dend; dp++) {
 		if (bit == 8) {
 		    int result;
@@ -694,10 +697,10 @@ ReadPostScript(Tcl_Interp *interp, Eps *epsPtr)
 	    field = pi.line + 2;
 	    if (field[0] == 'B') {
 		if (strncmp(field, "BeginSetup", 8) == 0) {
-		    break;	/* Done */
+		    break;		/* Done */
 		}
 		if (strncmp(field, "BeginProlog", 8) == 0) {
-		    break;	/* Done */
+		    break;		/* Done */
 		}
 		if ((strncmp(field, "BoundingBox:", 12) == 0) &&
 		    (dscBoundingBox == NULL)) {
@@ -733,10 +736,10 @@ ReadPostScript(Tcl_Interp *interp, Eps *epsPtr)
 	    } else if (field[0] == 'E') {
 		if (strncmp(field, "EndComments", 11) == 0) {
 		    dscEndComments = field;
-		    break;	/* Done */
+		    break;		/* Done */
 		}
 	    }
-	}			/* %% */
+	} /* %% */
     }
     if (dscBoundingBox == NULL) {
 	Tcl_AppendResult(interp, "no \"%%BoundingBox:\" found in \"",
@@ -908,9 +911,11 @@ ReadWMF(f, epsPtr, headerPtr)
 /*ARGSUSED*/
 static void
 DeleteEps( 
-    Tk_Canvas canvas,		/* Info about overall canvas widget. */
-    Tk_Item *itemPtr,		/* Item that is being deleted. */
-    Display *display)		/* Display containing window for canvas. */
+    Tk_Canvas canvas,			/* Info about overall canvas
+					 * widget. */
+    Tk_Item *itemPtr,			/* Item that is being deleted. */
+    Display *display)			/* Display containing window for
+					 * canvas. */
 {
     Eps *epsPtr = (Eps *)itemPtr;
 
@@ -964,12 +969,12 @@ DeleteEps(
  */
 static int
 CreateEps(
-    Tcl_Interp *interp,		/* Interpreter for error reporting. */
-    Tk_Canvas canvas,		/* Canvas to hold new item. */
-    Tk_Item *itemPtr,		/* Record to hold new item; header has been
-				 * initialized by caller. */
-    int argc,			/* Number of arguments in argv. */
-    char **argv)		/* Arguments describing rectangle. */
+    Tcl_Interp *interp,			/* Interpreter for error reporting. */
+    Tk_Canvas canvas,			/* Canvas to hold new item. */
+    Tk_Item *itemPtr,			/* Record to hold new item; header has
+					 * been initialized by caller. */
+    int argc,				/* Number of arguments in argv. */
+    char **argv)			/* Arguments describing rectangle. */
 {
     Eps *epsPtr = (Eps *)itemPtr;
     Tk_Window tkwin;
@@ -1056,7 +1061,7 @@ ImageChangedProc(
 {
     Eps *epsPtr = clientData;
 
-    if ((epsPtr->preview == NULL) || (Blt_ImageIsDeleted(epsPtr->preview))) {
+    if ((epsPtr->preview == NULL) || (Blt_Image_IsDeleted(epsPtr->preview))) {
 	epsPtr->preview = NULL;
 	if (epsPtr->previewImageName != NULL) {
 	    Blt_Free(epsPtr->previewImageName);
@@ -1109,12 +1114,14 @@ ImageChangedProc(
  */
 static int
 ConfigureEps(
-    Tcl_Interp *interp,		/* Used for error reporting. */
-    Tk_Canvas canvas,		/* Canvas containing itemPtr. */
-    Tk_Item *itemPtr,		/* EPS item to reconfigure. */
-    int argc,			/* Number of elements in argv.  */
-    char **argv,		/* Arguments describing things to configure. */
-    int flags)			/* Flags to pass to Tk_ConfigureWidget. */
+    Tcl_Interp *interp,			/* Used for error reporting. */
+    Tk_Canvas canvas,			/* Canvas containing itemPtr. */
+    Tk_Item *itemPtr,			/* EPS item to reconfigure. */
+    int argc,				/* Number of elements in argv.  */
+    char **argv,			/* Arguments describing things to
+					 * configure. */
+    int flags)				/* Flags to pass to
+					 * Tk_ConfigureWidget. */
 {
     Eps *epsPtr = (Eps *)itemPtr;
     Tk_Window tkwin;
@@ -1271,13 +1278,14 @@ ConfigureEps(
  */
 static int
 EpsCoords(
-    Tcl_Interp *interp,		/* Used for error reporting. */
-    Tk_Canvas canvas,		/* Canvas containing item. */
-    Tk_Item *itemPtr,		/* Item whose coordinates are to be read or
-				 * modified. */
-    int argc,			/* Number of coordinates supplied in argv. */
-    char **argv)		/* Array of coordinates: x1, y1, x2, y2,
-				 * ... */
+    Tcl_Interp *interp,			/* Used for error reporting. */
+    Tk_Canvas canvas,			/* Canvas containing item. */
+    Tk_Item *itemPtr,			/* Item whose coordinates are to be
+					 * read or modified. */
+    int argc,				/* Number of coordinates supplied in
+					 * argv. */
+    char **argv)			/* Array of coordinates: x1, y1, x2,
+					 * y2, ... */
 {
     Eps *epsPtr = (Eps *)itemPtr;
 
@@ -1287,7 +1295,8 @@ EpsCoords(
 	return TCL_ERROR;
     }
     if (argc == 2) {
-	double x, y;		/* Don't overwrite old coordinates on errors */
+	double x, y;			/* Don't overwrite old coordinates on
+					 * errors */
 
 	if ((Tk_CanvasGetCoord(interp, canvas, argv[0], &x) != TCL_OK) ||
 	    (Tk_CanvasGetCoord(interp, canvas, argv[1], &y) != TCL_OK)) {
@@ -1323,8 +1332,9 @@ EpsCoords(
  /* ARGSUSED */
 static void
 ComputeEpsBbox(
-    Tk_Canvas canvas,		/* Canvas that contains item. */
-    Eps *epsPtr)		/* Item whose bbox is to be recomputed. */
+    Tk_Canvas canvas,			/* Canvas that contains item. */
+    Eps *epsPtr)			/* Item whose bbox is to be
+					 * recomputed. */
 {
     Point2d anchorPos;
 
@@ -1365,40 +1375,41 @@ ComputeEpsBbox(
  */
 static void
 DisplayEps(
-    Tk_Canvas canvas,		/* Canvas that contains item. */
-    Tk_Item *itemPtr,		/* Item to be displayed. */
-    Display *display,		/* Display on which to draw item. */
-    Drawable drawable,		/* Pixmap or window in which to draw item. */
+    Tk_Canvas canvas,			/* Canvas that contains item. */
+    Tk_Item *itemPtr,			/* Item to be displayed. */
+    Display *display,			/* Display on which to draw item. */
+    Drawable drawable,			/* Pixmap or window in which to draw
+					 * item. */
     int rx, int ry, 
-    int rw, int rh)		/* Describes region of canvas that must be
-				 * redisplayed (not used). */
+    int rw, int rh)			/* Describes region of canvas that
+					 * must be redisplayed (not used). */
 {
     Blt_Picture picture;
     Eps *epsPtr = (Eps *)itemPtr;
     Tk_Window tkwin;
-    char *title;
-    int width, height;
-    short int drawX, drawY;
+    const char *title;
+    int w, h;
+    short int dx, dy;
 
-    width = (int)(epsPtr->bb.right - epsPtr->bb.left);
-    height = (int)(epsPtr->bb.bottom - epsPtr->bb.top);
-    if ((width < 1) || (height < 1)) {
+    w = (int)(epsPtr->bb.right - epsPtr->bb.left);
+    h = (int)(epsPtr->bb.bottom - epsPtr->bb.top);
+    if ((w < 1) || (h < 1)) {
 	return;
     }
     tkwin = Tk_CanvasTkwin(canvas);
     if (epsPtr->original != NULL) {
-	if ((epsPtr->lastWidth != width) || (epsPtr->lastHeight != height)) {
+	if ((epsPtr->lastWidth != w) || (epsPtr->lastHeight != h)) {
 	    if (epsPtr->quick) {
 		picture = Blt_ScalePicture(epsPtr->original, 0, 0,
 			Blt_PictureWidth(epsPtr->original),
-			Blt_PictureHeight(epsPtr->original), width, height);
+			Blt_PictureHeight(epsPtr->original), w, h);
 	    } else {
 		fprintf(stderr, "orig=%dx%d new=width=%dx%d last=%dx%d\n", 
 			Blt_PictureWidth(epsPtr->original),
 			Blt_PictureHeight(epsPtr->original),
-			width, height,
+			w, h,
 			epsPtr->lastWidth, epsPtr->lastHeight);
-		picture = Blt_CreatePicture(width, height);
+		picture = Blt_CreatePicture(w, h);
 		Blt_ResamplePicture(picture, epsPtr->original, bltBoxFilter, 
 			bltBoxFilter);
 	    }
@@ -1406,8 +1417,8 @@ DisplayEps(
 		Blt_FreePicture(epsPtr->picture);
 	    }
 	    epsPtr->picture = picture;
-	    epsPtr->lastHeight = height;
-	    epsPtr->lastWidth = width;
+	    epsPtr->lastHeight = h;
+	    epsPtr->lastWidth = w;
 	} 
     }
     picture = epsPtr->picture;
@@ -1419,7 +1430,7 @@ DisplayEps(
      * Translate the coordinates to those of the EPS item, then redisplay it.
      */
     Tk_CanvasDrawableCoords(canvas, epsPtr->bb.left, epsPtr->bb.top, 
-			    &drawX, &drawY);
+			    &dx, &dy);
 
     title = epsPtr->title;
 
@@ -1438,14 +1449,14 @@ DisplayEps(
 	/* Convert everything to screen coordinates since the origin of the
 	 * item is only available in */
 
-	p.left = drawX, p.top = drawY;
+	p.left = dx, p.top = dy;
 	Tk_CanvasDrawableCoords(canvas, epsPtr->bb.right, epsPtr->bb.bottom,
 		&p.right, &p.bottom);
 	Tk_CanvasDrawableCoords(canvas, (double)rx, (double)ry, 
 		&r.left, &r.top);
 	Tk_CanvasDrawableCoords(canvas,(double)(rx+rw), (double)(ry+rh), 
 		&r.right, &r.bottom);
-	destX = (int)drawX, destY = (int)drawY;
+	destX = (int)dx, destY = (int)dy;
 	if (p.left < r.left) {
 	    p.left = r.left;
 	}
@@ -1464,8 +1475,8 @@ DisplayEps(
 	if (destY < r.top) {
 	    destY = r.top;
 	}
-	p.left -= drawX, p.right -= drawX;
-	p.top -= drawY, p.bottom -= drawY;;
+	p.left -= dx, p.right -= dx;
+	p.top -= dy, p.bottom -= dy;;
 	if (0 /* epsPtr->quick */) {
 	    Blt_Picture fade;
 
@@ -1484,8 +1495,8 @@ DisplayEps(
 	}
     } else {
 	if (epsPtr->fillGC != NULL) {
-	    XSetTSOrigin(display, epsPtr->fillGC, drawX, drawY);
-	    XFillRectangle(display, drawable, epsPtr->fillGC, drawX, drawY,
+	    XSetTSOrigin(display, epsPtr->fillGC, dx, dy);
+	    XFillRectangle(display, drawable, epsPtr->fillGC, dx, dy,
 		epsPtr->width, epsPtr->height);
 	    XSetTSOrigin(display, epsPtr->fillGC, 0, 0);
 	}
@@ -1493,33 +1504,33 @@ DisplayEps(
 
     if (title != NULL) {
 	TextLayout *textPtr;
-	double rotWidth, rotHeight;
-	int destWidth, destHeight;
+	double rw, rh;
+	int dw, dh;
 
 	/* Translate the title to an anchor position within the EPS item */
 	epsPtr->titleStyle.font = epsPtr->font;
 	textPtr = Blt_Ts_CreateLayout(title, -1, &epsPtr->titleStyle);
 	Blt_GetBoundingBox(textPtr->width, textPtr->height, 
-	     epsPtr->titleStyle.angle, &rotWidth, &rotHeight, (Point2d *)NULL);
-	destWidth = (int)ceil(rotWidth);
-	destHeight = (int)ceil(rotHeight);
-	if ((destWidth <= width) && (destHeight <= height)) {
-	    int titleX, titleY;
+	     epsPtr->titleStyle.angle, &rw, &rh, (Point2d *)NULL);
+	dw = (int)ceil(rw);
+	dh = (int)ceil(rh);
+	if ((dw <= w) && (dh <= h)) {
+	    int tx, ty;
 
-	    Blt_TranslateAnchor(drawX, drawY, width, height, 
-		epsPtr->titleStyle.anchor, &titleX, &titleY);
+	    Blt_TranslateAnchor(dx, dy, w, h, epsPtr->titleStyle.anchor, 
+		&tx, &ty);
 	    if (picture == NULL) {
-		titleX += epsPtr->borderWidth;
-		titleY += epsPtr->borderWidth;
+		tx += epsPtr->borderWidth;
+		ty += epsPtr->borderWidth;
 	    }
 	    Blt_Ts_DrawLayout(tkwin, drawable, textPtr, &epsPtr->titleStyle, 
-		titleX, titleY, -1);
+		tx, ty);
 	}
 	Blt_Free(textPtr);
     }
     if ((picture == NULL) && (epsPtr->border != NULL) && 
 	(epsPtr->borderWidth > 0)) {
-	Blt_Draw3DRectangle(tkwin, drawable, epsPtr->border, drawX, drawY,
+	Blt_Draw3DRectangle(tkwin, drawable, epsPtr->border, dx, dy,
 	    epsPtr->width, epsPtr->height, epsPtr->borderWidth, epsPtr->relief);
     }
 }
@@ -1546,9 +1557,9 @@ DisplayEps(
 /*ARGSUSED*/
 static double
 EpsToPoint(
-    Tk_Canvas canvas,		/* Canvas containing item. */
-    Tk_Item *itemPtr,		/* Item to check against point. */
-    double *pts)		/* Array of x and y coordinates. */
+    Tk_Canvas canvas,			/* Canvas containing item. */
+    Tk_Item *itemPtr,			/* Item to check against point. */
+    double *pts)			/* Array of x and y coordinates. */
 {
     Eps *epsPtr = (Eps *)itemPtr;
     double x, y, dx, dy;
@@ -1594,22 +1605,23 @@ EpsToPoint(
 /*ARGSUSED*/
 static int
 EpsToArea(
-    Tk_Canvas canvas,		/* Canvas containing the item. */
-    Tk_Item *itemPtr,		/* Item to check against bounding rectangle. */
-    double pts[])		/* Array of four coordinates (x1, y1,
-				 * x2, y2) describing area.  */
+    Tk_Canvas canvas,			/* Canvas containing the item. */
+    Tk_Item *itemPtr,			/* Item to check against bounding
+					 * rectangle. */
+    double pts[])			/* Array of four coordinates (x1, y1,
+					 * x2, y2) describing area.  */
 {
     Eps *epsPtr = (Eps *)itemPtr;
 
     if ((pts[2] <= epsPtr->bb.left) || (pts[0] >= epsPtr->bb.right) ||
 	(pts[3] <= epsPtr->bb.top) || (pts[1] >= epsPtr->bb.bottom)) {
-	return -1;		/* Outside. */
+	return -1;			/* Outside. */
     }
     if ((pts[0] <= epsPtr->bb.left) && (pts[1] <= epsPtr->bb.top) &&
 	(pts[2] >= epsPtr->bb.right) && (pts[3] >= epsPtr->bb.bottom)) {
-	return 1;		/* Inside. */
+	return 1;			/* Inside. */
     }
-    return 0;			/* Overlap. */
+    return 0;				/* Overlap. */
 }
 
 /*
@@ -1632,9 +1644,9 @@ EpsToArea(
  */
 static void
 ScaleEps(
-    Tk_Canvas canvas,		/* Canvas containing rectangle. */
-    Tk_Item *itemPtr,		/* Rectangle to be scaled. */
-    double xOrigin, double yOrigin, /* Origin wrt scale rect. */
+    Tk_Canvas canvas,			/* Canvas containing rectangle. */
+    Tk_Item *itemPtr,			/* Rectangle to be scaled. */
+    double xOrigin, double yOrigin,	/* Origin wrt scale rect. */
     double xScale, double yScale)
 {
     Eps *epsPtr = (Eps *)itemPtr;
@@ -1674,9 +1686,10 @@ ScaleEps(
  */
 static void
 TranslateEps(
-    Tk_Canvas canvas,		/* Canvas containing item. */
-    Tk_Item *itemPtr,		/* Item that is being moved. */
-    double dx, double dy)	/* Amount by which item is to be moved. */
+    Tk_Canvas canvas,			/* Canvas containing item. */
+    Tk_Item *itemPtr,			/* Item that is being moved. */
+    double dx, double dy)		/* Amount by which item is to be
+					 * moved. */
 {
     Eps *epsPtr = (Eps *)itemPtr;
 
@@ -1715,22 +1728,24 @@ TranslateEps(
 
 static int
 EpsToPostScript(
-    Tcl_Interp *interp,		/* Interpreter to hold generated PostScript
-				 * or reports errors back to. */
-    Tk_Canvas canvas,		/* Information about overall canvas. */
-    Tk_Item *itemPtr,		/* eps item. */
-    int prepass)		/* If 1, this is a prepass to collect
-				 * font information; 0 means final
-				 * PostScript is being created. */
+    Tcl_Interp *interp,			/* Interpreter to hold generated
+					 * PostScript or reports errors back
+					 * to. */
+    Tk_Canvas canvas,			/* Information about overall
+					 * canvas. */
+    Tk_Item *itemPtr,			/* eps item. */
+    int prepass)			/* If 1, this is a prepass to collect
+					 * font information; 0 means final *
+					 * PostScript is being created. */
 {
     Eps *epsPtr = (Eps *)itemPtr;
     Blt_Ps ps;
     double xScale, yScale;
-    double x, y, width, height;
+    double x, y, w, h;
     PageSetup setup;
 
     if (prepass) {
-	return TCL_OK;		/* Don't worry about fonts. */
+	return TCL_OK;			/* Don't worry about fonts. */
     }
     memset(&setup, 0, sizeof(setup));
     ps = Blt_Ps_Create(interp, &setup);
@@ -1738,8 +1753,8 @@ EpsToPostScript(
     /* Lower left corner of item on page. */
     x = epsPtr->bb.left;
     y = Tk_CanvasPsY(canvas, epsPtr->bb.bottom);
-    width = epsPtr->bb.right - epsPtr->bb.left;
-    height = epsPtr->bb.bottom - epsPtr->bb.top;
+    w = epsPtr->bb.right - epsPtr->bb.left;
+    h = epsPtr->bb.bottom - epsPtr->bb.top;
 
     if (epsPtr->fileName == NULL) {
 	/* No PostScript file, generate PostScript of resized image instead. */
@@ -1749,7 +1764,7 @@ EpsToPostScript(
 	     * First flip the PostScript y-coordinate axis so that the origin
 	     * is the upper-left corner like our picture.
 	     */
-	    Blt_Ps_Format(ps, "  %g %g translate\n", x, y + height);
+	    Blt_Ps_Format(ps, "  %g %g translate\n", x, y + h);
 	    Blt_Ps_Format(ps, "  1 -1 scale\n");
 
 	    Blt_Ps_DrawPicture(ps, epsPtr->picture, 0.0, 0.0);
@@ -1762,14 +1777,13 @@ EpsToPostScript(
     }
 
     /* Copy in the PostScript prolog for EPS encapsulation. */
-
     if (Blt_Ps_IncludeFile(interp, ps, "bltCanvEps.pro") != TCL_OK) {
 	goto error;
     }
     Blt_Ps_Append(ps, "BeginEPSF\n");
 
-    xScale = width / (double)(epsPtr->urx - epsPtr->llx);
-    yScale = height / (double)(epsPtr->ury - epsPtr->lly);
+    xScale = w / (double)(epsPtr->urx - epsPtr->llx);
+    yScale = h / (double)(epsPtr->ury - epsPtr->lly);
 
     /* Set up scaling and translation transformations for the EPS item */
 
@@ -1802,26 +1816,26 @@ EpsToPostScript(
  * can be invoked by generic item code.
  */
 static Tk_ItemType itemType = {
-    (char *)"eps",		/* name */
-    sizeof(Eps),		/* itemSize */
-    CreateEps,			/* createProc */
-    configSpecs,		/* configSpecs */
-    ConfigureEps,		/* configureProc */
-    EpsCoords,			/* coordProc */
-    DeleteEps,			/* deleteProc */
-    DisplayEps,			/* displayProc */
-    0,				/* alwaysRedraw */
-    EpsToPoint,			/* pointProc */
-    EpsToArea,			/* areaProc */
-    EpsToPostScript,		/* postscriptProc */
-    ScaleEps,			/* scaleProc */
-    TranslateEps,		/* translateProc */
-    (Tk_ItemIndexProc *)NULL,	/* indexProc */
-    (Tk_ItemCursorProc *)NULL,	/* icursorProc */
-    (Tk_ItemSelectionProc *)NULL, /* selectionProc */
-    (Tk_ItemInsertProc *)NULL,	/* insertProc */
-    (Tk_ItemDCharsProc *)NULL,	/* dTextProc */
-    (Tk_ItemType *)NULL		/* nextPtr */
+    (char *)"eps",			/* name */
+    sizeof(Eps),			/* itemSize */
+    CreateEps,				/* createProc */
+    configSpecs,			/* configSpecs */
+    ConfigureEps,			/* configureProc */
+    EpsCoords,				/* coordProc */
+    DeleteEps,				/* deleteProc */
+    DisplayEps,				/* displayProc */
+    0,					/* alwaysRedraw */
+    EpsToPoint,				/* pointProc */
+    EpsToArea,				/* areaProc */
+    EpsToPostScript,			/* postscriptProc */
+    ScaleEps,				/* scaleProc */
+    TranslateEps,			/* translateProc */
+    (Tk_ItemIndexProc *)NULL,		/* indexProc */
+    (Tk_ItemCursorProc *)NULL,		/* icursorProc */
+    (Tk_ItemSelectionProc *)NULL,	/* selectionProc */
+    (Tk_ItemInsertProc *)NULL,		/* insertProc */
+    (Tk_ItemDCharsProc *)NULL,		/* dTextProc */
+    (Tk_ItemType *)NULL			/* nextPtr */
 };
 
 /*ARGSUSED*/

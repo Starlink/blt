@@ -37,6 +37,7 @@ set configOptions {
     Legend.ActiveBackground	khaki2
     Legend.ActiveRelief		sunken
     Legend.Background		""
+    Legend.Position		plotarea
     Title			"A Simple X-Y Graph"
     activeLine.Color		yellow4
     activeLine.Fill		yellow

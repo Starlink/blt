@@ -1,3 +1,4 @@
+package require BLT
 
 set dest [image create picture -width 800 -height 600]
 
@@ -41,9 +42,9 @@ foreach region [array names us_regions $subset] {
 #     y expr { (y-$min)*3.0 + 10 }
 #     all merge x y 
     all expr { all * 3.0 }
-    set coords [all print]
+    set coords [all values]
     $dest draw polygon -coords $coords -color $colors($cnum) \
-	-antialiased 1 -shadow 0 -alpha 155 
+	-antialiased 1 -shadow 1 -alpha 155 
         #$dest draw line -coords $coords -color black 
 #    foreach {rx ry} $coords {
 #        $dest draw rectangle [expr int($rx-2)] [expr int($ry-2)] [expr int($rx+2)] [expr int($ry+2)] -color red 

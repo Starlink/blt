@@ -17,7 +17,6 @@ SHELL =		/bin/sh
 RM =		rm -rf
 INSTALL =	@INSTALL@
 INSTALL_DATA =	@INSTALL_DATA@
-INSTALL_ROOT = 
 
 instdirs =	$(prefix) \
 		$(exec_prefix) \
@@ -54,35 +53,35 @@ install: mkdirs install-bitmaps install-images install-scripts
 
 install-scripts: 
 	for i in $(srcdir)/scripts/*.tcl ; do \
-            $(INSTALL) $$i $(INSTALL_ROOT)$(destdir)/scripts ; \
+            $(INSTALL) $$i $(DESTDIR)$(destdir)/scripts ; \
 	done 
 	for i in $(demos) ; do \
-            $(INSTALL) $(srcdir)/$$i $(INSTALL_ROOT)$(destdir)/$$i ; \
+            $(INSTALL) $(srcdir)/$$i $(DESTDIR)$(destdir)/$$i ; \
 	done 
 
 install-bitmaps: 
 	for i in $(srcdir)/bitmaps/*.xbm ; do \
-	    $(INSTALL_DATA) $$i $(INSTALL_ROOT)$(destdir)/bitmaps ; \
+	    $(INSTALL_DATA) $$i $(DESTDIR)$(destdir)/bitmaps ; \
 	done 
 	for i in $(srcdir)/bitmaps/hand/*.xbm ; do \
-	    $(INSTALL_DATA) $$i $(INSTALL_ROOT)$(destdir)/bitmaps/hand ; \
+	    $(INSTALL_DATA) $$i $(DESTDIR)$(destdir)/bitmaps/hand ; \
 	done 
 	for i in $(srcdir)/bitmaps/fish/*.xbm ; do \
-	    $(INSTALL_DATA) $$i $(INSTALL_ROOT)$(destdir)/bitmaps/fish ; \
+	    $(INSTALL_DATA) $$i $(DESTDIR)$(destdir)/bitmaps/fish ; \
 	done 
 
 install-images: 
 	for i in $(srcdir)/images/*.gif $(srcdir)/images/*.ps ; do \
-	    $(INSTALL_DATA) $$i $(INSTALL_ROOT)$(destdir)/images ; \
+	    $(INSTALL_DATA) $$i $(DESTDIR)$(destdir)/images ; \
 	done 
 
 mkdirs:
 	@for i in $(instdirs) ; do \
-          if test -d $(INSTALL_ROOT)"$$i" ; then \
+          if test -d $(DESTDIR)"$$i" ; then \
             : ; \
           else \
-            echo " mkdir $(INSTALL_ROOT)$$i" ; \
-            mkdir $(INSTALL_ROOT)"$$i" ; \
+            echo " mkdir $(DESTDIR)$$i" ; \
+            mkdir $(DESTDIR)"$$i" ; \
           fi ; \
         done
 

@@ -36,7 +36,7 @@ EOF
 $1=`${AWK} -f conftest.awk "$3"`
 rm -rf conftest*])
 
-dnl BLT_CHECK_LIBRARY(NAME, SPEC, SYMBOL, WITH)
+dnl BLT_CHECK_LIBRARY(NAME, SPEC, SYMBOL, WITH, EXTRALIBS)
 AC_DEFUN(BLT_CHECK_LIBRARY,
 [  
   if test "$4" != "no" ; then
@@ -47,7 +47,7 @@ AC_DEFUN(BLT_CHECK_LIBRARY,
       LDFLAGS="${lib_spec} ${save_LDFLAGS}"
       AC_CHECK_LIB([$2], [$3], [found="yes"],[found="no"])
       if test "${found}" = "no" ; then
-	lib_spec="-L${dir} -l$2"
+	lib_spec="-L${dir} -l$2 $5"
         dir=$exec_prefix/lib
         LDFLAGS="${lib_spec} ${save_LDFLAGS}"
         AC_CHECK_LIB([$2], [$3], [found="yes"],[found="no"])
@@ -57,7 +57,7 @@ AC_DEFUN(BLT_CHECK_LIBRARY,
       fi
     else 
       for dir in $4 $4/lib ; do 
-        lib_spec="-L${dir} -l$2"
+        lib_spec="-L${dir} -l$2 $5"
         LDFLAGS="${lib_spec} ${save_LDFLAGS}"
         AC_CHECK_LIB([$2], [$3],[found="yes"],[found="no"])
         if test "${found}" = "yes" ; then

@@ -126,8 +126,8 @@ button .newButton -command {
 	.f1.$name $numWin+3,0 -padx 10 -pady 10
 }
 
-label .holdButton -command {
-    if { [busy isbusy .f1] == "" } {
+button .holdButton -command {
+    if { [blt::busy isbusy .f1] == "" } {
         global activeBg
 	.f1 configure -bg $activeBg
     }
@@ -135,7 +135,7 @@ label .holdButton -command {
     blt::busy .#menu
     LoseFocus
 }
-label .releaseButton -command {
+button .releaseButton -command {
     if { [blt::busy isbusy .f1] == ".f1" } {
         blt::busy release .f1
         blt::busy release .#menu

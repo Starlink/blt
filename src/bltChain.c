@@ -399,7 +399,9 @@ Blt_Chain_Prepend(Blt_Chain chain, ClientData clientData)
  *
  * Blt_Chain_GetNthLink --
  *
- *	Find the link at the given position in the chain.
+ *	Find the link at the given position in the chain.  The position
+ *	is number from 0.  If position is negative is returns the nth
+ *	link from the back of the chain.
  *
  * Results:
  *	Returns the pointer to the link, if that numbered link
@@ -416,26 +418,23 @@ Blt_Chain_GetNthLink(Chain *chainPtr, long position)
 	    int i;
 
 	    position = -position;
-	    linkPtr = chainPtr->tail;
-	    for (i = 0; i < position; i++) {
-		linkPtr = linkPtr->prev;
-		if (linkPtr == NULL) {
-		    return NULL;
+	    for (i = 0, linkPtr = chainPtr->tail; linkPtr != NULL; 
+		 linkPtr = linkPtr->prev, i++) {
+		if (i == position) {
+		    return linkPtr;
 		}
 	    }
-	    return linkPtr;
 	} else {
 	    ChainLink *linkPtr;
 	    int i;
 
 	    linkPtr = chainPtr->head;
-	    for (i = 0; i < position; i++) {
-		linkPtr = linkPtr->next;
-		if (linkPtr == NULL) {
-		    return NULL;
+	    for (i = 0, linkPtr = chainPtr->head; linkPtr != NULL; 
+		 linkPtr = linkPtr->next, i++) {
+		if (i == position) {
+		    return linkPtr;
 		}
 	    }
-	    return linkPtr;
 	}
     }
     return NULL;

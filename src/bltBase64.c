@@ -83,9 +83,9 @@ static char decode64[256] = {
 };
 
 int
-Blt_IsBase64(const char *bytes, size_t nBytes)
+Blt_IsBase64(const unsigned char *bytes, size_t nBytes)
 {
-    const char *bp, *bend;
+    const unsigned char *bp, *bend;
 
     for (bp = bytes, bend = bp + nBytes; bp < bend; bp++) {
 	unsigned int byte;
@@ -98,17 +98,17 @@ Blt_IsBase64(const char *bytes, size_t nBytes)
     return TRUE;
 }
 
-static char
-NextChar(const char **bp) 
+static INLINE unsigned char
+NextChar(const unsigned char **bp, const unsigned char *lastPtr) 
 {
     char c;
 
     /* Skip whitespace and invalid characters. Let's see if being fault-tolerant
      * is better than erroring out here.*/
-    while (decode64[(int)(**bp)] == NA) {
+    while (((*bp) < lastPtr) &&  (decode64[(**bp)] == NA)) {
 	(*bp)++;
     }
-    c = **bp;
+    c = ((*bp) < lastPtr) ? **bp : 0;
     if ((c != '\0') && (c != '=')) {
 	(*bp)++;
     }
@@ -121,7 +121,7 @@ Blt_Base64_Decode(Tcl_Interp *interp, const char *string, size_t *lengthPtr)
     size_t nBytes;
     unsigned char *bp;
     unsigned char *buffer;
-
+    const unsigned char *p, *pend;
     nBytes = *lengthPtr;
 
     /* 
@@ -136,14 +136,15 @@ Blt_Base64_Decode(Tcl_Interp *interp, const char *string, size_t *lengthPtr)
 	return NULL;
     }
     bp = buffer;
-    for (;;) {
-	char a, b, c, d;
+    for (p = (unsigned char *)string, pend = p + *lengthPtr; p < pend; 
+	 /*empty*/) {
+	unsigned char a, b, c, d;
 	unsigned int u1, u2, u3;
 
-	a = NextChar(&string);
-	b = NextChar(&string);
-	c = NextChar(&string);
-	d = NextChar(&string);
+	a = NextChar(&p, pend);
+	b = NextChar(&p, pend);
+	c = NextChar(&p, pend);
+	d = NextChar(&p, pend);
 
 	if (d == '\0') {
 	    if (a != '\0') {
@@ -163,11 +164,11 @@ Blt_Base64_Decode(Tcl_Interp *interp, const char *string, size_t *lengthPtr)
 	 */
 
 	/* a = [543210xx] | [xxxxxx54] >> 4 */
-	u1 = (decode64[(int)a] << 2) | ((decode64[(int)b] & 0x30) >> 4);
+	u1 = (decode64[a] << 2) | ((decode64[b] & 0x30) >> 4);
 	/* b = [3210xxxx] | [xxxx5432]  */
-	u2 = ((decode64[(int)b] & 0x0F) << 4) |((decode64[(int)c] & 0x3C) >> 2);
+	u2 = ((decode64[b] & 0x0F) << 4) |((decode64[c] & 0x3C) >> 2);
 	/* c = [10xxxxxx] | [xx543210]  */
-	u3 = ((decode64[(int)c] & 0x03) << 6) | decode64[(int)d];
+	u3 = ((decode64[c] & 0x03) << 6) | decode64[d];
 
 	if (d == '=') {
 	    if ((a == '=') || (b == '=')) {
@@ -193,12 +194,13 @@ Blt_Base64_Decode(Tcl_Interp *interp, const char *string, size_t *lengthPtr)
 }
 
 char *
-Blt_Base64_Encode(Tcl_Interp *interp, unsigned char *buffer, size_t bufsize) 
+Blt_Base64_Encode(Tcl_Interp *interp, const unsigned char *buffer, 
+		  size_t bufsize) 
 {
     char *dest, *dp;
     int count, remainder;
     size_t length;
-    unsigned char *sp, *send;
+    const unsigned char *sp, *send;
 
     /* Compute worst-case length. */
     length = (((bufsize + 1) * 4) + 2) / 3; 
@@ -279,8 +281,6 @@ Blt_Base64_Encode(Tcl_Interp *interp, unsigned char *buffer, size_t bufsize)
     return dest;
 }
 
-
-
 /*ARGSUSED*/
 static int
 Base64Cmd(ClientData clientData, Tcl_Interp *interp, int objc, 
@@ -338,6 +338,7 @@ Base64Cmd(ClientData clientData, Tcl_Interp *interp, int objc,
     }
     return TCL_OK;
 }
+
 
 int
 Blt_Base64CmdInitProc(Tcl_Interp *interp)

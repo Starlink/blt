@@ -167,9 +167,6 @@ typedef struct _Blt_Picture Pict;
 typedef struct _Blt_ResampleFilter ResampleFilter;
 typedef struct _Blt_TableFilter TableFilter;
 
-BLT_EXTERN int Blt_ResetPicture(Tcl_Interp *interp, const char *imageName, 
-	Blt_Picture picture);
-
 BLT_EXTERN unsigned int Blt_ComputeWeights(unsigned int sw, unsigned int dw, 
 	ResampleFilter *filterPtr, Sample **samplePtrPtr);
 

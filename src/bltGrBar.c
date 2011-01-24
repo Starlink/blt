@@ -31,6 +31,8 @@
 
 #include "bltGrElem.h"
 
+#define CLAMP(x,l,h)	((x) = (((x)<(l))? (l) : ((x)>(h)) ? (h) : (x)))
+
 typedef struct {
     float x1, y1, x2, y2;
 } BarRegion;
@@ -42,148 +44,139 @@ typedef struct {
 } Bar;
 
 typedef struct {
-    const char *name;		/* Pen style identifier.  If NULL, pen was
-				 * statically allocated. */
-    ClassId classId;		/* Type of pen */
-    const char *typeId;		/* String token identifying the type of pen */
-    unsigned int flags;		/* Indicates if the pen element is active or
-				 * normal */
-    int refCount;		/* Reference count for elements using
-				 * this pen. */
+    const char *name;			/* Pen style identifier.  If NULL, pen
+					 * was statically allocated. */
+    ClassId classId;			/* Type of pen */
+    const char *typeId;			/* String token identifying the type of
+					 * pen */
+    unsigned int flags;			/* Indicates if the pen element is
+					 * active or normal */
+    int refCount;			/* Reference count for elements using
+					 * this pen. */
     Blt_HashEntry *hashPtr;
-
-    Blt_ConfigSpec *configSpecs; /* Configuration specifications */
-
+    Blt_ConfigSpec *configSpecs;	/* Configuration specifications */
     PenConfigureProc *configProc;
     PenDestroyProc *destroyProc;
-    Graph *graphPtr;		/* Graph that the pen is associated with. */
-
+    Graph *graphPtr;			/* Graph that the pen is associated
+					 * with. */
     /* Barchart specific pen fields start here. */
-
-    XColor *outlineColor;	/* Outline (foreground) color of bar */
-    Blt_Background fill;	/* 3D border and fill (background) color */
-    int borderWidth;		/* 3D border width of bar */
-    int relief;			/* Relief of the bar */
-    Pixmap stipple;		/* Stipple */
-    GC fillGC;			/* Graphics context */
-    GC outlineGC;		/* GC for outline of bar. */
+    XColor *outlineColor;		/* Outline (foreground) color of bar */
+    Blt_Background fill;		/* 3D border and fill (background)
+					 * color */
+    int borderWidth;			/* 3D border width of bar */
+    int relief;				/* Relief of the bar */
+    Pixmap stipple;			/* Stipple */
+    GC fillGC;				/* Graphics context */
+    GC outlineGC;			/* GC for outline of bar. */
 
     /* Error bar attributes. */
-    int errorBarShow;		/* Describes which error bars to display:
-				 * none, x, y, or * both. */
+    int errorBarShow;			/* Describes which error bars to
+					 * display: none, x, y, or * both. */
 
-    int errorBarLineWidth;	/* Width of the error bar segments. */
+    int errorBarLineWidth;		/* Width of the error bar segments. */
 
     int errorBarCapWidth;
-    XColor *errorBarColor;	/* Color of the error bar. */
+    XColor *errorBarColor;		/* Color of the error bar. */
 
-    GC errorBarGC;		/* Error bar graphics context. */
+    GC errorBarGC;			/* Error bar graphics context. */
 
     /* Show value attributes. */
-    int valueShow;		/* Indicates whether to display data value.
-				 * Values are x, y, or none. */
+    int valueShow;			/* Indicates whether to display data
+					 * value.  Values are x, y, or none. */
 
-    const char *valueFormat;	/* A printf format string. */
-    TextStyle valueStyle;	/* Text attributes (color, font, rotation,
-				 * etc.) of the value. */
+    const char *valueFormat;		/* A printf format string. */
+    TextStyle valueStyle;		/* Text attributes (color, font,
+					 * rotation, etc.) of the value. */
     
 } BarPen;
 
 typedef struct {
-    Weight weight;		/* Weight range where this pen is valid. */
-    BarPen *penPtr;		/* Pen to use. */
+    Weight weight;			/* Weight range where this pen is
+					 * valid. */
+    BarPen *penPtr;			/* Pen to use. */
 
-    XRectangle *bars;		/* Indicates starting location in bar array
-				 * for this pen. */
-    int nBars;			/* Number of bar segments for this pen. */
+    XRectangle *bars;			/* Indicates starting location in bar
+					 * array for this pen. */
+    int nBars;				/* # of bar segments for this pen. */
 
-    GraphSegments xeb, yeb;	/* X and Y error bars. */
+    GraphSegments xeb, yeb;		/* X and Y error bars. */
 
-    int symbolSize;		/* Size of the pen's symbol scaled to the
-				 * current graph size. */
-    int errorBarCapWidth;	/* Length of the cap ends on each error
-				 * bar. */
+    int symbolSize;			/* Size of the pen's symbol scaled to
+					 * the current graph size. */
+    int errorBarCapWidth;		/* Length of the cap ends on each error
+					 * bar. */
 
 } BarStyle;
 
 typedef struct {
-    GraphObj obj;		/* Must be first field in element. */
-
+    GraphObj obj;			/* Must be first field in element. */
     unsigned int flags;		
-
     Blt_HashEntry *hashPtr;
 
     /* Fields specific to elements. */
-
-    const char *label;		/* Label displayed in legend */
-    unsigned short row, col;  	/* Position of the entry in the legend. */
-
-    int labelRelief;		/* Relief of label in legend. */
-
-    Axis2d axes;		/* X-axis and Y-axis mapping the element */
-
-    ElemValues x, y, w;		/* Contains array of floating point graph
-				 * coordinate values. Also holds min/max and
-				 * the number of coordinates */
-
-
-    int *activeIndices;		/* Array of indices (malloc-ed) which indicate
-				 * which data points are active (drawn with
-				 * "active" colors). */
-
-    int nActiveIndices;		/* Number of active data points.  Special
-				 * case: if nActiveIndices < 0 and the active
-				 * bit is set in "flags", then all data points
-				 * are drawn active. */
-
+    const char *label;			/* Label displayed in legend */
+    unsigned short row, col;		/* Position of the entry in the
+					 * legend. */
+    int legendRelief;			/* Relief of label in legend. */
+    Axis2d axes;			/* X-axis and Y-axis mapping the
+					 * element */
+    ElemValues x, y, w;			/* Contains array of floating point
+					 * graph coordinate values. Also holds
+					 * min/max and the number of
+					 * coordinates */
+    int *activeIndices;			/* Array of indices (malloc-ed) which
+					 * indicate which data points are active
+					 * (drawn * with "active" colors). */
+    int nActiveIndices;			/* Number of active data points.
+					 * Special case: if nActiveIndices < 0
+					 * and the active bit is set in "flags",
+					 * then all data * points are drawn
+					 * active. */
     ElementProcs *procsPtr;
-
-    Blt_ConfigSpec *configSpecs; /* Configuration specifications. */
-
-    BarPen *activePenPtr;	/* Standard Pens */
+    Blt_ConfigSpec *configSpecs;	/* Configuration specifications. */
+    BarPen *activePenPtr;		/* Standard Pens */
     BarPen *normalPenPtr;
     BarPen *builtinPenPtr;
-
-    Blt_Chain stylePalette;	/* Palette of pens. */
+    Blt_Chain stylePalette;		/* Palette of pens. */
 
     /* Symbol scaling */
-    int scaleSymbols;		/* If non-zero, the symbols will scale in size
-				 * as the graph is zoomed in/out.  */
-
-    double xRange, yRange;	/* Initial X-axis and Y-axis ranges: used to
-				 * scale the size of element's symbol. */
+    int scaleSymbols;			/* If non-zero, the symbols will scale
+					 * in size as the graph is zoomed
+					 * in/out.  */
+    double xRange, yRange;		/* Initial X-axis and Y-axis ranges:
+					 * used to scale the size of element's
+					 * symbol. */
     int state;
-
     Blt_ChainLink link;
 
     /* Fields specific to the barchart element */
 
     float barWidth;
+    const char *groupName;
 
     int *barToData;
-    XRectangle *bars;	        /* Array of rectangles comprising the bar
-				 * segments of the element. */
+    XRectangle *bars;		       /* Array of rectangles comprising the bar
+					* segments of the element. */
     int *activeToData;
     XRectangle *activeRects;
 
-    int nBars;			/* # of visible bar segments for element */
+    int nBars;				/* # of visible bar segments for
+					 * element */
     int nActive;
 
-    int xPad;			/* Spacing on either side of bar */
+    int xPad;				/* Spacing on either side of bar */
 
-    ElemValues xError;		/* Relative/symmetric X error values. */
-    ElemValues yError;		/* Relative/symmetric Y error values. */
-    ElemValues xHigh, xLow;	/* Absolute/asymmetric X-coordinate high/low
-				 * error values. */
-    ElemValues yHigh, yLow;	/* Absolute/asymmetric Y-coordinate high/low
-				 * error values. */
-
+    ElemValues xError;			/* Relative/symmetric X error values. */
+    ElemValues yError;			/* Relative/symmetric Y error values. */
+    ElemValues xHigh, xLow;		/* Absolute/asymmetric X-coordinate
+					 * high/low error values. */
+    ElemValues yHigh, yLow;		/* Absolute/asymmetric Y-coordinate
+					 * high/low error values. */
     BarPen builtinPen;
 
     GraphSegments xeb, yeb;
 
-    int errorBarCapWidth;	/* Length of cap on error bars */
-
+    int errorBarCapWidth;		/* Length of cap on error bars */
 } BarElement;
 
 BLT_EXTERN Blt_CustomOption bltBarPenOption;
@@ -216,6 +209,7 @@ Blt_CustomOption bltBarModeOption =
 #define DEF_BAR_RELIEF			"raised"
 #define DEF_BAR_SHOW_ERRORBARS		"both"
 #define DEF_BAR_STATE			"normal"
+#define DEF_BAR_STACK			(char *)NULL
 #define DEF_BAR_STYLES			""
 #define DEF_BAR_TAGS			"all"
 #define DEF_BAR_WIDTH			"0.0"
@@ -299,8 +293,7 @@ static Blt_ConfigSpec barPenConfigSpecs[] =
 };
 
 
-static Blt_ConfigSpec barElemConfigSpecs[] =
-{
+static Blt_ConfigSpec barElemConfigSpecs[] = {
     {BLT_CONFIG_CUSTOM, "-activepen", "activePen", "ActivePen",
 	DEF_BAR_ACTIVE_PEN, Blt_Offset(BarElement, activePenPtr), 
 	BLT_CONFIG_NULL_OK, &bltBarPenOption},
@@ -318,6 +311,8 @@ static Blt_ConfigSpec barElemConfigSpecs[] =
 	Blt_Offset(BarElement, obj.tags), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_PIXELS_NNEG, "-borderwidth", "borderWidth", "BorderWidth",
 	DEF_BAR_BORDERWIDTH, Blt_Offset(BarElement, builtinPen.borderWidth), 0},
+    {BLT_CONFIG_SYNONYM, "-color", "background", (char *)NULL,
+	(char *)NULL, 0, 0},
     {BLT_CONFIG_CUSTOM, "-errorbarcolor", "errorBarColor", "ErrorBarColor",
 	DEF_BAR_ERRORBAR_COLOR, 
 	Blt_Offset(BarElement, builtinPen.errorBarColor), 0, &bltColorOption},
@@ -339,8 +334,8 @@ static Blt_ConfigSpec barElemConfigSpecs[] =
 	BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_STRING, "-label", "label", "Label", (char *)NULL, 
 	Blt_Offset(BarElement, label), BLT_CONFIG_NULL_OK},
-    {BLT_CONFIG_RELIEF, "-labelrelief", "labelRelief", "LabelRelief",
-	DEF_BAR_LABEL_RELIEF, Blt_Offset(BarElement, labelRelief),
+    {BLT_CONFIG_RELIEF, "-legendrelief", "legendRelief", "LegendRelief",
+	DEF_BAR_LABEL_RELIEF, Blt_Offset(BarElement, legendRelief),
 	BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BITMASK, "-hide", "hide", "Hide", DEF_BAR_HIDE, 
          Blt_Offset(BarElement, flags), BLT_CONFIG_DONT_SET_DEFAULT,
@@ -362,6 +357,8 @@ static Blt_ConfigSpec barElemConfigSpecs[] =
     {BLT_CONFIG_FILL, "-showvalues", "showValues", "ShowValues",
 	DEF_PEN_SHOW_VALUES, Blt_Offset(BarElement, builtinPen.valueShow),
 	BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_STRING, "-stack", "stack", "Stack", DEF_BAR_STACK, 
+	Blt_Offset(BarElement, groupName), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_STATE, "-state", "state", "State", DEF_BAR_STATE, 
 	Blt_Offset(BarElement, state), BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_BITMAP, "-stipple", "stipple", "Stipple",
@@ -370,11 +367,14 @@ static Blt_ConfigSpec barElemConfigSpecs[] =
     {BLT_CONFIG_CUSTOM, "-styles", "styles", "Styles", DEF_BAR_STYLES, 
 	Blt_Offset(BarElement, stylePalette), 0, &bltBarStylesOption},
     {BLT_CONFIG_ANCHOR, "-valueanchor", "valueAnchor", "ValueAnchor",
-	DEF_PEN_VALUE_ANCHOR, Blt_Offset(BarElement, builtinPen.valueStyle.anchor), 0},
+	DEF_PEN_VALUE_ANCHOR, 
+	Blt_Offset(BarElement, builtinPen.valueStyle.anchor), 0},
     {BLT_CONFIG_COLOR, "-valuecolor", "valueColor", "ValueColor",
-	DEF_PEN_VALUE_COLOR, Blt_Offset(BarElement, builtinPen.valueStyle.color), 0},
+	DEF_PEN_VALUE_COLOR, 
+	Blt_Offset(BarElement, builtinPen.valueStyle.color), 0},
     {BLT_CONFIG_FONT, "-valuefont", "valueFont", "ValueFont",
-	DEF_PEN_VALUE_FONT, Blt_Offset(BarElement, builtinPen.valueStyle.font), 0},
+	DEF_PEN_VALUE_FONT, 
+	Blt_Offset(BarElement, builtinPen.valueStyle.font), 0},
     {BLT_CONFIG_STRING, "-valueformat", "valueFormat", "ValueFormat",
 	DEF_PEN_VALUE_FORMAT, Blt_Offset(BarElement, builtinPen.valueFormat),
         BLT_CONFIG_NULL_OK},
@@ -445,13 +445,13 @@ static const char *
 NameOfBarMode(BarMode mode)
 {
     switch (mode) {
-    case MODE_INFRONT:
+    case BARS_INFRONT:
 	return "infront";
-    case MODE_OVERLAP:
+    case BARS_OVERLAP:
 	return "overlap";
-    case MODE_STACKED:
+    case BARS_STACKED:
 	return "stacked";
-    case MODE_ALIGNED:
+    case BARS_ALIGNED:
 	return "aligned";
     default:
 	return "unknown mode value";
@@ -486,13 +486,14 @@ NameOfBarMode(BarMode mode)
 /*ARGSUSED*/
 static int
 ObjToBarMode(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* Mode style string */
-    char *widgRec,		/* Cubicle structure record */
-    int offset,			/* Offset to field in structure */
-    int flags)			/* Not used. */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* Mode style string */
+    char *widgRec,			/* Cubicle structure record */
+    int offset,				/* Offset to field in structure */
+    int flags)				/* Not used. */
 {
     BarMode *modePtr = (BarMode *)(widgRec + offset);
     int length;
@@ -502,19 +503,19 @@ ObjToBarMode(
     string = Tcl_GetStringFromObj(objPtr, &length);
     c = string[0];
     if ((c == 'n') && (strncmp(string, "normal", length) == 0)) {
-	*modePtr = MODE_INFRONT;
+	*modePtr = BARS_INFRONT;
     } else if ((c == 'i') && (strncmp(string, "infront", length) == 0)) {
-	*modePtr = MODE_INFRONT;
+	*modePtr = BARS_INFRONT;
     } else if ((c == 's') && (strncmp(string, "stacked", length) == 0)) {
-	*modePtr = MODE_STACKED;
+	*modePtr = BARS_STACKED;
     } else if ((c == 'a') && (strncmp(string, "aligned", length) == 0)) {
-	*modePtr = MODE_ALIGNED;
+	*modePtr = BARS_ALIGNED;
     } else if ((c == 'o') && (strncmp(string, "overlap", length) == 0)) {
-	*modePtr = MODE_OVERLAP;
+	*modePtr = BARS_OVERLAP;
     } else {
-	Tcl_AppendResult(interp, "bad mode argument \"", string,
-	    "\": should be \"infront\", \"stacked\", \"overlap\", or \"aligned\"",
-	    (char *)NULL);
+	Tcl_AppendResult(interp, "bad mode argument \"", string, "\": should"
+		"be \"infront\", \"stacked\", \"overlap\", or \"aligned\"",
+		(char *)NULL);
 	return TCL_ERROR;
     }
     return TCL_OK;
@@ -535,12 +536,12 @@ ObjToBarMode(
 /*ARGSUSED*/
 static Tcl_Obj *
 BarModeToObj(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Not used. */
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Row/column structure record */
-    int offset,			/* Offset to field in structure */
-    int flags)			/* Not used. */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Not used. */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Row/column structure record */
+    int offset,				/* Offset to field in structure */
+    int flags)				/* Not used. */
 {
     BarMode mode = *(BarMode *)(widgRec + offset);
 
@@ -692,7 +693,7 @@ Blt_BarPen(const char *penName)
 /*
  *---------------------------------------------------------------------------
  *
- * CheckStacks --
+ * CheckBarStacks --
  *
  *	Check that the data limits are not superseded by the heights of
  *	stacked bar segments.  The heights are calculated by
@@ -708,33 +709,30 @@ Blt_BarPen(const char *penName)
  *---------------------------------------------------------------------------
  */
 static void
-CheckStacks(Graph *graphPtr, Axis2d *pairPtr, double *minPtr, double *maxPtr)
+CheckBarStacks(Graph *graphPtr, Axis2d *pairPtr, double *minPtr, double *maxPtr)
 {
-    FreqInfo *infoPtr;
-    int i;
+    BarGroup *gp, *gend;
 
-    if ((graphPtr->mode != MODE_STACKED) || (graphPtr->nStacks == 0)) {
+    if ((graphPtr->mode != BARS_STACKED) || (graphPtr->nBarGroups == 0)) {
 	return;
     }
-    infoPtr = graphPtr->freqArr;
-    for (i = 0; i < graphPtr->nStacks; i++) {
-	if ((infoPtr->axes.x == pairPtr->x) && 
-	    (infoPtr->axes.y == pairPtr->y)) {
+    for (gp = graphPtr->barGroups, gend = gp + graphPtr->nBarGroups; gp < gend;
+	 gp++) {
+	if ((gp->axes.x == pairPtr->x) && (gp->axes.y == pairPtr->y)) {
 	    /*
 	     * Check if any of the y-values (because of stacking) are greater
 	     * than the current limits of the graph.
 	     */
-	    if (infoPtr->sum < 0.0f) {
-		if (*minPtr > infoPtr->sum) {
-		    *minPtr = infoPtr->sum;
+	    if (gp->sum < 0.0f) {
+		if (*minPtr > gp->sum) {
+		    *minPtr = gp->sum;
 		}
 	    } else {
-		if (*maxPtr < infoPtr->sum) {
-		    *maxPtr = infoPtr->sum;
+		if (*maxPtr < gp->sum) {
+		    *maxPtr = gp->sum;
 		}
 	    }
 	}
-	infoPtr++;
     }
 }
 
@@ -787,7 +785,7 @@ ConfigureBarProc(Graph *graphPtr, Element *basePtr)
 }
 
 static void
-GetBarExtentsProc(Element *basePtr, Region2d *extsPtr)
+GetBarExtentsProc(Element *basePtr, Region2d *regPtr)
 {
     BarElement *elemPtr = (BarElement *)basePtr;
     Graph *graphPtr;
@@ -795,48 +793,48 @@ GetBarExtentsProc(Element *basePtr, Region2d *extsPtr)
     int nPoints;
 
     graphPtr = elemPtr->obj.graphPtr;
-    extsPtr->top = extsPtr->left = DBL_MAX;
-    extsPtr->bottom = extsPtr->right = -DBL_MAX;
+    regPtr->top = regPtr->left = DBL_MAX;
+    regPtr->bottom = regPtr->right = -DBL_MAX;
 
     nPoints = NUMBEROFPOINTS(elemPtr);
     if (nPoints < 1) {
-	return;			/* No data points */
+	return;				/* No data points */
     }
     barWidth = graphPtr->barWidth;
     if (elemPtr->barWidth > 0.0f) {
 	barWidth = elemPtr->barWidth;
     }
-    middle = barWidth * 0.5;
-    extsPtr->left = elemPtr->x.min - middle;
-    extsPtr->right = elemPtr->x.max + middle;
+    middle = 0.5;
+    regPtr->left = elemPtr->x.min - middle;
+    regPtr->right = elemPtr->x.max + middle;
 
-    extsPtr->top = elemPtr->y.min;
-    extsPtr->bottom = elemPtr->y.max;
-    if (extsPtr->bottom < graphPtr->baseline) {
-	extsPtr->bottom = graphPtr->baseline;
+    regPtr->top = elemPtr->y.min;
+    regPtr->bottom = elemPtr->y.max;
+    if (regPtr->bottom < graphPtr->baseline) {
+	regPtr->bottom = graphPtr->baseline;
     }
     /*
-     * Handle "stacked" bar elements specially.
+     * Handle stacked bar elements specially.
      *
      * If element is stacked, the sum of its ordinates may be outside the
      * minimum/maximum limits of the element's data points.
      */
-    if ((graphPtr->mode == MODE_STACKED) && (graphPtr->nStacks > 0)) {
-	CheckStacks(graphPtr, &elemPtr->axes, &extsPtr->top, &extsPtr->bottom);
+    if ((graphPtr->mode == BARS_STACKED) && (graphPtr->nBarGroups > 0)) {
+	CheckBarStacks(graphPtr, &elemPtr->axes, &regPtr->top, &regPtr->bottom);
     }
     /* Warning: You get what you deserve if the x-axis is logScale */
     if (elemPtr->axes.x->logScale) {
-	extsPtr->left = Blt_FindElemValuesMinimum(&elemPtr->x, DBL_MIN) + 
+	regPtr->left = Blt_FindElemValuesMinimum(&elemPtr->x, DBL_MIN) + 
 	    middle;
     }
     /* Fix y-min limits for barchart */
     if (elemPtr->axes.y->logScale) {
- 	if ((extsPtr->top <= 0.0) || (extsPtr->top > 1.0)) {
-	    extsPtr->top = 1.0;
+ 	if ((regPtr->top <= 0.0) || (regPtr->top > 1.0)) {
+	    regPtr->top = 1.0;
 	}
     } else {
-	if (extsPtr->top > 0.0) {
-	    extsPtr->top = 0.0;
+	if (regPtr->top > 0.0) {
+	    regPtr->top = 0.0;
 	}
     }
     /* Correct the extents for error bars if they exist. */
@@ -849,26 +847,26 @@ GetBarExtentsProc(Element *basePtr, Region2d *extsPtr)
 	    double x;
 
 	    x = elemPtr->x.values[i] + elemPtr->xError.values[i];
-	    if (x > extsPtr->right) {
-		extsPtr->right = x;
+	    if (x > regPtr->right) {
+		regPtr->right = x;
 	    }
 	    x = elemPtr->x.values[i] - elemPtr->xError.values[i];
 	    if (elemPtr->axes.x->logScale) {
 		if (x < 0.0) {
-		    x = -x;	/* Mirror negative values, instead of ignoring
-				 * them. */
+		    x = -x;		/* Mirror negative values, instead of
+					 * ignoring them. */
 		}
-		if ((x > DBL_MIN) && (x < extsPtr->left)) {
-		    extsPtr->left = x;
+		if ((x > DBL_MIN) && (x < regPtr->left)) {
+		    regPtr->left = x;
 		}
-	    } else if (x < extsPtr->left) {
-		extsPtr->left = x;
+	    } else if (x < regPtr->left) {
+		regPtr->left = x;
 	    }
 	}		     
     } else {
 	if ((elemPtr->xHigh.nValues > 0) && 
-	    (elemPtr->xHigh.max > extsPtr->right)) {
-	    extsPtr->right = elemPtr->xHigh.max;
+	    (elemPtr->xHigh.max > regPtr->right)) {
+	    regPtr->right = elemPtr->xHigh.max;
 	}
 	if (elemPtr->xLow.nValues > 0) {
 	    double left;
@@ -879,8 +877,8 @@ GetBarExtentsProc(Element *basePtr, Region2d *extsPtr)
 	    } else {
 		left = elemPtr->xLow.min;
 	    }
-	    if (left < extsPtr->left) {
-		extsPtr->left = left;
+	    if (left < regPtr->left) {
+		regPtr->left = left;
 	    }
 	}
     }
@@ -892,26 +890,26 @@ GetBarExtentsProc(Element *basePtr, Region2d *extsPtr)
 	    double y;
 
 	    y = elemPtr->y.values[i] + elemPtr->yError.values[i];
-	    if (y > extsPtr->bottom) {
-		extsPtr->bottom = y;
+	    if (y > regPtr->bottom) {
+		regPtr->bottom = y;
 	    }
 	    y = elemPtr->y.values[i] - elemPtr->yError.values[i];
 	    if (elemPtr->axes.y->logScale) {
 		if (y < 0.0) {
-		    y = -y;	/* Mirror negative values, instead of ignoring
-				 * them. */
+		    y = -y;		/* Mirror negative values, instead of
+					 * ignoring them. */
 		}
-		if ((y > DBL_MIN) && (y < extsPtr->left)) {
-		    extsPtr->top = y;
+		if ((y > DBL_MIN) && (y < regPtr->left)) {
+		    regPtr->top = y;
 		}
-	    } else if (y < extsPtr->top) {
-		extsPtr->top = y;
+	    } else if (y < regPtr->top) {
+		regPtr->top = y;
 	    }
 	}		     
     } else {
 	if ((elemPtr->yHigh.nValues > 0) && 
-	    (elemPtr->yHigh.max > extsPtr->bottom)) {
-	    extsPtr->bottom = elemPtr->yHigh.max;
+	    (elemPtr->yHigh.max > regPtr->bottom)) {
+	    regPtr->bottom = elemPtr->yHigh.max;
 	}
 	if (elemPtr->yLow.nValues > 0) {
 	    double top;
@@ -922,8 +920,8 @@ GetBarExtentsProc(Element *basePtr, Region2d *extsPtr)
 	    } else {
 		top = elemPtr->yLow.min;
 	    }
-	    if (top < extsPtr->top) {
-		extsPtr->top = top;
+	    if (top < regPtr->top) {
+		regPtr->top = top;
 	    }
 	}
     }
@@ -948,9 +946,10 @@ GetBarExtentsProc(Element *basePtr, Region2d *extsPtr)
 /*ARGSUSED*/
 static void
 ClosestBarProc(
-    Graph *graphPtr,		/* Not used. */
-    Element *basePtr,		/* Bar element */
-    ClosestSearch *searchPtr)	/* Information about closest point in element */
+    Graph *graphPtr,			/* Not used. */
+    Element *basePtr,			/* Bar element */
+    ClosestSearch *searchPtr)		/* Information about closest point in
+					 * element */
 {
     BarElement *elemPtr = (BarElement *)basePtr;
     XRectangle *bp;
@@ -1260,9 +1259,9 @@ static void
 MapErrorBars(Graph *graphPtr, BarElement *elemPtr, BarStyle **dataToStyle)
 {
     int n, nPoints;
-    Region2d exts;
+    Region2d reg;
 
-    Blt_GraphExtents(graphPtr, &exts);
+    Blt_GraphExtents(graphPtr, &reg);
     nPoints = NUMBEROFPOINTS(elemPtr);
     if (elemPtr->xError.nValues > 0) {
 	n = MIN(elemPtr->xError.nValues, nPoints);
@@ -1301,7 +1300,7 @@ MapErrorBars(Graph *graphPtr, BarElement *elemPtr, BarStyle **dataToStyle)
 		    q = Blt_Map2D(graphPtr, low, y, &elemPtr->axes);
 		    segPtr->p = p;
 		    segPtr->q = q;
-		    if (Blt_LineRectClip(&exts, &segPtr->p, &segPtr->q)) {
+		    if (Blt_LineRectClip(&reg, &segPtr->p, &segPtr->q)) {
 			segPtr++;
 			*indexPtr++ = i;
 		    }
@@ -1309,7 +1308,7 @@ MapErrorBars(Graph *graphPtr, BarElement *elemPtr, BarStyle **dataToStyle)
 		    segPtr->p.x = segPtr->q.x = p.x;
 		    segPtr->p.y = p.y - stylePtr->errorBarCapWidth;
 		    segPtr->q.y = p.y + stylePtr->errorBarCapWidth;
-		    if (Blt_LineRectClip(&exts, &segPtr->p, &segPtr->q)) {
+		    if (Blt_LineRectClip(&reg, &segPtr->p, &segPtr->q)) {
 			segPtr++;
 			*indexPtr++ = i;
 		    }
@@ -1317,7 +1316,7 @@ MapErrorBars(Graph *graphPtr, BarElement *elemPtr, BarStyle **dataToStyle)
 		    segPtr->p.x = segPtr->q.x = q.x;
 		    segPtr->p.y = q.y - stylePtr->errorBarCapWidth;
 		    segPtr->q.y = q.y + stylePtr->errorBarCapWidth;
-		    if (Blt_LineRectClip(&exts, &segPtr->p, &segPtr->q)) {
+		    if (Blt_LineRectClip(&reg, &segPtr->p, &segPtr->q)) {
 			segPtr++;
 			*indexPtr++ = i;
 		    }
@@ -1365,7 +1364,7 @@ MapErrorBars(Graph *graphPtr, BarElement *elemPtr, BarStyle **dataToStyle)
 		    q = Blt_Map2D(graphPtr, x, low, &elemPtr->axes);
 		    segPtr->p = p;
 		    segPtr->q = q;
-		    if (Blt_LineRectClip(&exts, &segPtr->p, &segPtr->q)) {
+		    if (Blt_LineRectClip(&reg, &segPtr->p, &segPtr->q)) {
 			segPtr++;
 			*indexPtr++ = i;
 		    }
@@ -1373,7 +1372,7 @@ MapErrorBars(Graph *graphPtr, BarElement *elemPtr, BarStyle **dataToStyle)
 		    segPtr->p.y = segPtr->q.y = p.y;
 		    segPtr->p.x = p.x - stylePtr->errorBarCapWidth;
 		    segPtr->q.x = p.x + stylePtr->errorBarCapWidth;
-		    if (Blt_LineRectClip(&exts, &segPtr->p, &segPtr->q)) {
+		    if (Blt_LineRectClip(&reg, &segPtr->p, &segPtr->q)) {
 			segPtr++;
 			*indexPtr++ = i;
 		    }
@@ -1381,7 +1380,7 @@ MapErrorBars(Graph *graphPtr, BarElement *elemPtr, BarStyle **dataToStyle)
 		    segPtr->p.y = segPtr->q.y = q.y;
 		    segPtr->p.x = q.x - stylePtr->errorBarCapWidth;
 		    segPtr->q.x = q.x + stylePtr->errorBarCapWidth;
-		    if (Blt_LineRectClip(&exts, &segPtr->p, &segPtr->q)) {
+		    if (Blt_LineRectClip(&reg, &segPtr->p, &segPtr->q)) {
 			segPtr++;
 			*indexPtr++ = i;
 		    }
@@ -1398,7 +1397,7 @@ MapErrorBars(Graph *graphPtr, BarElement *elemPtr, BarStyle **dataToStyle)
 /*
  *---------------------------------------------------------------------------
  *
- * MapBar --
+ * MapBarProc --
  *
  *	Calculates the actual window coordinates of the bar element.  The
  *	window coordinates are saved in the bar element structure.
@@ -1424,8 +1423,8 @@ MapBarProc(Graph *graphPtr, Element *basePtr)
     BarStyle **dataToStyle;
     double *x, *y;
     double barWidth, barOffset;
-    double baseline;
-    int *barToData;		/* Maps bars to data point indices */
+    double baseline, ybot;
+    int *barToData;			/* Maps bars to data point indices */
     int invertBar;
     int nPoints, count;
     XRectangle *rp, *bars;
@@ -1435,12 +1434,12 @@ MapBarProc(Graph *graphPtr, Element *basePtr)
     ResetBar(elemPtr);
     nPoints = NUMBEROFPOINTS(elemPtr);
     if (nPoints < 1) {
-	return;			/* No data points */
+	return;				/* No data points */
     }
     barWidth = graphPtr->barWidth;
     barWidth = (elemPtr->barWidth > 0.0f) 
 	? elemPtr->barWidth : graphPtr->barWidth;
-    baseline = (elemPtr->axes.y->logScale) ? 1.0 : graphPtr->baseline;
+    baseline = (elemPtr->axes.y->logScale) ? 0.0 : graphPtr->baseline;
     barOffset = barWidth * 0.5;
 
     /*
@@ -1453,14 +1452,16 @@ MapBarProc(Graph *graphPtr, Element *basePtr)
     x = elemPtr->x.values, y = elemPtr->y.values;
     count = 0;
     for (rp = bars, i = 0; i < nPoints; i++) {
-	Point2d c1, c2;		/* Two opposite corners of the rectangle in
-				 * graph coordinates. */
+	Point2d c1, c2;			/* Two opposite corners of the rectangle
+					 * in graph coordinates. */
 	double dx, dy;
 	int height;
+	double right, left, top, bottom;
 
 	if (((x[i] - barWidth) > elemPtr->axes.x->axisRange.max) ||
 	    ((x[i] + barWidth) < elemPtr->axes.x->axisRange.min)) {
-	    continue;		/* Abscissa is out of range of the x-axis */
+	    continue;			/* Abscissa is out of range of the
+					 * x-axis */
 	}
 	c1.x = x[i] - barOffset;
 	c1.y = y[i];
@@ -1472,41 +1473,63 @@ MapBarProc(Graph *graphPtr, Element *basePtr)
 	 * coordinates of the two corners.
 	 */
 
-	if ((graphPtr->nStacks > 0) && (graphPtr->mode != MODE_INFRONT)) {
+	if ((graphPtr->nBarGroups > 0) && (graphPtr->mode != BARS_INFRONT) && 
+	    (!graphPtr->stackAxes)) {
 	    Blt_HashEntry *hPtr;
-	    FreqKey key;
+	    BarSetKey key;
 
 	    key.value = (float)x[i];
 	    key.axes = elemPtr->axes;
-	    hPtr = Blt_FindHashEntry(&graphPtr->freqTable, (char *)&key);
+	    key.axes.y = NULL;
+	    hPtr = Blt_FindHashEntry(&graphPtr->setTable, (char *)&key);
 	    if (hPtr != NULL) {
-		FreqInfo *infoPtr;
-		double slice, width;
+		Blt_HashTable *tablePtr;
+		const char *name;
 
-		infoPtr = (FreqInfo *)Blt_GetHashValue(hPtr);
-		switch (graphPtr->mode) {
-		case MODE_STACKED:
-		    c2.y = infoPtr->lastY;
-		    c1.y += c2.y;
-		    infoPtr->lastY = c1.y;
-		    break;
-
-		case MODE_ALIGNED:
-		    infoPtr->count++;
-		    slice = barWidth / (double)infoPtr->freq;
-		    c1.x += slice * (infoPtr->freq - infoPtr->count);
-		    c2.x = c1.x + slice;
-		    break;
-
-		case MODE_OVERLAP:
-		    infoPtr->count++;
-		    slice = barWidth / (double)(infoPtr->freq * 2);
-		    width = slice * (infoPtr->freq + 1);
-		    c1.x += slice * (infoPtr->freq - infoPtr->count);
-		    c2.x = c1.x + width;
-		    break;
-		case MODE_INFRONT:
-		    break;
+		tablePtr = Blt_GetHashValue(hPtr);
+		name = (elemPtr->groupName != NULL) ? elemPtr->groupName : 
+		    elemPtr->axes.y->obj.name;
+ 		hPtr = Blt_FindHashEntry(tablePtr, name);
+		if (hPtr != NULL) {
+		    BarGroup *groupPtr;
+		    double slice, width, offset;
+		    
+		    groupPtr = Blt_GetHashValue(hPtr);
+		    slice = barWidth / (double)graphPtr->maxBarSetSize;
+		    offset = (slice * groupPtr->index);
+		    if (graphPtr->maxBarSetSize > 1) {
+			offset += slice * 0.05;
+			slice *= 0.90;
+		    }
+		    switch (graphPtr->mode) {
+		    case BARS_STACKED:
+			groupPtr->count++;
+			c2.y = groupPtr->lastY;
+			c1.y += c2.y;
+			groupPtr->lastY = c1.y;
+			c1.x += offset;
+			c2.x = c1.x + slice;
+			break;
+			
+		    case BARS_ALIGNED:
+			slice /= groupPtr->nSegments;
+			c1.x += offset + (slice * groupPtr->count);
+			c2.x = c1.x + slice;
+			groupPtr->count++;
+			break;
+			
+		    case BARS_OVERLAP:
+			slice /= (groupPtr->nSegments + 1);
+			width = slice + slice;
+			groupPtr->count++;
+			c1.x += offset + 
+			    (slice * (groupPtr->nSegments - groupPtr->count));
+			c2.x = c1.x + width;
+			break;
+			
+		    case BARS_INFRONT:
+			break;
+		    }
 		}
 	    }
 	}
@@ -1521,93 +1544,49 @@ MapBarProc(Graph *graphPtr, Element *basePtr)
 	/*
 	 * Get the two corners of the bar segment and compute the rectangle
 	 */
+	ybot = c2.y;
 	c1 = Blt_Map2D(graphPtr, c1.x, c1.y, &elemPtr->axes);
 	c2 = Blt_Map2D(graphPtr, c2.x, c2.y, &elemPtr->axes);
-
+	if ((ybot == 0.0) && (elemPtr->axes.y->logScale)) {
+	    c2.y = graphPtr->bottom;
+	}
+	    
+	if (c2.y < c1.y) {
+	    double t;
+	    t = c1.y, c1.y = c2.y, c2.y = t;
+	}
+	if (c2.x < c1.x) {
+	    double t;
+	    t = c1.x, c1.x = c2.x, c2.x = t;
+	}
+	if ((c1.x > graphPtr->right) || (c2.x < graphPtr->left) || 
+	    (c1.y > graphPtr->bottom) || (c2.y < graphPtr->top)) {
+	    continue;
+	}
 	/* Bound the bars horizontally by the width of the graph window */
 	/* Bound the bars vertically by the position of the axis. */
 	if (graphPtr->stackAxes) {
-	    int right, left, top, bottom;
-
-	    if (graphPtr->inverted) {
-		left = elemPtr->axes.y->screenMin;
-		right = elemPtr->axes.y->screenMin + 
-		    elemPtr->axes.y->screenRange;
-		top = graphPtr->top;
-		bottom = graphPtr->bottom;
-	    } else {
-		top = elemPtr->axes.y->screenMin;
-		bottom = elemPtr->axes.y->screenMin + 
-		    elemPtr->axes.y->screenRange;
-		left = graphPtr->left;
-		right = graphPtr->right;
-	    }
-	    if (c1.y < (double)top) {
-		c1.y = (double)top;
-	    } else if (c1.y > (double)bottom) {
-		c1.y = (double)bottom;
-	    }
-	    if (c2.y < (double)top) {
-		c2.y = (double)top;
-	    } else if (c2.y > (double)bottom) {
-		c2.y = (double)bottom;
-	    }
-	    if (c1.x < (double)left) {
-		c1.x = (double)left;
-	    } else if (c1.x > (double)right) {
-		c1.x = (double)right;
-	    }
-	    if (c2.x < (double)left) {
-		c2.x = (double)left;
-	    } else if (c2.x > (double)right) {
-		c2.x = (double)right;
-	    }
+	    top = elemPtr->axes.y->screenMin;
+	    bottom = elemPtr->axes.y->screenMin + elemPtr->axes.y->screenRange;
+	    left = graphPtr->left;
+	    right = graphPtr->right;
 	} else {
-	    int right, left, top, bottom;
-
-	    if (graphPtr->inverted) {
-		top = graphPtr->left;
-		bottom = graphPtr->right;
-		left = graphPtr->top;
-		right = graphPtr->bottom;
-	    } else {
-		top = graphPtr->top;
-		bottom = graphPtr->bottom;
-		left = graphPtr->left;
-		right = graphPtr->right;
+	    left = top = 0;
+	    bottom = right = 10000;
+	    /* Shouldn't really have a call to Tk_Width or Tk_Height in
+	     * mapping routine.  We only want to clamp the bar segment to the
+	     * size of the window if we're actually mapped onscreen. */
+	    if (Tk_Height(graphPtr->tkwin) > 1) {
+		bottom = Tk_Height(graphPtr->tkwin);
 	    }
-
-	    if (c1.y < (double)top) {
-		c1.y = (double)top;
-	    } else if (c1.y > (double)bottom) {
-		c1.y = (double)bottom;
-	    }
-	    if (c2.y < (double)top) {
-		c2.y = (double)top;
-	    } else if (c2.y > (double)bottom) {
-		c2.y = (double)bottom;
-	    }
-	    if (c1.x < (double)left) {
-		c1.x = (double)left;
-	    } else if (c1.x > (double)right) {
-		c1.x = (double)right;
-	    }
-	    if (c2.x < (double)left) {
-		c2.x = (double)left;
-	    } else if (c2.x > (double)right) {
-		c2.x = (double)right;
-	    }
-	    if (c1.y < 0.0) {
-		c1.y = 0.0;
-	    } else if (c1.y > (double)graphPtr->height) {
-		c1.y = (double)graphPtr->height;
-	    }
-	    if (c2.y < 0.0) {
-		c2.y = 0.0;
-	    } else if (c2.y > (double)graphPtr->height) {
-		c2.y = (double)graphPtr->height;
+	    if (Tk_Width(graphPtr->tkwin) > 1) {
+		right = Tk_Width(graphPtr->tkwin);
 	    }
 	}
+	CLAMP(c1.y, top, bottom);
+	CLAMP(c2.y, top, bottom);
+	CLAMP(c1.x, left, right);
+	CLAMP(c2.x, left, right);
 	dx = FABS(c1.x - c2.x);
 	dy = FABS(c1.y - c2.y);
 	if ((dx == 0) || (dy == 0)) {
@@ -1629,8 +1608,8 @@ MapBarProc(Graph *graphPtr, Element *basePtr)
 	if (rp->height < 1) {
 	    rp->height = 1;
 	}
-	barToData[count] = i;	/* Save the data index corresponding to the
-				 * rectangle */
+	barToData[count] = i;		/* Save the data index corresponding to
+					 * the rectangle */
 	count++;
 	rp++;
     }
@@ -1689,12 +1668,8 @@ MapBarProc(Graph *graphPtr, Element *basePtr)
  */
 /*ARGSUSED*/
 static void
-DrawSymbolProc(
-    Graph *graphPtr,
-    Drawable drawable,		/* Pixmap or window to draw into */
-    Element *basePtr,
-    int x, int y,
-    int size)
+DrawSymbolProc(Graph *graphPtr, Drawable drawable, Element *basePtr, 
+	       int x, int y, int size)
 {
     BarElement *elemPtr = (BarElement *)basePtr;
     BarPen *penPtr;
@@ -1739,23 +1714,36 @@ DrawSymbolProc(
  *---------------------------------------------------------------------------
  */
 static void
-DrawBarSegments(
-    Graph *graphPtr,
-    Drawable drawable,		/* Pixmap or window to draw into */
-    BarPen *penPtr,
-    XRectangle *bars,
-    int nBars)
+DrawBarSegments(Graph *graphPtr, Drawable drawable, BarPen *penPtr,
+		XRectangle *bars, int nBars)
 {
+    TkRegion rgn;
+
+    {
+	XRectangle clip;
+	clip.x = graphPtr->left;
+	clip.y = graphPtr->top;
+	clip.width  = graphPtr->right - graphPtr->left + 1;
+	clip.height = graphPtr->bottom - graphPtr->top + 1;
+	rgn = TkCreateRegion();
+	TkUnionRectWithRegion(&clip, rgn, rgn);
+    }
     if (penPtr->fill != NULL) {
 	XRectangle *rp, *rend;
 	int hasOutline;
+	int relief;
 
-	hasOutline = ((penPtr->relief == TK_RELIEF_FLAT) && 
+	relief = (penPtr->relief == TK_RELIEF_SOLID) 
+	    ? TK_RELIEF_FLAT: penPtr->relief;
+	hasOutline = ((relief == TK_RELIEF_FLAT) && 
 		      (penPtr->outlineColor != NULL));
-#ifdef notdef
 	if (penPtr->stipple != None) {
-	    XSetClipRectangles(graphPtr->display, penPtr->fillGCdrawable, 
-#endif
+	    TkSetRegion(graphPtr->display, penPtr->fillGC, rgn);
+	}
+	Blt_SetBackgroundClipRegion(graphPtr->tkwin, penPtr->fill, rgn);
+	if (hasOutline) {
+	    TkSetRegion(graphPtr->display, penPtr->outlineGC, rgn);
+	}
 	for (rp = bars, rend = rp + nBars; rp < rend; rp++) {
 	    if (penPtr->stipple != None) {
 		XFillRectangle(graphPtr->display, drawable, penPtr->fillGC, 
@@ -1763,17 +1751,27 @@ DrawBarSegments(
 	    } else {
 		Blt_FillBackgroundRectangle(graphPtr->tkwin, drawable, 
 			penPtr->fill, rp->x, rp->y, rp->width, rp->height, 
-			penPtr->borderWidth, penPtr->relief);
+			penPtr->borderWidth, relief);
 	    }
 	    if (hasOutline) {
 		XDrawRectangle(graphPtr->display, drawable, penPtr->outlineGC, 
 			       rp->x, rp->y, rp->width, rp->height);
 	    }
 	}
+	Blt_UnsetBackgroundClipRegion(graphPtr->tkwin, penPtr->fill);
+	if (hasOutline) {
+	    XSetClipMask(graphPtr->display, penPtr->outlineGC, None);
+	}
+	if (penPtr->stipple != None) {
+	    XSetClipMask(graphPtr->display, penPtr->fillGC, None);
+	}
     } else if (penPtr->outlineColor != NULL) {
+	TkSetRegion(graphPtr->display, penPtr->outlineGC, rgn);
 	XDrawRectangles(graphPtr->display, drawable, penPtr->outlineGC, bars, 
 			nBars);
+	XSetClipMask(graphPtr->display, penPtr->outlineGC, None);
     }
+    TkDestroyRegion(rgn);
 }
 
 /*
@@ -1789,14 +1787,8 @@ DrawBarSegments(
  *---------------------------------------------------------------------------
  */
 static void
-DrawBarValues(
-    Graph *graphPtr, 
-    Drawable drawable, 
-    BarElement *elemPtr,
-    BarPen *penPtr,
-    XRectangle *bars,
-    int nBars,
-    int *barToData)
+DrawBarValues(Graph *graphPtr, Drawable drawable, BarElement *elemPtr,
+	      BarPen *penPtr, XRectangle *bars, int nBars, int *barToData)
 {
     XRectangle *rp, *rend;
     int count;
@@ -1828,7 +1820,7 @@ DrawBarValues(
 	if (graphPtr->inverted) {
 	    anchorPos.y = rp->y + rp->height * 0.5;
 	    anchorPos.x = rp->x + rp->width;
-	    if (y < graphPtr->baseline) {
+	    if (x < graphPtr->baseline) {
 		anchorPos.x -= rp->width;
 	    } 
 	} else {
@@ -2008,12 +2000,8 @@ SymbolToPostScriptProc(
 }
 
 static void
-SegmentsToPostScript(
-    Graph *graphPtr,
-    Blt_Ps ps,
-    BarPen *penPtr,
-    XRectangle *bars,
-    int nBars)
+SegmentsToPostScript(Graph *graphPtr, Blt_Ps ps, BarPen *penPtr, 
+		     XRectangle *bars, int nBars)
 {
     XRectangle *rp, *rend;
 
@@ -2051,14 +2039,9 @@ SegmentsToPostScript(
 }
 
 static void
-BarValuesToPostScript(
-    Graph *graphPtr,
-    Blt_Ps ps,
-    BarElement *elemPtr,
-    BarPen *penPtr,
-    XRectangle *bars,
-    int nBars,
-    int *barToData)
+BarValuesToPostScript(Graph *graphPtr, Blt_Ps ps, BarElement *elemPtr,
+		      BarPen *penPtr, XRectangle *bars, int nBars, 
+		      int *barToData)
 {
     XRectangle *rp, *rend;
     int count;
@@ -2088,7 +2071,7 @@ BarValuesToPostScript(
 	if (graphPtr->inverted) {
 	    anchorPos.y = rp->y + rp->height * 0.5;
 	    anchorPos.x = rp->x + rp->width;
-	    if (y < graphPtr->baseline) {
+	    if (x < graphPtr->baseline) {
 		anchorPos.x -= rp->width;
 	    } 
 	} else {
@@ -2122,10 +2105,7 @@ BarValuesToPostScript(
  */
 /*ARGSUSED*/
 static void
-ActiveBarToPostScriptProc(
-    Graph *graphPtr,
-    Blt_Ps ps,
-    Element *basePtr)
+ActiveBarToPostScriptProc(Graph *graphPtr, Blt_Ps ps, Element *basePtr)
 {
     BarElement *elemPtr = (BarElement *)basePtr;
 
@@ -2171,10 +2151,7 @@ ActiveBarToPostScriptProc(
  */
 /*ARGSUSED*/
 static void
-NormalBarToPostScriptProc(
-    Graph *graphPtr,
-    Blt_Ps ps,
-    Element *basePtr)
+NormalBarToPostScriptProc(Graph *graphPtr, Blt_Ps ps, Element *basePtr)
 {
     BarElement *elemPtr = (BarElement *)basePtr;
     Blt_ChainLink link;
@@ -2268,8 +2245,7 @@ DestroyBarProc(Graph *graphPtr, Element *basePtr)
  *---------------------------------------------------------------------------
  */
 
-static ElementProcs barProcs =
-{
+static ElementProcs barProcs = {
     ClosestBarProc,
     ConfigureBarProc,
     DestroyBarProc,
@@ -2292,11 +2268,10 @@ Blt_BarElement(Graph *graphPtr, const char *name, ClassId classId)
     elemPtr = Blt_AssertCalloc(1, sizeof(BarElement));
     elemPtr->procsPtr = &barProcs;
     elemPtr->configSpecs = barElemConfigSpecs;
-    elemPtr->labelRelief = TK_RELIEF_FLAT;
+    elemPtr->legendRelief = TK_RELIEF_FLAT;
     Blt_GraphSetObjectClass(&elemPtr->obj, classId);
     elemPtr->obj.name = Blt_AssertStrdup(name);
     elemPtr->obj.graphPtr = graphPtr;
-
     /* By default, an element's name and label are the same. */
     elemPtr->label = Blt_AssertStrdup(name);
     elemPtr->builtinPenPtr = &elemPtr->builtinPen;
@@ -2309,13 +2284,12 @@ Blt_BarElement(Graph *graphPtr, const char *name, ClassId classId)
 /*
  *---------------------------------------------------------------------------
  *
- * Blt_InitFreqTable --
+ * Blt_InitBarSetTable --
  *
  *	Generate a table of abscissa frequencies.  Duplicate x-coordinates
  *	(depending upon the bar drawing mode) indicate that something special
  *	should be done with each bar segment mapped to the same abscissa
- *	(i.e. it should be stacked, aligned, or overlay-ed with other
- *	segments)
+ *	(i.e. it should be stacked, aligned, or overlay-ed with other segments)
  *
  * Results:
  *	None.
@@ -2326,106 +2300,130 @@ Blt_BarElement(Graph *graphPtr, const char *name, ClassId classId)
  *---------------------------------------------------------------------------
  */
 void
-Blt_InitFreqTable(Graph *graphPtr)
+Blt_InitBarSetTable(Graph *graphPtr)
 {
     Blt_ChainLink link;
     int nStacks, nSegs;
-    Blt_HashTable freqTable;
+    Blt_HashTable setTable;
+    int sum, max;
+    Blt_HashEntry *hPtr;
+    Blt_HashSearch iter;
 
     /*
-     * Free resources associated with a previous frequency table. This
-     * includes the array of frequency information and the table itself
+     * Free resources associated with a previous frequency table. This includes
+     * the array of frequency information and the table itself
      */
-    if (graphPtr->freqArr != NULL) {
-	Blt_Free(graphPtr->freqArr);
-	graphPtr->freqArr = NULL;
+    Blt_DestroyBarSets(graphPtr);
+    if (graphPtr->mode == BARS_INFRONT) {
+	return;				/* No set table is needed for
+					 * "infront" mode */
     }
-    if (graphPtr->nStacks > 0) {
-	Blt_DeleteHashTable(&graphPtr->freqTable);
-	graphPtr->nStacks = 0;
-    }
-    if (graphPtr->mode == MODE_INFRONT) {
-	return;			/* No frequency table is needed for "infront"
-				 * mode */
-    }
-    Blt_InitHashTable(&graphPtr->freqTable, sizeof(FreqKey) / sizeof(int));
+    Blt_InitHashTable(&graphPtr->setTable, sizeof(BarSetKey) / sizeof(int));
 
     /*
      * Initialize a hash table and fill it with unique abscissas.  Keep track
      * of the frequency of each x-coordinate and how many abscissas have
      * duplicate mappings.
      */
-    Blt_InitHashTable(&freqTable, sizeof(FreqKey) / sizeof(int));
+    Blt_InitHashTable(&setTable, sizeof(BarSetKey) / sizeof(int));
     nSegs = nStacks = 0;
     for (link = Blt_Chain_FirstLink(graphPtr->elements.displayList);
 	link != NULL; link = Blt_Chain_NextLink(link)) {
 	BarElement *elemPtr;
-	double *xArr;
+	double *x, *xend;
 	int nPoints;
-	int i;
 
 	elemPtr = Blt_Chain_GetValue(link);
-	if ((elemPtr->flags & HIDE) || 
-	    (elemPtr->obj.classId != CID_ELEM_BAR)) {
+	if ((elemPtr->flags & HIDE) || (elemPtr->obj.classId != CID_ELEM_BAR)) {
 	    continue;
 	}
 	nSegs++;
-	xArr = elemPtr->x.values;
 	nPoints = NUMBEROFPOINTS(elemPtr);
-	for (i = 0; i < nPoints; i++) {
+	for (x = elemPtr->x.values, xend = x + nPoints; x < xend; x++) {
 	    Blt_HashEntry *hPtr;
-	    FreqKey key;
+	    Blt_HashTable *tablePtr;
+	    BarSetKey key;
 	    int isNew;
 	    size_t count;
+	    const char *name;
 
-	    key.value = xArr[i];
+	    key.value = *x;
 	    key.axes = elemPtr->axes;
-	    hPtr = Blt_CreateHashEntry(&freqTable, (char *)&key, &isNew);
+	    key.axes.y = NULL;
+	    hPtr = Blt_CreateHashEntry(&setTable, (char *)&key, &isNew);
+	    if (isNew) {
+		tablePtr = Blt_AssertMalloc(sizeof(Blt_HashTable));
+		Blt_InitHashTable(tablePtr, BLT_STRING_KEYS);
+		Blt_SetHashValue(hPtr, tablePtr);
+	    } else {
+		tablePtr = Blt_GetHashValue(hPtr);
+	    }
+	    name = (elemPtr->groupName != NULL) ? elemPtr->groupName : 
+		elemPtr->axes.y->obj.name;
+	    hPtr = Blt_CreateHashEntry(tablePtr, name, &isNew);
 	    if (isNew) {
 		count = 1;
 	    } else {
 		count = (size_t)Blt_GetHashValue(hPtr);
-		if (count == 1) {
-		    nStacks++;
-		}
-		count++;
-	    }
+ 		count++;
+	    }		
 	    Blt_SetHashValue(hPtr, (ClientData)count);
 	}
     }
-    if (nSegs == 0) {
-	return;			/* No bar elements to be displayed */
+    if (setTable.numEntries == 0) {
+	return;				/* No bar elements to be displayed */
     }
-    if (nStacks > 0) {
-	FreqInfo *fp;
-	Blt_HashEntry *h1;
-	Blt_HashSearch cursor;
+    sum = max = 0;
+    for (hPtr = Blt_FirstHashEntry(&setTable, &iter); hPtr != NULL;
+	 hPtr = Blt_NextHashEntry(&iter)) {
+	Blt_HashTable *tablePtr;
+	Blt_HashEntry *hPtr2;
+	BarSetKey *keyPtr;
+	int isNew;
 
-	graphPtr->freqArr = Blt_AssertCalloc(nStacks, sizeof(FreqInfo));
-	fp = graphPtr->freqArr;
-	for (h1 = Blt_FirstHashEntry(&freqTable, &cursor); h1 != NULL;
-	    h1 = Blt_NextHashEntry(&cursor)) {
-	    FreqKey *keyPtr;
-	    size_t count;
+	keyPtr = (BarSetKey *)Blt_GetHashKey(&setTable, hPtr);
+	hPtr2 = Blt_CreateHashEntry(&graphPtr->setTable, (char *)keyPtr,&isNew);
+	tablePtr = Blt_GetHashValue(hPtr);
+	Blt_SetHashValue(hPtr2, tablePtr);
+	if (max < tablePtr->numEntries) {
+	    max = tablePtr->numEntries;	/* # of stacks in group. */
+	}
+	sum += tablePtr->numEntries;
+    }
+    Blt_DeleteHashTable(&setTable);
+    if (sum > 0) {
+	BarGroup *groupPtr;
+	Blt_HashEntry *hPtr;
+	Blt_HashSearch iter;
 
-	    count = (size_t)Blt_GetHashValue(h1);
-	    keyPtr = (FreqKey *)Blt_GetHashKey(&freqTable, h1);
-	    if (count > 1) {
-		Blt_HashEntry *h2;
-		int isNew;
+	graphPtr->barGroups = Blt_AssertCalloc(sum, sizeof(BarGroup));
+	groupPtr = graphPtr->barGroups;
+	for (hPtr = Blt_FirstHashEntry(&graphPtr->setTable, &iter); 
+	     hPtr != NULL; hPtr = Blt_NextHashEntry(&iter)) {
+	    BarSetKey *keyPtr;
+	    Blt_HashTable *tablePtr;
+	    Blt_HashEntry *hPtr2;
+	    Blt_HashSearch iter2;
+	    size_t xcount;
 
-		h2 = Blt_CreateHashEntry(&graphPtr->freqTable, (char *)keyPtr, 
-			&isNew);
-		count = (size_t)Blt_GetHashValue(h1);
-		fp->freq = count;
-		fp->axes = keyPtr->axes;
-		Blt_SetHashValue(h2, fp);
-		fp++;
+	    tablePtr = Blt_GetHashValue(hPtr);
+	    keyPtr = (BarSetKey *)Blt_GetHashKey(&setTable, hPtr);
+	    xcount = 0;
+	    for (hPtr2 = Blt_FirstHashEntry(tablePtr, &iter2); hPtr2!=NULL;
+		 hPtr2 = Blt_NextHashEntry(&iter2)) {
+		size_t count;
+
+		count = (size_t)Blt_GetHashValue(hPtr2);
+		groupPtr->nSegments = count;
+		groupPtr->axes = keyPtr->axes;
+		Blt_SetHashValue(hPtr2, groupPtr);
+		groupPtr->index = xcount++;
+		groupPtr++;
 	    }
 	}
     }
-    Blt_DeleteHashTable(&freqTable);
-    graphPtr->nStacks = nStacks;
+    graphPtr->maxBarSetSize = max;
+    graphPtr->nBarGroups = sum;
 }
 
 /*
@@ -2433,86 +2431,113 @@ Blt_InitFreqTable(Graph *graphPtr)
  *
  * Blt_ComputeStacks --
  *
- *	Determine the height of each stack of bar segments.  A stack is
- *	created by designating two or more points with the same abscissa.
- *	Each ordinate defines the height of a segment in the stack.  This
- *	procedure simply looks at all the data points summing the heights of
- *	each stacked segment. The sum is saved in the frequency information
- *	table.  This value will be used to calculate the y-axis limits (data
- *	limits aren't sufficient).
+ *	Determine the height of each stack of bar segments.  A stack is created
+ *	by designating two or more points with the same abscissa.  Each ordinate
+ *	defines the height of a segment in the stack.  This procedure simply
+ *	looks at all the data points summing the heights of each stacked
+ *	segment. The sum is saved in the frequency information table.  This
+ *	value will be used to calculate the y-axis limits (data limits aren't
+ *	sufficient).
  *
  * Results:
  *	None.
  *
  * Side effects:
- *	The heights of each stack is computed. CheckStacks will use this
+ *	The heights of each stack is computed. CheckBarGroups will use this
  *	information to adjust the y-axis limits if necessary.
  *
  *---------------------------------------------------------------------------
  */
 void
-Blt_ComputeStacks(Graph *graphPtr)
+Blt_ComputeBarStacks(Graph *graphPtr)
 {
     Blt_ChainLink link;
 
-    if ((graphPtr->mode != MODE_STACKED) || (graphPtr->nStacks == 0)) {
+    if ((graphPtr->mode != BARS_STACKED) || (graphPtr->nBarGroups == 0)) {
 	return;
     }
 
-    /* Reset the sums for all duplicate values to zero. */
+    /* Initialize the stack sums to zero. */
     {
-	FreqInfo *infoPtr;
-	int i;
+	BarGroup *gp, *gend;
 
-	infoPtr = graphPtr->freqArr;
-	for (i = 0; i < graphPtr->nStacks; i++) {
-	    infoPtr->sum = 0.0;
-	    infoPtr++;
+	for (gp = graphPtr->barGroups, gend = gp + graphPtr->nBarGroups; 
+	     gp < gend; gp++) {
+	    gp->sum = 0.0;
 	}
     }
 
-    /* Look at each bar point, adding the ordinates of duplicate abscissas */
+    /* Consider each bar x-y coordinate. Add the ordinates of duplicate
+     * abscissas. */
 
     for (link = Blt_Chain_FirstLink(graphPtr->elements.displayList); 
 	 link != NULL; link = Blt_Chain_NextLink(link)) {
 	BarElement *elemPtr;
-	double *xArr, *yArr;
-	int nPoints;
-	int i;
+	double *x, *y, *xend;
 
 	elemPtr = Blt_Chain_GetValue(link);
-	if ((elemPtr->flags & HIDE) || 
-	    (elemPtr->obj.classId != CID_ELEM_BAR)) {
+	if ((elemPtr->flags & HIDE) || (elemPtr->obj.classId != CID_ELEM_BAR)) {
 	    continue;
 	}
-	xArr = elemPtr->x.values;
-	yArr = elemPtr->y.values;
-	nPoints = NUMBEROFPOINTS(elemPtr);
-	for (i = 0; i < nPoints; i++) {
+	for (x = elemPtr->x.values, y = elemPtr->y.values, 
+		 xend = x + NUMBEROFPOINTS(elemPtr); x < xend; x++, y++) {
+	    BarSetKey key;
+	    BarGroup *groupPtr;
 	    Blt_HashEntry *hPtr;
-	    FreqKey key;
-	    FreqInfo *infoPtr;
+	    Blt_HashTable *tablePtr;
+	    const char *name;
 
-	    key.value = xArr[i];
+	    key.value = *x;
 	    key.axes = elemPtr->axes;
-	    hPtr = Blt_FindHashEntry(&graphPtr->freqTable, (char *)&key);
+	    key.axes.y = NULL;
+	    hPtr = Blt_FindHashEntry(&graphPtr->setTable, (char *)&key);
 	    if (hPtr == NULL) {
 		continue;
 	    }
-	    infoPtr = Blt_GetHashValue(hPtr);
-	    infoPtr->sum += yArr[i];
+	    tablePtr = Blt_GetHashValue(hPtr);
+	    name = (elemPtr->groupName != NULL) ? elemPtr->groupName : 
+		elemPtr->axes.y->obj.name;
+	    hPtr = Blt_FindHashEntry(tablePtr, name);
+	    if (hPtr == NULL) {
+		continue;
+	    }
+	    groupPtr = Blt_GetHashValue(hPtr);
+	    groupPtr->sum += *y;
 	}
     }
 }
 
 void
-Blt_ResetStacks(Graph *graphPtr)
+Blt_ResetBarGroups(Graph *graphPtr)
 {
-    FreqInfo *fp, *fend;
+    BarGroup *gp, *gend;
 
-    for (fp = graphPtr->freqArr, fend = fp+graphPtr->nStacks; fp < fend; fp++) {
-	fp->lastY = 0.0;
-	fp->count = 0;
+    for (gp = graphPtr->barGroups, gend = gp + graphPtr->nBarGroups; gp < gend; 
+	 gp++) {
+	gp->lastY = 0.0;
+	gp->count = 0;
     }
 }
 
+void
+Blt_DestroyBarSets(Graph *graphPtr)
+{
+    Blt_HashSearch iter;
+    Blt_HashEntry *hPtr;
+
+    if (graphPtr->barGroups != NULL) {
+	Blt_Free(graphPtr->barGroups);
+	graphPtr->barGroups = NULL;
+    }
+    graphPtr->nBarGroups = 0;
+    for (hPtr = Blt_FirstHashEntry(&graphPtr->setTable, &iter); 
+	 hPtr != NULL; hPtr = Blt_NextHashEntry(&iter)) {
+	Blt_HashTable *tablePtr;
+	
+	tablePtr = Blt_GetHashValue(hPtr);
+	Blt_DeleteHashTable(tablePtr);
+	Blt_Free(tablePtr);
+    }
+    Blt_DeleteHashTable(&graphPtr->setTable);
+    Blt_InitHashTable(&graphPtr->setTable, sizeof(BarSetKey) / sizeof(int));
+}

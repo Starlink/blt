@@ -148,6 +148,8 @@ typedef struct _Blt_ResampleFilter *Blt_ResampleFilter;
 typedef struct _Blt_ConvolveFilter *Blt_ConvolveFilter;
 typedef struct _Blt_Picture *Blt_Picture;
 
+struct _Blt_Chain;
+
 /*
  * Blt_Picture is supposed to be an opaque type.  Use the macros below to
  * access its members.
@@ -226,6 +228,8 @@ typedef struct {
 #define Blt_XorPictures(dest, src) \
     Blt_ApplyPictureToPicture(dest, src, 0, 0, (src)->width, (src)->height, \
 	0, 0, PIC_ARITH_XOR)
+
+typedef unsigned int (*Blt_ColorLookupTable)[33][33];
 
 /* Prototypes of picture routines */
 
@@ -373,6 +377,15 @@ BLT_EXTERN void Blt_SizeOfPicture(Blt_Picture pict, int *wPtr, int *hPtr);
 BLT_EXTERN Blt_DBuffer Blt_PictureToDBuffer(Blt_Picture picture, int nComp);
 #endif	/* _BLT_DBUFFER_H */
 
+BLT_EXTERN int Blt_ResetPicture(Tcl_Interp *interp, const char *imageName, 
+	Blt_Picture picture);
+
+BLT_EXTERN void Blt_MapColors(Blt_Picture dest, Blt_Picture src, 
+	Blt_ColorLookupTable clut);
+
+BLT_EXTERN Blt_ColorLookupTable Blt_GetColorLookupTable(struct _Blt_Chain *chain,
+	int nReqColors);
+
 #ifdef _TK
 BLT_EXTERN Blt_Picture Blt_PhotoToPicture (Tk_PhotoHandle photo);
 BLT_EXTERN Blt_Picture Blt_PhotoAreaToPicture (Tk_PhotoHandle photo, 
@@ -392,7 +405,12 @@ BLT_EXTERN Blt_Picture Blt_BitmapToPicture(Display *display, Pixmap bitmap,
 	int w, int h, Blt_Pixel *fg, Blt_Pixel *bg);
 BLT_EXTERN Blt_Pixel Blt_XColorToPixel(XColor *colorPtr);
 BLT_EXTERN int Blt_IsPicture(Tk_Image tkImage);
-BLT_EXTERN Blt_Picture Blt_GetPictureFromImage(Tk_Image tkImage);
+BLT_EXTERN Blt_Picture Blt_GetPictureFromImage(Tcl_Interp *interp, 
+	Tk_Image tkImage, int *isPhotoPtr);
+BLT_EXTERN Blt_Picture Blt_GetPictureFromPictureImage(Tcl_Interp *interp,
+	Tk_Image tkImage);
+BLT_EXTERN Blt_Picture Blt_GetPictureFromPhotoImage(Tcl_Interp *interp,
+	Tk_Image tkImage);
 #endif	/* _TK */
 
 #endif /*_BLT_PICTURE_H*/

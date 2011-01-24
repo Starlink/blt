@@ -767,7 +767,7 @@ blt::combobutton .b \
     -iconvariable myIcon1 \
     -borderwidth 2 \
     -highlightthickness 1 \
-    -indicatoron yes \
+    -arrowon yes \
     -menu .b.m 
 
 blt::table . \
@@ -781,16 +781,11 @@ blt::combomenu .b.m  \
     -iconvariable myIcon1 \
     -font { Arial 9 bold } \
     -acceleratorfont { Arial 8 } \
-    -indicatorforeground black \
-    -xscrollcommand { .b.m.xbar set } \
-    -yscrollcommand { .b.m.ybar set } \
     -yscrollbar .b.m.ybar \
     -xscrollbar .b.m.xbar
 
-blt::tk::scrollbar .b.m.xbar -orient horizontal -command { .b.m xview } \
-    -width 17
-blt::tk::scrollbar .b.m.ybar -orient vertical -command { .b.m yview } \
-    -highlightthickness 0 -width 17 
+blt::tk::scrollbar .b.m.xbar
+blt::tk::scrollbar .b.m.ybar
 
 set bg [image create picture -width 30 -height 20]
 $bg blank 0x0000000

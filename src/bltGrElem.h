@@ -32,7 +32,7 @@
 
 #define ELEM_SOURCE_VALUES	0
 #define ELEM_SOURCE_VECTOR	1
-#define ELEM_SOURCE_TABLE		2
+#define ELEM_SOURCE_TABLE	2
 
 #define SEARCH_X	0
 #define SEARCH_Y	1
@@ -176,14 +176,17 @@ typedef struct {
 } VectorDataSource;
 
 typedef struct {
-    Blt_DataTable table;		/* Data table. */ 
-    Blt_DataTableColumn column;	/* Column of data used. */
-    Blt_DataTableNotifier notifier;	/* Notifier used for column (destroy). */
-    Blt_DataTableTrace trace;		/* Trace used for column (set/get/unset). */
-    Blt_HashEntry *hashPtr;	/* Pointer to entry of source in graph's hash
-				 * table of datatables. One graph may use
-				 * multiple columns from the same data
-				 * table. */
+    Blt_Table table;			/* Data table. */ 
+    Blt_TableColumn column;		/* Column of data used. */
+    Blt_TableNotifier notifier;		/* Notifier used for column destroy
+					 * event. */
+    Blt_TableTrace trace;		/* Trace used for column
+					 * (set/get/unset). */
+    Blt_HashEntry *hashPtr;		/* Pointer to the entry of the data
+					 * source in graph's hash table of
+					 * datatables. One graph may use
+					 * multiple columns from the same data
+					 * table. */
 } TableDataSource;
 
 /* 
@@ -192,72 +195,63 @@ typedef struct {
  * the number and minimum/maximum values.
  */
 typedef struct {
-    Element *elemPtr;		/* Element associated with vector. */
     int type;			/* Selects the type of data populating this
 				 * vector: ELEM_SOURCE_VECTOR,
 				 * ELEM_SOURCE_TABLE, or ELEM_SOURCE_VALUES
 				 */
+    Element *elemPtr;		/* Element associated with vector. */
     union {
 	TableDataSource tableSource;
 	VectorDataSource vectorSource;
     };
-
     double *values;
     int nValues;
     int arraySize;
     double min, max;
-
 } ElemValues;
 
 
 struct _Element {
-    GraphObj obj;		/* Must be first field in element. */
-
+    GraphObj obj;			/* Must be first field in element. */
     unsigned int flags;		
-
     Blt_HashEntry *hashPtr;
 
     /* Fields specific to elements. */
-
-    const char *label;		/* Label displayed in legend */
-    unsigned short row, col;  	/* Position of the entry in the legend. */
-    int labelRelief;		/* Relief of label in legend. */
-
-    Axis2d axes;		/* X-axis and Y-axis mapping the element */
-
-    ElemValues x, y, w;		/* Contains array of floating point graph
-				 * coordinate values. Also holds min/max and
-				 * the number of coordinates */
-
-
-    int *activeIndices;		/* Array of indices (malloc-ed) which indicate
-				 * which data points are active (drawn with
-				 * "active" colors). */
-
-    int nActiveIndices;		/* Number of active data points.  Special
-				 * case: if nActiveIndices < 0 and the active
-				 * bit is set in "flags", then all data points
-				 * are drawn active. */
-
+    const char *label;			/* Label displayed in legend */
+    unsigned short row, col;		/* Position of the entry in the
+					 * legend. */
+    int legendRelief;			/* Relief of label in legend. */
+    Axis2d axes;			/* X-axis and Y-axis mapping the
+					 * element */
+    ElemValues x, y, w;			/* Contains array of floating point
+					 * graph coordinate values. Also holds
+					 * min/max and the number of
+					 * coordinates */
+    int *activeIndices;			/* Array of indices (malloc-ed) which
+					 * indicate which data points are
+					 * active (drawn with "active"
+					 * colors). */
+    int nActiveIndices;			/* Number of active data points.
+					 * Special case: if nActiveIndices < 0
+					 * and the active bit is set in
+					 * "flags", then all data points are
+					 * drawn active. */
     ElementProcs *procsPtr;
-
-    Blt_ConfigSpec *configSpecs; /* Configuration specifications. */
-
-    Pen *activePenPtr;		/* Standard Pens */
+    Blt_ConfigSpec *configSpecs;	/* Configuration specifications. */
+    Pen *activePenPtr;			/* Standard Pens */
     Pen *normalPenPtr;
     Pen *builtinPenPtr;
-
-    Blt_Chain stylePalette;	/* Palette of pens. */
+    Blt_Chain stylePalette;		/* Palette of pens. */
 
     /* Symbol scaling */
-    int scaleSymbols;		/* If non-zero, the symbols will scale in size
-				 * as the graph is zoomed in/out.  */
-
-    double xRange, yRange;	/* Initial X-axis and Y-axis ranges: used to
-				 * scale the size of element's symbol. */
+    int scaleSymbols;			/* If non-zero, the symbols will scale
+					 * in size as the graph is zoomed
+					 * in/out.  */
+    double xRange, yRange;		/* Initial X-axis and Y-axis ranges:
+					 * used to scale the size of element's
+					 * symbol. */
     int state;
-
-    Blt_ChainLink link;		/* Element's link in display list. */
+    Blt_ChainLink link;			/* Element's link in display list. */
 };
 
 

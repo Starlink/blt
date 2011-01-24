@@ -33,6 +33,7 @@
 #include "bltSwitch.h"
 #include "bltPicture.h"
 #include "bltPictInt.h"
+#include "bltPainter.h"
 #include <X11/Xutil.h>
 #include "bltFont.h"
 #include "bltText.h"
@@ -46,13 +47,18 @@ typedef struct {
     unsigned int offset;
 } Shadow;
 
-#ifdef HAVE_FT2BUILD_H
+#if defined (HAVE_FT2BUILD_H) && defined(HAVE_LIBXFT)
 #include <ft2build.h>
 #include FT_FREETYPE_H
-#ifdef HAVE_LIBXFT
 #include <X11/Xft/Xft.h>
-#endif /* HAVE_LIBXFT */
+#define DRAWTEXT 1
+#else 
+#define DRAWTEXT 0
+#endif
 
+
+#if DRAWTEXT
+static FT_Library ftLibrary;
 
 typedef struct {
     FT_Face face;
@@ -64,7 +70,8 @@ typedef struct {
     int height;
     int ascent, descent;
 } FtFont;    
-#endif /*HAVE_FT2BUILD_H*/
+
+#endif /*HAVE_FT2BUILD_H && HAVE_LIBXFT */
 
 static Blt_SwitchParseProc ArraySwitchProc;
 static Blt_SwitchFreeProc ArrayFreeProc;
@@ -236,7 +243,65 @@ static Blt_SwitchSpec textSwitches[] =
     {BLT_SWITCH_END}
 };
 
-#ifdef HAVE_FT2BUILD_H
+static Pict *
+BgPicture(Pict *srcPtr, int sx, int sy, int w, int h)
+{
+    Pict *destPtr;
+    Blt_Pixel *srcRowPtr, *destRowPtr;
+    size_t nBytes;
+    int y;
+
+    w = MIN(w, srcPtr->width - sx);
+    h = MIN(h, srcPtr->height - sy);
+    destPtr = Blt_CreatePicture(w*4, h*4);
+    srcRowPtr = srcPtr->bits + (sy * srcPtr->width) + sx;
+    destRowPtr = destPtr->bits;
+    nBytes = sizeof(Blt_Pixel) * destPtr->pixelsPerRow;
+    for (y = 0; y < h; y++) {
+	Blt_Pixel *dp, *sp, *send;
+	Blt_Pixel *nextRowPtr;
+
+	for (dp = destRowPtr, sp = srcRowPtr, send = sp + w; sp < send; sp++) {
+	    Blt_Pixel p;
+
+	    p.u32 = sp->u32;
+	    dp[0].u32 = dp[1].u32 = dp[2].u32 = dp[3].u32 = p.u32;
+	    dp += 4;
+	}
+
+	nextRowPtr = destRowPtr + destPtr->pixelsPerRow;
+	memcpy(nextRowPtr, destRowPtr, nBytes);
+	nextRowPtr += destPtr->pixelsPerRow;
+	memcpy(nextRowPtr, destRowPtr, nBytes);
+	nextRowPtr += destPtr->pixelsPerRow;
+	memcpy(nextRowPtr, destRowPtr, nBytes);
+	nextRowPtr += destPtr->pixelsPerRow;
+	destRowPtr = nextRowPtr;
+	srcRowPtr += srcPtr->pixelsPerRow;
+    }
+    return destPtr;
+}
+
+static void
+MarkPicture(Pict *srcPtr)
+{
+    Blt_Pixel *srcRowPtr;
+    int y;
+
+    srcRowPtr = srcPtr->bits;
+    for (y = 0; y < srcPtr->height; y++) {
+	Blt_Pixel *sp, *send;
+
+	for (sp = srcRowPtr, send = sp + srcPtr->width; sp < send; sp++) {
+	    if (sp->Alpha != 0x0) {
+		sp->Alpha = 0xFF;
+	    }
+	}
+	srcRowPtr += srcPtr->pixelsPerRow;
+    }
+}
+
+#if DRAWTEXT
 static void
 MeasureText(FtFont *fontPtr, const char *string, size_t length,
 	    size_t *widthPtr, size_t *heightPtr);
@@ -488,7 +553,7 @@ Blt_ColorSwitchProc(
     return TCL_OK;
 }
 
-#ifdef HAVE_FT2BUILD_H
+#if DRAWTEXT
 /*
  *---------------------------------------------------------------------------
  *
@@ -627,6 +692,7 @@ PutPixel(Pict *destPtr, int x, int y, Blt_Pixel *colorPtr)
     }
 }
 
+
 static INLINE Blt_Pixel
 PremultiplyAlpha(Blt_Pixel *colorPtr, unsigned int alpha)
 {
@@ -688,6 +754,10 @@ BlendPixel(Blt_Pixel *bgPtr, Blt_Pixel *colorPtr, unsigned char weight)
     int t1;
 
     alpha = imul8x8(colorPtr->Alpha, weight, t1);
+#ifdef notdef
+    fprintf(stderr, "colorAlpha=%d weight=%d, alpha=%d, beta=%d\n",
+	    colorPtr->Alpha, weight, alpha, alpha ^ 0xFF);
+#endif
     if (alpha == 0xFF) {
 	bgPtr->u32 = colorPtr->u32;
     } else if (alpha != 0x00) {
@@ -702,9 +772,25 @@ BlendPixel(Blt_Pixel *bgPtr, Blt_Pixel *colorPtr, unsigned char weight)
 	bgPtr->Blue  = imul8x8(alpha, colorPtr->Blue, t1)  + 
 	    imul8x8(beta, bgPtr->Blue, t2);
 	bgPtr->Alpha = alpha + imul8x8(beta, bgPtr->Alpha, t2);
+#ifdef notdef
+	fprintf(stderr, "r=%d, g=%d, b=%d, a=%d, alpha=%d\n",
+	       bgPtr->Red, bgPtr->Green, bgPtr->Blue, bgPtr->Alpha, alpha);
+#endif
     }
 }
     
+static void INLINE 
+PutPixel2(Pict *destPtr, int x, int y, Blt_Pixel *colorPtr, 
+	  unsigned char weight)  
+{
+    if ((x >= 0) && (x < destPtr->width) && (y >= 0) && (y < destPtr->height)) {
+	Blt_Pixel *dp;
+
+	dp = Blt_PicturePixel(destPtr, x, y);
+	BlendPixel(dp, colorPtr, weight);
+    }
+}
+
 static void 
 PaintLineSegment(
     Pict *destPtr,
@@ -725,8 +811,8 @@ PaintLineSegment(
     }
     edge = PremultiplyAlpha(colorPtr, 255);
     /* First and last Pixels always get Set: */
-    PutPixel(destPtr, x1, y1, &edge);
-    PutPixel(destPtr, x2, y2, &edge);
+    PutPixel2(destPtr, x1, y1, colorPtr, 255);
+    PutPixel2(destPtr, x2, y2, colorPtr, 255);
 
     dx = x2 - x1;
     dy = y2 - y1;
@@ -774,10 +860,8 @@ PaintLineSegment(
 		error &= 0xFFFF;
 	    }
 	    weight = (unsigned char)(error >> 8);
-	    edge = PremultiplyAlpha(colorPtr, ~weight);
-	    PutPixel(destPtr, x1, y1, &edge);
-	    edge = PremultiplyAlpha(colorPtr, weight);
-	    PutPixel(destPtr, x1 + xDir, y1, &edge);
+	    PutPixel2(destPtr, x1, y1, colorPtr, ~weight);
+	    PutPixel2(destPtr, x1 + xDir, y1, colorPtr, weight);
 	}
     } else {			/* x-major line */
 	unsigned long adjust;
@@ -794,10 +878,8 @@ PaintLineSegment(
 		error &= 0xFFFF;
 	    }
 	    weight = (error >> 8) & 0xFF;
-	    edge = PremultiplyAlpha(colorPtr, ~weight);
-	    PutPixel(destPtr, x1, y1, &edge);
-	    edge = PremultiplyAlpha(colorPtr, weight);
-	    PutPixel(destPtr, x1, y1 + 1, &edge);
+	    PutPixel2(destPtr, x1, y1, colorPtr, ~weight);
+	    PutPixel2(destPtr, x1, y1 + 1, colorPtr, weight);
 	}
     }
 }
@@ -972,7 +1054,7 @@ PaintPolyline(
     }
 }
 
-#ifdef HAVE_FT2BUILD_H
+#if DRAWTEXT
 
 #undef __FTERRORS_H__
 #define FT_ERRORDEF( e, v, s )  { e, s },
@@ -980,7 +1062,7 @@ PaintPolyline(
 #define FT_ERROR_END_LIST       { -1, 0 } };
 
 static const char *
-FtError(FT_Error fterr)
+FtError(FT_Error ftError)
 {
     struct ft_errors {                                          
 	int          code;             
@@ -991,7 +1073,7 @@ FtError(FT_Error fterr)
 
     struct ft_errors *fp;
     for (fp = ft_err_mesgs; fp->msg != NULL; fp++) {
-	if (fp->code == fterr) {
+	if (fp->code == ftError) {
 	    return fp->msg;
 	}
     }
@@ -1022,32 +1104,42 @@ MeasureText(FtFont *fontPtr, const char *string, size_t length,
     maxY = maxX = 0;
     pen.y = 0;
     x = 0;
+#ifdef notdef
     fprintf(stderr, "face->height=%d, face->size->height=%d\n",
 	    face->height, (int)face->size->metrics.height);
     fprintf(stderr, "face->ascender=%d, face->descender=%d\n",
 	    face->ascender, face->descender);
+#endif
     for (p = string, pend = p + length; p < pend; p++) {
 	maxY += face->size->metrics.height;
 	pen.x = x << 6;
-	while ((*p != '\n') && (p < pend)) {
+	for (/*empty*/; (*p != '\n') && (p < pend); p++) {
+	    FT_Error ftError;
+
 	    FT_Set_Transform(face, &matrix, &pen);
 	    /* Load glyph image into the slot (erase previous) */
-	    if (FT_Load_Char(face, *p, FT_LOAD_RENDER)) {
-		fprintf(stderr, "can't load character \"%c\"\n", *p);
+	    ftError = FT_Load_Char(face, *p, FT_LOAD_RENDER);
+	    if (ftError != 0) {
+		fprintf(stderr, "can't load character \"%c\": %s\n", *p,
+			FtError(ftError));
 		continue;                 /* ignore errors */
 	    }
 	    pen.x += slot->advance.x;
 	    pen.y += slot->advance.y;
-	    p++;
 	}
 	if (pen.x > maxX) {
 	    maxX = pen.x;
 	}
     }	
+#ifdef notdef
     fprintf(stderr, "w=%d,h=%d\n", maxX >> 6, maxY >> 6);
+#endif
     *widthPtr = (size_t)(maxX >> 6);
     *heightPtr = (size_t)(maxY >> 6);
-    fprintf(stderr, "w=%d,h=%d\n", *widthPtr, *heightPtr);
+#ifdef notdef
+    fprintf(stderr, "w=%lu,h=%lu\n", (unsigned long)*widthPtr, 
+	    (unsigned long)*heightPtr);
+#endif
 }
 
 static size_t
@@ -1061,7 +1153,7 @@ GetTextWidth(FtFont *fontPtr, const char *string, size_t length, int kerning)
     double radians;
     FT_Face face;
     int previous;
-    int fterr;
+    FT_Error ftError;
 
     radians = 0.0;
     matrix.yy = matrix.xx = (FT_Fixed)(cos(radians) * 65536.0);
@@ -1073,8 +1165,10 @@ GetTextWidth(FtFont *fontPtr, const char *string, size_t length, int kerning)
     
     maxY = maxX = 0;
     pen.y = pen.x = 0;
+#ifdef notdef
     fprintf(stderr, "face->height=%d, face->size->height=%d\n",
 	    face->height, (int)face->size->metrics.height);
+#endif
     for (p = string, pend = p + length; p < pend; p++) {
 	int current;
 
@@ -1088,10 +1182,10 @@ GetTextWidth(FtFont *fontPtr, const char *string, size_t length, int kerning)
 	FT_Set_Transform(face, &matrix, &pen);
 	previous = current;
 	/* load glyph image into the slot (erase previous one) */  
-	fterr = FT_Load_Glyph(face, current, FT_LOAD_DEFAULT); 
-	if (fterr) {
-	    fprintf(stderr, "can't load character \"%c\": %s\n", *p,
-		    FtError(fterr));
+	ftError = FT_Load_Glyph(face, current, FT_LOAD_DEFAULT); 
+	if (ftError) {
+	    fprintf(stderr, "can't load character \"%c\" (%d): %s\n", *p,
+		    current, FtError(ftError));
 	    continue;                 /* ignore errors */
 	}
 	pen.x += slot->advance.x;
@@ -1113,6 +1207,7 @@ BlitGlyph(Pict *destPtr,
 {
     int gx, gy, gw, gh; 
 
+#ifdef notdef
     fprintf(stderr, "dx=%d, dy=%d\n", dx, dy);
     fprintf(stderr, "  slot.bitmap.width=%d\n", (int)slot->bitmap.width);
     fprintf(stderr, "  slot.bitmap.rows=%d\n", slot->bitmap.rows);
@@ -1127,6 +1222,7 @@ BlitGlyph(Pict *destPtr,
 	    (slot->format >> 16) & 0xFF, 
 	    (slot->format >> 8) & 0xFF, 
 	    (slot->format & 0xFF));
+#endif
     if ((dx >= destPtr->width) || ((dx + slot->bitmap.width) <= 0) ||
 	(dy >= destPtr->height) || ((dy + slot->bitmap.rows) <= 0)) {
 	return;			/* No portion of the glyph is visible in the
@@ -1234,9 +1330,10 @@ CopyGrayGlyph(Pict *destPtr, FT_GlyphSlot slot, int x, int y,
     gy = 0;
     gw = slot->bitmap.width;
     gh = slot->bitmap.rows;
+#ifdef notdef
     fprintf(stderr, "before: x=%d,y=%d, gx=%d, gy=%d gw=%d gh=%d\n",
 	    x, y, gx, gy, gw, gh);
-
+#endif
     /* Determine the portion of the glyph inside the picture. */
 
     if (x < 0) {		/* Left side of glyph overhangs. */
@@ -1255,8 +1352,10 @@ CopyGrayGlyph(Pict *destPtr, FT_GlyphSlot slot, int x, int y,
     if ((y + gh) > destPtr->height) { /* Bottom of glyph overhangs. */
 	gh = destPtr->height - y;
     }
+#ifdef notdef
     fprintf(stderr, "after: x=%d,y=%d, gx=%d, gy=%d gw=%d gh=%d\n",
 	    x, y, gx, gy, gw, gh);
+#endif
     {
 	Blt_Pixel *destRowPtr;
 	unsigned char *srcRowPtr;
@@ -1288,7 +1387,7 @@ PaintGrayGlyph(Pict *destPtr, FT_GlyphSlot slot, int x, int y,
 {
     int gx, gy, gw, gh; 
 
-#ifndef notdef
+#ifdef notdef
     fprintf(stderr, "x=%d, y=%d\n", x, y);
     fprintf(stderr, "  slot.bitmap.width=%d\n", slot->bitmap.width);
     fprintf(stderr, "  slot.bitmap.rows=%d\n", slot->bitmap.rows);
@@ -1315,9 +1414,10 @@ PaintGrayGlyph(Pict *destPtr, FT_GlyphSlot slot, int x, int y,
     gy = 0;
     gw = slot->bitmap.width;
     gh = slot->bitmap.rows;
+#ifdef notdef
     fprintf(stderr, "before: x=%d,y=%d, gx=%d, gy=%d gw=%d gh=%d\n",
 	    x, y, gx, gy, gw, gh);
-
+#endif
     /* Determine the portion of the glyph inside the picture. */
 
     if (x < 0) {		/* Left side of glyph overhangs. */
@@ -1336,8 +1436,10 @@ PaintGrayGlyph(Pict *destPtr, FT_GlyphSlot slot, int x, int y,
     if ((y + gh) > destPtr->height) { /* Bottom of glyph overhangs. */
 	gh = destPtr->height - y;
     }
+#ifdef notdef
     fprintf(stderr, "after: x=%d,y=%d, gx=%d, gy=%d gw=%d gh=%d\n",
 	    x, y, gx, gy, gw, gh);
+#endif
     {
 	Blt_Pixel *destRowPtr;
 	unsigned char *srcRowPtr;
@@ -1438,22 +1540,20 @@ CopyMonoGlyph(Pict *destPtr, FT_GlyphSlot slot, int dx, int dy,
 }
 
 static int 
-ScaleFont(Tcl_Interp *interp, FtFont *fontPtr, size_t fontSize)
+ScaleFont(Tcl_Interp *interp, FtFont *fontPtr, FT_F26Dot6 size)
 {
-    if (fontSize > 0) {
-	int fterr;
-	unsigned int xdpi, ydpi;
+    FT_Error ftError;
+    unsigned int xdpi, ydpi;
 
-	Blt_ScreenDPI(Tk_MainWindow(interp), &xdpi, &ydpi);
-	fterr = FT_Set_Char_Size(fontPtr->face, 0, fontSize << 6, xdpi, ydpi);
-	if (fterr) {
-	    Tcl_AppendResult(interp, "can't set font size to \"", 
-		Blt_Itoa(fontSize), "\": ", FtError(fterr), (char *)NULL);
-	    return TCL_ERROR;
-	}
+    Blt_ScreenDPI(Tk_MainWindow(interp), &xdpi, &ydpi);
+    ftError = FT_Set_Char_Size(fontPtr->face, size, size, xdpi, ydpi);
+    if (ftError) {
+	Tcl_AppendResult(interp, "can't set font size to \"", Blt_Itoa(size), 
+		"\": ", FtError(ftError), (char *)NULL);
+	return TCL_ERROR;
     }
-    fontPtr->height = fontPtr->face->size->metrics.height >> 6;
-    fontPtr->ascent = fontPtr->face->size->metrics.ascender >> 6;
+    fontPtr->height  = fontPtr->face->size->metrics.height >> 6;
+    fontPtr->ascent  = fontPtr->face->size->metrics.ascender >> 6;
     fontPtr->descent = fontPtr->face->size->metrics.descender >> 6;
     return TCL_OK;
 }
@@ -1471,58 +1571,65 @@ RotateFont(FtFont *fontPtr, float angle)
     fontPtr->matrix.xy = -fontPtr->matrix.yx;
 }
 
+#if DRAWTEXT
 static FtFont *
 OpenFont(Tcl_Interp *interp, const char *fontName, size_t fontSize) 
 {
-#ifdef HAVE_FT2BUILD_H
     FtFont *fontPtr;
-    int fterr;
+    FT_Error ftError;
+    FT_Face face;
+    const char *fileName;
 
-    fontPtr = Blt_AssertMalloc(sizeof(FtFont));
-
-    fterr = FT_Init_FreeType(&fontPtr->lib);
-    if (fterr) {
-	Tcl_AppendResult(interp, "can't initialize freetype library: ", 
-		FtError(fterr), (char *)NULL);
-	return NULL;
+    fontPtr = Blt_AssertCalloc(1, sizeof(FtFont));
+    if (ftLibrary == NULL) {
+	ftError = FT_Init_FreeType(&ftLibrary);
+	if (ftError) {
+	    Tcl_AppendResult(interp, "can't initialize freetype library: ", 
+			     FtError(ftError), (char *)NULL);
+	    return NULL;
+	}
     }
     fontPtr->face = NULL;
     if (fontName[0] == '@') {
-	fterr = FT_New_Face(fontPtr->lib, fontName+1, 0, &fontPtr->face);
-	if (fterr) {
-	    Tcl_AppendResult(interp, "can't create face from font file \"", 
-		fontName+1, "\": ", FtError(fterr), (char *)NULL);
-	    return NULL;
-	}
+	fileName = fontName + 1;
+	fontSize <<= 6;
     } else {
-#ifdef HAVE_LIBXFT
-	fontPtr->xftFont = Blt_OpenXftFont(interp, fontName);
-	if (fontPtr->xftFont == NULL) {
-	    return NULL;
+	double size;
+
+	fileName = Blt_GetFontFile(interp, fontName, &size);
+	if (fontSize == 0) {
+	    fontSize = (int)(size * 64.0 + 0.5);
 	}
-	fontPtr->face = XftLockFace(fontPtr->xftFont);
-	if (fontPtr->face == NULL) {
-	    Tcl_AppendResult(interp, "no font specified for drawing operation", 
-		(char *)NULL);
-	    return NULL;
-	}
-#else
-	Tcl_AppendResult(interp, "freetype library not available", 
-		(char *)NULL);
-	return NULL;
-#endif
     }
+    ftError = FT_New_Face(ftLibrary, fileName, 0, &face);
+    if (ftError) {
+	Tcl_AppendResult(interp, "can't create face from font file \"", 
+		fileName, "\": ", FtError(ftError), (char *)NULL);
+	return NULL;
+    }
+    if (!FT_IS_SCALABLE(face)) {
+	Tcl_AppendResult(interp, "can't use font \"", fontName, 
+			 "\": font isn't scalable.", (char *)NULL);
+	return NULL;
+    }
+    fontPtr->face = face;
     if (ScaleFont(interp, fontPtr, fontSize) != TCL_OK) {
 	return NULL;
     }
     RotateFont(fontPtr, 0.0f);	/* Initializes the rotation matrix. */
     return fontPtr;
-#else 
-    Tcl_AppendResult(interp, "freetype library not available", 
-		(char *)NULL);
-    return NULL;
-#endif /* HAVE_FT2BUILD_H */
 }
+
+#else 
+
+static FtFont *
+OpenFont(Tcl_Interp *interp, const char *fontName, size_t fontSize) 
+{
+    Tcl_AppendResult(interp, "freetype library not available", (char *)NULL);
+    return NULL;
+}
+
+#endif /*DRAWTEXT*/
 
 static void
 CloseFont(FtFont *fontPtr) 
@@ -1536,7 +1643,7 @@ CloseFont(FtFont *fontPtr)
 #else
     FT_Done_Face(fontPtr->face);
 #endif /* HAVE_LIBXFT */ 
-    FT_Done_FreeType(fontPtr->lib);
+    Blt_Free(fontPtr);
 }
 
 
@@ -1546,18 +1653,18 @@ PaintText(
     FtFont *fontPtr, 
     const char *string,
     size_t length,
-    int x, int y,		/* Anchor coordinates of text. */
+    int x, int y,			/* Anchor coordinates of text. */
     int kerning,
     Blt_Pixel *colorPtr)
 {
-#ifdef HAVE_FT2BUILD_H
-    int fterr;
+#if DRAWTEXT
+    FT_Error ftError;
     int h;
 
-    FT_Vector pen;	/* Untransformed origin  */
+    FT_Vector pen;			/* Untransformed origin  */
     const char *p, *pend;
-    FT_GlyphSlot  slot;
-    FT_Face face;		/* Face object. */  
+    FT_GlyphSlot slot;
+    FT_Face face;			/* Face object. */  
 
     h = destPtr->height;
     face = fontPtr->face;
@@ -1628,16 +1735,16 @@ PaintText(
 	FT_Set_Transform(face, &fontPtr->matrix, &pen);
 	previous = current;
 	/* load glyph image into the slot (erase previous one) */  
-	fterr = FT_Load_Glyph(face, current, FT_LOAD_DEFAULT); 
-	if (fterr) {
+	ftError = FT_Load_Glyph(face, current, FT_LOAD_DEFAULT); 
+	if (ftError) {
 	    fprintf(stderr, "can't load character \"%c\": %s\n", *p,
-		    FtError(fterr));
+		    FtError(ftError));
 	    continue;                 /* ignore errors */
 	}
-	fterr = FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL);
-	if (fterr) {
+	ftError = FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL);
+	if (ftError) {
 	    fprintf(stderr, "can't render glyph \"%c\": %s\n", *p,
-		    FtError(fterr));
+		    FtError(ftError));
 	    continue;                 /* ignore errors */
 	}
 	switch(slot->bitmap.pixel_mode) {
@@ -1648,7 +1755,9 @@ PaintText(
 	case FT_PIXEL_MODE_LCD:
 	case FT_PIXEL_MODE_LCD_V:
 	case FT_PIXEL_MODE_GRAY:
+#ifdef notdef
 	    fprintf(stderr, "h=%d, slot->bitmap_top=%d\n", h, slot->bitmap_top);
+#endif
 	    PaintGrayGlyph(destPtr, slot, slot->bitmap_left, 
 			   h - slot->bitmap_top, colorPtr);
 	case FT_PIXEL_MODE_GRAY2:
@@ -1859,7 +1968,7 @@ CompareActive(const void *a, const void *b)
 }
 
 static void
-cdelete(AET *tablePtr, int i)	/* remove edge i from active list */
+cdelete(AET *tablePtr, int i)		/* Remove edge i from active list */
 {
     int j;
 
@@ -1867,12 +1976,18 @@ cdelete(AET *tablePtr, int i)	/* remove edge i from active list */
 	/*empty*/
     }
     if (j >= tablePtr->nActive) {
-	return;		      /* edge not in active list; happens at win->y0*/
+	return;				/* edge not in active list; happens at
+					 * win->y0*/
     }
     tablePtr->nActive--;
 
+#ifdef notdef
     bcopy(&tablePtr->active[j+1], &tablePtr->active[j], 
 	  (tablePtr->nActive-j) *sizeof tablePtr->active[0]);
+#else
+    memmove(&tablePtr->active[j], &tablePtr->active[j+1], 
+	  (tablePtr->nActive-j) *sizeof tablePtr->active[0]);
+#endif
 }
 
 /* append edge i to end of active list */
@@ -2182,13 +2297,183 @@ DrawCircle(Blt_Picture picture, int x, int y, int radius,
 
 	/* Scale the region forming the bounding box of the ellipse into a new
 	 * picture. The bounding box is scaled by *nSamples* times. */
-	bigPtr = Blt_CreatePicture(w+(1+offset)*4, h+(1+offset)*4);
+	bigPtr = Blt_CreatePicture(w+(1+offset)*nSamples,h+(1+offset)*nSamples);
+
 	cx = bigPtr->width / 2;
 	cy = bigPtr->height / 2;
 	
 	color.u32 = 0x00;
 	color.Alpha = 0x00;
 	Blt_BlankPicture(bigPtr, &color);
+	if (switchesPtr->shadow.offset > 0) {
+	    color.Alpha = switchesPtr->shadow.alpha;
+	    /* Either ring or full circle for blur stencil. */
+	    lw = switchesPtr->lineWidth * nSamples;
+	    if (filled) {
+		lw = 0;
+	    }
+	    PaintEllipse(bigPtr, cx, cy, r, r, lw, &color, 0);
+	    Blt_BlurPicture(bigPtr, bigPtr, offset/2);
+	    /* Offset the circle from the shadow. */
+	    cx -= offset;
+	    cy -= offset;
+	    offset = switchesPtr->shadow.offset;
+	    w = h = radius + radius + (1 + offset) * 2;
+	    tmpPtr = Blt_CreatePicture(w, h);
+	    Blt_ResamplePicture(tmpPtr, bigPtr, bltBoxFilter, bltBoxFilter);
+	    Blt_BlendPictures(picture, tmpPtr, 0, 0, w, h, x-w/2+offset, 
+		y-h/2+offset);
+	    color.u32 = 0x00;
+	    color.Alpha = 0x00;
+	    Blt_BlankPicture(bigPtr, &color);
+	    Blt_FreePicture(tmpPtr);
+	}
+	lw = switchesPtr->lineWidth * nSamples;
+	if ((lw > 0) && (r > lw) && (switchesPtr->outline.u32 != 0x00)) {
+	    /* Paint ring outline. */
+	    PaintEllipse(bigPtr, cx, cy, r, r, lw, &switchesPtr->outline, 0);
+	    r -= lw;
+	}
+	if (filled) {
+	    /* Paint filled interior */
+	    PaintEllipse(bigPtr, cx, cy, r, r, 0, &switchesPtr->fill, 0);
+	}
+	offset = switchesPtr->shadow.offset;
+	w = h = radius + radius + (1 + offset) * 2;
+	tmpPtr = Blt_CreatePicture(w, h);
+	Blt_ResamplePicture(tmpPtr, bigPtr, bltBoxFilter, bltBoxFilter);
+#ifdef notdef
+	fprintf(stderr, "big=%dx%d, blur=%d\n", bigPtr->width,bigPtr->height,
+		(switchesPtr->shadow.offset * nSamples)/2);
+#endif
+	Blt_FreePicture(bigPtr);
+	/*Blt_ApplyColorToPicture(tmpPtr, &switchesPtr->fill); */
+#ifdef notdef
+	Blt_BlendPictures(picture, tmpPtr, 0, 0, w, h, x-w/2+offset, 
+			  y-h/2+offset);
+#endif
+	{
+	    int yy;
+	    Blt_Pixel *destRowPtr;
+
+	    destRowPtr = Blt_PictureBits(tmpPtr);
+	    for (yy = 0; yy < Blt_PictureHeight(tmpPtr); yy++) {
+		Blt_Pixel *dp, *dend;
+
+		for (dp = destRowPtr, dend = dp + Blt_PictureWidth(tmpPtr); 
+		     dp < dend; dp++) {
+		    if (dp->Alpha != 0x00) {
+			dp->Red = switchesPtr->fill.Red;
+			dp->Green = switchesPtr->fill.Green;
+			dp->Blue = switchesPtr->fill.Blue;
+		    }
+		}
+		destRowPtr += Blt_PictureStride(tmpPtr);
+	    }
+	}	    
+#ifndef notdef
+	Blt_BlendPictures(picture, tmpPtr, 0, 0, w, h, x-w/2, 
+			  y-h/2);
+#else
+	Blt_CopyPictureBits(picture, tmpPtr, 0, 0, w, h, x-w/2, 
+			  y-h/2);
+#endif
+	Blt_FreePicture(tmpPtr);
+    } else if (switchesPtr->shadow.offset > 0) {
+	Pict *blurPtr;
+	int w, h;
+	Blt_Pixel color;
+	int offset, r, lw;
+	int cx, cy;
+
+	w = h = (radius + radius);
+	r = radius;
+	offset = switchesPtr->shadow.offset;
+
+	/* Scale the region forming the bounding box of the ellipse into a new
+	 * picture. The bounding box is scaled by *nSamples* times. */
+	blurPtr = Blt_CreatePicture(w+(offset*4), h+(offset*4));
+	cx = blurPtr->width / 2;
+	cy = blurPtr->height / 2;
+	color.u32 = 0x00;
+	Blt_BlankPicture(blurPtr, &color);
+
+	color.Alpha = switchesPtr->shadow.alpha;
+	/* Either ring or full circle for blur stencil. */
+	lw = switchesPtr->lineWidth;
+	if (filled) {
+	    lw = 0;
+	}
+	PaintEllipse(blurPtr, cx, cy, r, r, lw, &color, 0);
+	Blt_BlurPicture(blurPtr, blurPtr, offset);
+	/* Offset the circle from the shadow. */
+	cx -= offset;
+	cy -= offset;
+	lw = switchesPtr->lineWidth;
+	if ((lw > 0) && (r > lw) && (switchesPtr->outline.u32 != 0x00)) {
+	    /* Paint ring outline. */
+	    PaintEllipse(blurPtr, cx, cy, r, r, lw, &switchesPtr->outline, 0); 
+	    r -= lw;
+	}
+	if (filled) {
+	    /* Paint filled interior */
+	    PaintEllipse(blurPtr, cx, cy, r, r, 0, &switchesPtr->fill, 0);
+	}
+	x -= blurPtr->width/2 + offset;
+	if (x < 0) {
+	    x = 0;
+	}
+	y -= blurPtr->height/2 + offset;
+	if (y < 0) {
+	    y = 0;
+	}
+	Blt_BlendPictures(picture, blurPtr, 0, 0, blurPtr->width, 
+			  blurPtr->height, x, y);
+	Blt_FreePicture(blurPtr);
+    } else {
+	int r;
+
+	r = radius;
+	if ((switchesPtr->lineWidth > 0) && (r > switchesPtr->lineWidth)) {
+	    /* Paint ring outline. */
+	    PaintEllipse(picture, x, y, r, r, switchesPtr->lineWidth, 
+		&switchesPtr->outline, 1); 
+	    r -= switchesPtr->lineWidth;
+	}
+	if (filled) {
+	    /* Paint filled interior */
+	    PaintEllipse(picture, x, y, r, r, 0, &switchesPtr->fill, 1);
+	}
+    }
+}
+
+static void
+DrawCircle2(Blt_Picture picture, int x, int y, int radius, 
+	    CircleSwitches *switchesPtr)
+{
+    int filled;
+
+    filled = (switchesPtr->fill.u32 != 0x00);
+    if (switchesPtr->antialiased) {
+	int nSamples = 4; 
+	Pict *bigPtr, *tmpPtr;
+ 	int w, h;
+	Blt_Pixel color;
+	int offset, r, lw;
+	int cx, cy;
+	Blt_Pixel *srcRowPtr, *sp, *send;
+
+	r = radius;
+	w = h = r + r;
+	offset = switchesPtr->shadow.offset * nSamples;
+
+	/* Scale the region forming the bounding box of the ellipse into a new
+	 * picture. The bounding box is scaled by *nSamples* times. */
+	bigPtr = BgPicture(picture, x, y, w, h);
+	cx = bigPtr->width / 2;
+	cy = bigPtr->height / 2;
+	
+#ifdef notdef
 	if (switchesPtr->shadow.offset > 0) {
 	    color.Alpha = switchesPtr->shadow.alpha;
 	    /* Either ring or full circle for blur stencil. */
@@ -2208,15 +2493,16 @@ DrawCircle(Blt_Picture picture, int x, int y, int radius,
 	    PaintEllipse(bigPtr, cx, cy, r, r, lw, &switchesPtr->outline, 0);
 	    r -= lw;
 	}
+#endif
 	if (filled) {
 	    /* Paint filled interior */
-	    PaintEllipse(bigPtr, cx, cy, r, r, 0, &switchesPtr->fill, 0);
+	    PaintEllipse(bigPtr, cx, cy, r*3, r*3, 0, &switchesPtr->fill, 0);
 	}
 	offset = switchesPtr->shadow.offset;
-	w = h = radius + radius + (1 + offset) * 2;
 	tmpPtr = Blt_CreatePicture(w, h);
 	Blt_ResamplePicture(tmpPtr, bigPtr, bltBoxFilter, bltBoxFilter);
 #ifdef notdef
+	MarkPicture(tmpPtr);
 	fprintf(stderr, "big=%dx%d, blur=%d\n", bigPtr->width,bigPtr->height,
 		(switchesPtr->shadow.offset * nSamples)/2);
 #endif
@@ -2713,7 +2999,7 @@ TextOp(
     int objc,			/* Number of arguments. */
     Tcl_Obj *const *objv)	/* Argument objects. */
 { 
-#ifdef HAVE_FT2BUILD_H
+#if DRAWTEXT
     FtFont *fontPtr;
     TextSwitches switches;
     const char *string;
@@ -2800,12 +3086,14 @@ TextOp(
 	    Blt_FreePicture(rotPtr);
 	}
 	Blt_Free(layoutPtr);
-    } else {
+    } else { 
 	size_t w, h;
 
 	MeasureText(fontPtr, string, length, &w, &h);
 	Blt_TranslateAnchor(x, y, w, h, switches.anchor, &x, &y);
+#ifdef notdef
 	fprintf(stderr, "string=%s w=%d h=%d\n", string, w, h);
+#endif
 	if (switches.shadow.offset > 0) {
 	    Blt_Pixel color;
 	    Pict *blurPtr, *tmpPtr;
@@ -2833,8 +3121,8 @@ TextOp(
 	result = PaintText(destPtr, fontPtr, string, length, x, y, 
 			   switches.kerning, &switches.color);
     }
-    Blt_FreeSwitches(textSwitches, (char *)&switches, 0);
     CloseFont(fontPtr);
+    Blt_FreeSwitches(textSwitches, (char *)&switches, 0);
 #endif
     return TCL_OK;
 }
@@ -2979,8 +3267,8 @@ Polyline2(Pict *destPtr, int x1, int y1, int x2, int y2, Blt_Pixel *colorPtr)
 
 
 Blt_Picture
-Blt_PaintCheckbox(int w, int h, unsigned int fill, unsigned int outline, 
-		  unsigned int check, int on)
+Blt_PaintCheckbox(int w, int h, XColor *fillColor, XColor *outlineColor, 
+		  XColor *checkColor, int on)
 {
     Shadow shadow;
     Blt_Pixel color;
@@ -2995,13 +3283,15 @@ Blt_PaintCheckbox(int w, int h, unsigned int fill, unsigned int outline,
     shadow.offset = 1;
     shadow.alpha = 0xA0;
     x = y = 2;
-#ifdef nodef
-    PaintRectangleShadow(destPtr, x+1, y+1, w-2, h-2, 0, 0, &shadow);
-    color.u32 = fill;
-    PaintRectangle(destPtr, x+1, y+1, w-2, h-2, 0, 0, &color);
-    color.u32 = outline;
-    PaintRectangle(destPtr, x, y, w, h, 0, 1, &color);
-#endif
+    if (fillColor != NULL) {
+	PaintRectangleShadow(destPtr, x+1, y+1, w-2, h-2, 0, 0, &shadow);
+	color = Blt_XColorToPixel(fillColor);
+	PaintRectangle(destPtr, x+1, y+1, w-2, h-2, 0, 0, &color);
+    }
+    if (outlineColor != NULL) {
+	color = Blt_XColorToPixel(outlineColor);
+	PaintRectangle(destPtr, x, y, w, h, 0, 1, &color);
+    }
     x += 2, y += 2;
     w -= 5, h -= 5;
     if (on) {
@@ -3022,15 +3312,15 @@ Blt_PaintCheckbox(int w, int h, unsigned int fill, unsigned int outline,
 	shadow.offset = 2;
 	r.left = x, r.right = x + w;
 	r.top = y, r.bottom = y + h;
-	color.u32 = check;
+	color = Blt_XColorToPixel(checkColor);
 	PaintPolygonAA2(destPtr, 7, points, &r, &color, &shadow);
     }
     return destPtr;
 }
 
 Blt_Picture
-Blt_PaintRadioButton(int w, int h, unsigned int fill, unsigned int outline, 
-		     unsigned int indicator, int on)
+Blt_PaintRadioButton(int w, int h, XColor *fillColor, XColor *outlineColor, 
+		     XColor *indicatorColor, int on)
 {
     Blt_Picture picture;
     CircleSwitches switches;
@@ -3038,35 +3328,94 @@ Blt_PaintRadioButton(int w, int h, unsigned int fill, unsigned int outline,
     Blt_Pixel color;
 
     /* Process switches  */
-    switches.lineWidth = 1;
-    switches.fill.u32    = fill;
-    switches.outline.u32 = outline;
+    switches.lineWidth = 0;
+    switches.fill = Blt_XColorToPixel(fillColor);
+    switches.outline = Blt_XColorToPixel(outlineColor);
     switches.alpha = -1;
-    switches.antialiased = 0;
     switches.shadow.offset = 1;
-    switches.shadow.alpha = 0xa0;
+    switches.shadow.alpha = 0xA0;
     switches.antialiased = 1;
-
+    w &= ~1;
     picture = Blt_CreatePicture(w, h);
     color.u32 = 0x00;
     Blt_BlankPicture(picture, &color);
     w -= 6, h -= 6;
-    x = w / 2 + 2;
-    y = h / 2 + 2;
+    x = w / 2 + 1;
+    y = h / 2 + 1;
     r = (w+1) / 2;
-    switches.fill.u32 = fill;
-    switches.outline.u32 = outline;
     DrawCircle(picture, x, y, r, &switches);
     if (on) {
 	r -= 6;
 	if (r < 1) {
 	    r = 2;
 	}
-	switches.fill.u32 = indicator;
-	switches.outline.u32 = indicator;
+	switches.fill = Blt_XColorToPixel(indicatorColor);
+	switches.outline = switches.fill;
 	switches.lineWidth = 0;
 	switches.shadow.offset = 0;
 	DrawCircle(picture, x, y, r, &switches);
     }
     return picture;
 }
+
+
+Blt_Picture
+Blt_PaintDelete(int w, int h, XColor *fillColor, XColor *symColor)
+{
+    Blt_Picture picture;
+    Blt_Pixel color;
+    CircleSwitches switches;
+    Point2f points[4];
+    Region2f reg;
+    Shadow shadow;
+    int x, y, r;
+
+    shadow.offset = 1;
+    shadow.alpha = 0xA0;
+
+    /* Process switches  */
+    switches.lineWidth = 1;
+    switches.fill = Blt_XColorToPixel(fillColor);
+    switches.outline.u32 = 0x0;
+    switches.alpha = -1;
+    switches.shadow.offset = 1;
+    switches.shadow.alpha = 0x80;
+    switches.antialiased = 1;
+
+    shadow.offset = 0;
+    reg.left = x, reg.right = x + w;
+    reg.top = y, reg.bottom = y + h;
+
+    picture = Blt_CreatePicture(w, h);
+    color.u32 = 0x00;
+    Blt_BlankPicture(picture, &color);
+    x = y = w / 2 - 1;
+    r = x - 1;
+    DrawCircle(picture, x, y, r, &switches);
+
+    points[0].x = x - 2;
+    points[0].y = y - 3;
+    points[1].x = x - 3;
+    points[1].y = y - 2;
+    points[2].x = x + 2;
+    points[2].y = y + 3;
+    points[3].x = x + 3;
+    points[3].y = y + 2;
+
+    color = Blt_XColorToPixel(symColor);
+    PaintPolygonAA2(picture, 4, points, &reg, &color, &shadow);
+
+    points[0].x = x + 3;
+    points[0].y = y - 2;
+    points[1].x = x + 2;
+    points[1].y = y - 3;
+    points[2].x = x - 3;
+    points[2].y = y + 2;
+    points[3].x = x - 2;
+    points[3].y = y + 3;
+
+    PaintPolygonAA2(picture, 4, points, &reg, &color, &shadow);
+    return picture;
+}
+
+

@@ -199,3 +199,4 @@ BLT_EXTERN int finite(double x);
 #endif /* HAVE_FINITE */
 
 #endif /* BLT_MATH_H */
+

@@ -47,11 +47,11 @@
 typedef int (GraphPsProc)(Graph *graphPtr, Tcl_Interp *interp, int objc, 
 	Tcl_Obj *const *objv);
 
-static Blt_OptionParseProc ObjToPica;
-static Blt_OptionPrintProc PicaToObj;
+static Blt_OptionParseProc ObjToPicaProc;
+static Blt_OptionPrintProc PicaToObjProc;
 static Blt_CustomOption picaOption =
 {
-    ObjToPica, PicaToObj, NULL, (ClientData)0,
+    ObjToPicaProc, PicaToObjProc, NULL, (ClientData)0,
 };
 
 static Blt_OptionParseProc ObjToPad;
@@ -70,7 +70,6 @@ static Blt_CustomOption padOption =
 #define DEF_PS_LEVEL		"2"
 #define DEF_PS_HEIGHT		"0"
 #define DEF_PS_LANDSCAPE	"no"
-#define DEF_PS_MAXPECT		"no"
 #define DEF_PS_PADX		"1.0i"
 #define DEF_PS_PADY		"1.0i"
 #define DEF_PS_PAPERHEIGHT	"11.0i"
@@ -100,16 +99,14 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_BITMASK, "-greyscale", "greyscale", "Greyscale",
 	DEF_PS_GREYSCALE, Blt_Offset(PageSetup, flags),
 	BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)PS_GREYSCALE},
-    {BLT_CONFIG_PIXELS_NNEG, "-height", "height", "Height", DEF_PS_HEIGHT, 
-	Blt_Offset(PageSetup, reqHeight), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_CUSTOM, "-height", "height", "Height", DEF_PS_HEIGHT, 
+	Blt_Offset(PageSetup, reqHeight), BLT_CONFIG_DONT_SET_DEFAULT,
+	&picaOption},
     {BLT_CONFIG_BITMASK, "-landscape", "landscape", "Landscape",
 	DEF_PS_LANDSCAPE, Blt_Offset(PageSetup, flags),
 	BLT_CONFIG_DONT_SET_DEFAULT, (Blt_CustomOption *)PS_LANDSCAPE},
     {BLT_CONFIG_INT_POS, "-level", "level", "Level", DEF_PS_LEVEL, 
 	Blt_Offset(PageSetup, level), BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_BITMASK, "-maxpect", "maxpect", "Maxpect", DEF_PS_MAXPECT, 
-	Blt_Offset(PageSetup, flags), BLT_CONFIG_DONT_SET_DEFAULT, 
-	(Blt_CustomOption *)PS_MAXPECT},
     {BLT_CONFIG_CUSTOM, "-padx", "padX", "PadX", DEF_PS_PADX, 
 	Blt_Offset(PageSetup, xPad), 0, &padOption},
     {BLT_CONFIG_CUSTOM, "-pady", "padY", "PadY", DEF_PS_PADY, 
@@ -120,28 +117,30 @@ static Blt_ConfigSpec configSpecs[] =
     {BLT_CONFIG_CUSTOM, "-paperwidth", "paperWidth", "PaperWidth",
 	DEF_PS_PAPERWIDTH, Blt_Offset(PageSetup, reqPaperWidth), 0,
 	&picaOption},
-    {BLT_CONFIG_PIXELS_NNEG, "-width", "width", "Width", DEF_PS_WIDTH, 
-	Blt_Offset(PageSetup, reqWidth), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_CUSTOM, "-width", "width", "Width", DEF_PS_WIDTH, 
+        Blt_Offset(PageSetup, reqWidth), BLT_CONFIG_DONT_SET_DEFAULT, 
+	&picaOption},
     {BLT_CONFIG_END, NULL, NULL, NULL, NULL, 0, 0}
 };
 
 /*
  *---------------------------------------------------------------------------
  *
- * ObjToPica --
+ * ObjToPicaProc --
  *
  *---------------------------------------------------------------------------
  */
 /*ARGSUSED*/
 static int
-ObjToPica(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* New value. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
-    int flags)			/* Not used. */
+ObjToPicaProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* New value. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
+    int flags)				/* Not used. */
 {
     int *picaPtr = (int *)(widgRec + offset);
 
@@ -157,13 +156,13 @@ ObjToPica(
  */
 /*ARGSUSED*/
 static Tcl_Obj *
-PicaToObj(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Not used. */
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* PostScript structure record */
-    int offset,			/* Offset to field in structure */
-    int flags)			/* Not used. */
+PicaToObjProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Not used. */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* PostScript structure record */
+    int offset,				/* Offset to field in structure */
+    int flags)				/* Not used. */
 {
     int pica = *(int *)(widgRec + offset);
 
@@ -180,13 +179,14 @@ PicaToObj(
 /*ARGSUSED*/
 static int
 ObjToPad(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* New value. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
-    int flags)			/* Not used. */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* New value. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
+    int flags)				/* Not used. */
 {
     Blt_Pad *padPtr = (Blt_Pad *) (widgRec + offset);
 
@@ -262,7 +262,7 @@ PostScriptPreamble(Graph *graphPtr, const char *fileName, Blt_Ps ps)
 {
     PageSetup *setupPtr = graphPtr->pageSetup;
     time_t ticks;
-    char date[200];		/* Hold the date string from ctime() */
+    char date[200];			/* Holds the date string from ctime() */
     const char *version;
     char *newline;
 
@@ -349,10 +349,12 @@ PostScriptPreamble(Graph *graphPtr, const char *fileName, Blt_Ps ps)
 	    "%% Landscape orientation\n0 %g translate\n-90 rotate\n",
 	    ((double)graphPtr->width * setupPtr->scale));
     }
+#ifdef notdef
     if (setupPtr->scale != 1.0f) {
 	Blt_Ps_Append(ps, "\n% Setting graph scale factor\n");
 	Blt_Ps_Format(ps, " %g %g scale\n", setupPtr->scale, setupPtr->scale);
     }
+#endif
     Blt_Ps_Append(ps, "\n%%EndSetup\n\n");
     return TCL_OK;
 }
@@ -386,26 +388,24 @@ MarginsToPostScript(Graph *graphPtr, Blt_Ps ps)
     
     Blt_Ps_Append(ps, "% Interior 3D border\n");
     /* Interior 3D border */
-    if ((graphPtr->plotBorderWidth > 0) && (setupPtr->flags & PS_DECORATIONS)) {
+    if (graphPtr->plotBW > 0) {
 	Tk_3DBorder border;
-	int x, y, width, height;
+	int x, y, w, h;
 
-	x = graphPtr->left - graphPtr->plotBorderWidth;
-	y = graphPtr->top - graphPtr->plotBorderWidth;
-	width = (graphPtr->right - graphPtr->left) + 
-		(2 * graphPtr->plotBorderWidth);
-	height = (graphPtr->bottom - graphPtr->top) + 
-		(2 * graphPtr->plotBorderWidth);
+	x = graphPtr->left - graphPtr->plotBW;
+	y = graphPtr->top - graphPtr->plotBW;
+	w = (graphPtr->right - graphPtr->left) + (2*graphPtr->plotBW);
+	h = (graphPtr->bottom - graphPtr->top) + (2*graphPtr->plotBW);
 	border = Blt_BackgroundBorder(graphPtr->normalBg);
-	Blt_Ps_Draw3DRectangle(ps, border, (double)x, (double)y, width, height,
-		graphPtr->plotBorderWidth, graphPtr->plotRelief);
+	Blt_Ps_Draw3DRectangle(ps, border, (double)x, (double)y, w, h,
+		graphPtr->plotBW, graphPtr->plotRelief);
     }
-    if (Blt_LegendSite(graphPtr->legend) & LEGEND_MARGIN_MASK) {
+    if (Blt_Legend_Site(graphPtr) & LEGEND_MARGIN_MASK) {
 	/*
 	 * Print the legend if we're using a site which lies in one of the
 	 * margins (left, right, top, or bottom) of the graph.
 	 */
-	Blt_LegendToPostScript(graphPtr->legend, ps);
+	Blt_LegendToPostScript(graphPtr, ps);
     }
     if (graphPtr->title != NULL) {
 	Blt_Ps_Append(ps, "% Graph title\n");
@@ -421,32 +421,42 @@ GraphToPostScript(Graph *graphPtr, const char *ident, Blt_Ps ps)
 {
     int x, y, w, h;
     int result;
+    PageSetup *setupPtr = graphPtr->pageSetup;
 
     /*   
-     * We need to know how big a graph to print.  If the graph hasn't been
-     * drawn yet, the width and height will be 1.  Instead use the requested
-     * size of the widget.  The user can still override this with the -width
-     * and -height postscript options.
+     * We need to know how big a graph to print.  If the graph hasn't been drawn
+     * yet, the width and height will be 1.  Instead use the requested size of
+     * the widget.  The user can still override this with the -width and -height
+     * postscript options.
      */
-    h = (graphPtr->height>0) ? graphPtr->height : Tk_ReqHeight(graphPtr->tkwin);
-    w = (graphPtr->width>0) ? graphPtr->width : Tk_ReqWidth(graphPtr->tkwin);
+    if (setupPtr->reqWidth > 0) {
+	graphPtr->width = setupPtr->reqWidth;
+    } else if (graphPtr->width < 2) {
+	graphPtr->width = Tk_ReqWidth(graphPtr->tkwin);
+    }
+    if (setupPtr->reqHeight > 0) {
+	graphPtr->height = setupPtr->reqHeight;
+    } else if (graphPtr->height < 2) {
+	graphPtr->height = Tk_ReqHeight(graphPtr->tkwin);
+    }
+    Blt_Ps_ComputeBoundingBox(setupPtr, graphPtr->width, graphPtr->height);
+    graphPtr->flags |= LAYOUT_NEEDED | RESET_WORLD;
 
-    Blt_Ps_ComputeBoundingBox(graphPtr->pageSetup, &w, &h);
-    graphPtr->width = w;
-    graphPtr->height = h;
-    graphPtr->flags |= LAYOUT_NEEDED | MAP_WORLD;
-    Blt_LayoutGraph(graphPtr);
+    /* Turn on PostScript measurements when computing the graph's layout. */
+    Blt_Ps_SetPrinting(ps, TRUE);
+    Blt_ReconfigureGraph(graphPtr);
+    Blt_MapGraph(graphPtr);
 
     result = PostScriptPreamble(graphPtr, ident, ps);
     if (result != TCL_OK) {
 	goto error;
     }
     /* Determine rectangle of the plotting area for the graph window */
-    x = graphPtr->left - graphPtr->plotBorderWidth;
-    y = graphPtr->top - graphPtr->plotBorderWidth;
+    x = graphPtr->left - graphPtr->plotBW;
+    y = graphPtr->top - graphPtr->plotBW;
 
-    w = (graphPtr->right - graphPtr->left + 1) + (2*graphPtr->plotBorderWidth);
-    h = (graphPtr->bottom - graphPtr->top + 1) + (2*graphPtr->plotBorderWidth);
+    w = (graphPtr->right - graphPtr->left + 1) + (2*graphPtr->plotBW);
+    h = (graphPtr->bottom - graphPtr->top + 1) + (2*graphPtr->plotBW);
 
     Blt_Ps_XSetFont(ps, Blt_Ts_GetFont(graphPtr->titleTextStyle));
     if (graphPtr->pageSetup->flags & PS_DECORATIONS) {
@@ -460,17 +470,17 @@ GraphToPostScript(Graph *graphPtr, const char *ident, Blt_Ps ps)
     /* Draw the grid, elements, and markers in the plotting area. */
     Blt_GridsToPostScript(graphPtr, ps);
     Blt_MarkersToPostScript(graphPtr, ps, TRUE);
-    if ((Blt_LegendSite(graphPtr->legend) & LEGEND_PLOTAREA_MASK) && 
-	(!Blt_LegendIsRaised(graphPtr->legend))) {
+    if ((Blt_Legend_Site(graphPtr) & LEGEND_PLOTAREA_MASK) && 
+	(!Blt_Legend_IsRaised(graphPtr))) {
 	/* Print legend underneath elements and markers */
-	Blt_LegendToPostScript(graphPtr->legend, ps);
+	Blt_LegendToPostScript(graphPtr, ps);
     }
     Blt_AxisLimitsToPostScript(graphPtr, ps);
     Blt_ElementsToPostScript(graphPtr, ps);
-    if ((Blt_LegendSite(graphPtr->legend) & LEGEND_PLOTAREA_MASK) && 
-	(Blt_LegendIsRaised(graphPtr->legend))) {
+    if ((Blt_Legend_Site(graphPtr) & LEGEND_PLOTAREA_MASK) && 
+	(Blt_Legend_IsRaised(graphPtr))) {
 	/* Print legend above elements (but not markers) */
-	Blt_LegendToPostScript(graphPtr->legend, ps);
+	Blt_LegendToPostScript(graphPtr, ps);
     }
     Blt_MarkersToPostScript(graphPtr, ps, FALSE);
     Blt_ActiveElementsToPostScript(graphPtr, ps);
@@ -488,8 +498,10 @@ GraphToPostScript(Graph *graphPtr, const char *ident, Blt_Ps ps)
     /* Reset height and width of graph window */
     graphPtr->width = Tk_Width(graphPtr->tkwin);
     graphPtr->height = Tk_Height(graphPtr->tkwin);
-    graphPtr->flags = MAP_WORLD;
-
+    graphPtr->flags |= MAP_WORLD;
+    Blt_Ps_SetPrinting(ps, FALSE);
+    Blt_ReconfigureGraph(graphPtr);
+    Blt_MapGraph(graphPtr);
     /*
      * Redraw the graph in order to re-calculate the layout as soon as
      * possible. This is in the case the crosshairs are active.
@@ -576,17 +588,17 @@ OutputOp(Graph *graphPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     const char *buffer;
     PostScript *psPtr;
     Tcl_Channel channel;
-    const char *fileName;	/* Name of file to write PostScript output If
-                                 * NULL, output is returned via
-                                 * interp->result. */
+    const char *fileName;		/* Name of file to write PostScript
+					 * output If NULL, output is returned
+					 * via interp->result. */
     int length;
 
-    fileName = NULL;		/* Used to identify the output sink. */
+    fileName = NULL;			/* Used to identify the output sink. */
     channel = NULL;
     if (objc > 3) {
 	fileName = Tcl_GetString(objv[3]);
 	if (fileName[0] != '-') {
-	    objv++, objc--;	/* First argument is the file name. */
+	    objv++, objc--;		/* First argument is the file name. */
 	    channel = Tcl_OpenFileChannel(interp, fileName, "w", 0666);
 	    if (channel == NULL) {
 		return TCL_ERROR;
@@ -599,12 +611,10 @@ OutputOp(Graph *graphPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     }
 
     psPtr = Blt_Ps_Create(graphPtr->interp, graphPtr->pageSetup);
-    if (objc > 3) {
-	if (Blt_ConfigureWidgetFromObj(interp, graphPtr->tkwin, configSpecs, 
-		objc - 3, objv + 3, (char *)graphPtr->pageSetup, 
-		BLT_CONFIG_OBJV_ONLY) != TCL_OK) {
-	    return TCL_ERROR;
-	}
+    if (Blt_ConfigureWidgetFromObj(interp, graphPtr->tkwin, configSpecs, 
+	objc - 3, objv + 3, (char *)graphPtr->pageSetup, BLT_CONFIG_OBJV_ONLY) 
+	!= TCL_OK) {
+	return TCL_ERROR;
     }
     if (GraphToPostScript(graphPtr, fileName, psPtr) != TCL_OK) {
 	goto error;
@@ -652,7 +662,7 @@ OutputOp(Graph *graphPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
  *---------------------------------------------------------------------------
  */
 int
-Blt_Graph_CreatePageSetup(Graph *graphPtr)
+Blt_CreatePageSetup(Graph *graphPtr)
 {
     PageSetup *setupPtr;
 
@@ -715,8 +725,7 @@ Blt_DestroyPageSetup(Graph *graphPtr)
 {
     if (graphPtr->pageSetup != NULL) {
 	Blt_FreeOptions(configSpecs, (char *)graphPtr->pageSetup, 
-			graphPtr->display, 0);
+		graphPtr->display, 0);
 	Blt_Free(graphPtr->pageSetup);
     }
 }
-

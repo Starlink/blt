@@ -495,8 +495,9 @@ ReadXmlFromFile(
 			"error: ", 
 			XML_ErrorString(XML_GetErrorCode(parser)), 
 			(char *)NULL);
-	    fprintf(stderr, "buffer=%.*s\n", XML_GetCurrentByteIndex(parser), 
-		    buffer);
+	    fprintf(stderr, "buffer=%.*s\n", 
+		(int)XML_GetCurrentByteIndex(parser), 
+		buffer);
 	    if (closeChannel) {
 		Tcl_Close(interp, channel);
 	    }

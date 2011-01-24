@@ -764,38 +764,23 @@ set myIcon ""
 blt::comboentry .e \
     -textvariable myText1 \
     -iconvariable myIcon1 \
-    -borderwidth 2 \
     -textbackground $bg \
-    -highlightthickness 1 \
-    -button yes \
     -menu .e.m \
-    -menuanchor se \
+    -menuanchor ne \
     -exportselection yes 
 
-blt::table . \
-    0,0 .e -fill both -cspan 2 -padx 2 -pady 2 
-
-blt::table configure . c1 -resize shrink
-#blt::table configure . r0 -resize shrink
-blt::table configure . c0 -pad { 2 0 }
-blt::table configure . c1 -pad { 0 2 }
 
 blt::combomenu .e.m  \
     -textvariable myText1 \
-    -height -400 \
-    -width -400 \
-    -background $bg \
     -iconvariable myIcon1 \
-    -indicatorforeground black \
-    -xscrollcommand { .e.m.xbar set } \
-    -yscrollcommand { .e.m.ybar set } \
+    -height { 0 400 } \
+    -width  { 0 400 } \
+    -background $bg \
     -yscrollbar .e.m.ybar \
     -xscrollbar .e.m.xbar
 
-blt::tk::scrollbar .e.m.xbar -orient horizontal -command { .e.m xview } \
-    -width 17
-blt::tk::scrollbar .e.m.ybar -orient vertical -command { .e.m yview } \
-    -highlightthickness 0 -width 17 
+blt::tk::scrollbar .e.m.xbar 
+blt::tk::scrollbar .e.m.ybar 
 
 set bg [image create picture -width 30 -height 20]
 $bg blank 0x0000000
@@ -809,3 +794,8 @@ foreach {rgb name} $colors {
     	-shadow 2 -antialiased 1 -linewidth 1
     .e.m add -text $name -icon $icon
 }
+
+button .quit -text "Exit" -command exit
+blt::table . \
+    0,0 .e -fill both -padx 2 -pady 2  \
+    1,0 .quit 

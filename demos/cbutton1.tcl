@@ -54,16 +54,16 @@ blt::combobutton .mbar.file \
     -image $image \
     -relief flat \
     -activerelief raised \
-    -indicatoron off \
+    -arrowon off \
     -bg $bg \
-    -font { Arial 10 bold } -justify left \
+    -font { Arial 9 } -justify left \
     -menuanchor sw \
     -menu .mbar.file.m
 
 
 
 blt::combomenu .mbar.file.m \
-    -width -400  -font "Arial 10 bold" -acceleratorfont "Arial 10 bold" \
+    -width { 0 400 }  -font "Arial 9" -acceleratorfont "Arial 9" \
     -bg grey85 -relief raised -bd 1
 .mbar.file.m add -text "New Window" -accelerator "Ctrl+N" -underline 0 \
     -icon $icon(new_window)
@@ -97,14 +97,14 @@ blt::combobutton .mbar.edit \
     -relief flat \
     -activerelief raised \
     -bg $bg \
-    -font { Arial 10 bold } -justify left \
+    -font { Arial 9 } -justify left \
     -underline 0 \
-    -indicatoron no \
+    -arrowon no \
     -menuanchor nw \
     -menu .mbar.edit.m
 
 blt::combomenu .mbar.edit.m \
-    -width -400  -font "Arial 10 bold" -acceleratorfont "Arial 10 bold" \
+    -width { 0 400 }  -font "Arial 9" -acceleratorfont "Arial 9" \
     -bg grey85 -relief raised -bd 1
 .mbar.edit.m add -text "Undo" -accelerator "Ctrl+Z"  \
     -icon $icon(undo)
@@ -143,18 +143,18 @@ blt::combobutton .mbar.view \
     -relief flat \
     -activerelief raised \
     -bg $bg \
-    -font { Arial 10 bold } -justify left \
+    -font { Arial 9 } -justify left \
     -underline 0 \
-    -indicatoron no \
+    -arrowon no \
     -menuanchor nw \
     -menu .mbar.view.m
 
 blt::combomenu .mbar.view.m \
-    -width -600  -font "Arial 10 bold" -acceleratorfont "Arial 10 bold" \
+    -width { 0 600 }  -font "Arial 9" -acceleratorfont "Arial 9" \
     -bg grey85 -relief raised -bd 1
 .mbar.view.m add -type cascade -text "Toolbars" -underline 0 
 .mbar.view.m add -type checkbutton -text "Status Bar" \
-    -underline 4 
+    -underline 4 -variable statusbar
 .mbar.view.m add -type checkbutton -text "Sidebar" \
     -underline 5 -variable sidebar 
 .mbar.view.m add -type checkbutton -text "Adblock Plus: Blockable items" \
@@ -180,14 +180,14 @@ blt::combobutton .mbar.history \
     -relief flat \
     -activerelief raised \
     -bg $bg \
-    -font { Arial 10 bold } -justify left \
+    -font { Arial 9 } -justify left \
     -underline 0 \
-    -indicatoron no \
+    -arrowon no \
     -menuanchor nw \
     -menu .mbar.history.m
 
 blt::combomenu .mbar.history.m \
-    -width -600  -font "Arial 10 bold" -acceleratorfont "Arial 10 bold" \
+    -width { 0 600 }  -font "Arial 9" -acceleratorfont "Arial 9" \
     -bg grey85 -relief raised -bd 1
 .mbar.history.m add -text "Back" -accelerator "Alt+Left Arrow" \
     -underline 0 -icon $icon(back)
@@ -206,14 +206,14 @@ blt::combobutton .mbar.bmarks \
     -relief flat \
     -activerelief raised \
     -bg $bg \
-    -font { Arial 10 bold } -justify left \
+    -font { Arial 9 } -justify left \
     -underline 0 \
-    -indicatoron no \
+    -arrowon no \
     -menuanchor nw \
     -menu .mbar.bmarks.m
 
 blt::combomenu .mbar.bmarks.m \
-    -width -600  -font "Arial 10 bold" -acceleratorfont "Arial 10 bold" \
+    -width { 0 600 }  -font "Arial 9" -acceleratorfont "Arial 9" \
     -bg grey85 -relief raised -bd 1
 .mbar.bmarks.m add -text "Bookmark This Page" -accelerator "Ctrl+D" \
     -underline 0 -icon $icon(bookmark)
@@ -242,14 +242,14 @@ blt::combobutton .mbar.tools \
     -relief flat \
     -activerelief raised \
     -bg $bg \
-    -font { Arial 10 bold } -justify left \
+    -font { Arial 9 } -justify left \
     -underline 0 \
-    -indicatoron no \
+    -arrowon no \
     -menuanchor nw \
     -menu .mbar.tools.m
 
 blt::combomenu .mbar.tools.m \
-    -width -600  -font "Arial 10 bold" -acceleratorfont "Arial 10 bold" \
+    -width { 0 600 }  -font "Arial 9" -acceleratorfont "Arial 9" \
     -bg grey85 -relief raised -bd 1
 .mbar.tools.m add -text "Web Search" -accelerator "Ctrl+K" \
     -underline 0 
@@ -277,14 +277,14 @@ blt::combobutton .mbar.help \
     -relief flat \
     -activerelief raised \
     -bg $bg \
-    -font { Arial 10 bold } -justify left \
+    -font { Arial 9 } -justify left \
     -underline 0 \
-    -indicatoron no \
+    -arrowon no \
     -menuanchor nw \
     -menu .mbar.help.m
 
 blt::combomenu .mbar.help.m \
-    -width -600  -font "Arial 10 bold" -acceleratorfont "Arial 10 bold" \
+    -width { 0 600 } -font "Arial 9" -acceleratorfont "Arial 9" \
     -bg grey85 -relief raised -bd 1
 .mbar.help.m add -text "Help Contents" \
     -underline 0 -icon $icon(help)

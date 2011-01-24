@@ -1154,11 +1154,8 @@ BmpImageData(Blt_DBuffer dbuffer, Bmp *bmpPtr)
  *---------------------------------------------------------------------------
  */
 static Blt_Chain 
-BmpToPicture(
-    Tcl_Interp *interp, 
-    const char *fileName,
-    Blt_DBuffer dbuffer,
-    BmpImportSwitches *switchesPtr)
+BmpToPicture(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer,
+	     BmpImportSwitches *switchesPtr)
 {
     Blt_Chain chain;
     Blt_Picture picture;
@@ -1225,7 +1222,7 @@ BmpToPicture(
  *---------------------------------------------------------------------------
  */
 static int
-PictureToBmp(Tcl_Interp *interp, Blt_Chain chain, Blt_DBuffer dbuffer,
+PictureToBmp(Tcl_Interp *interp, Blt_Picture original, Blt_DBuffer dbuffer,
 	     BmpExportSwitches *switchesPtr)
 {
     int nColors;
@@ -1236,9 +1233,7 @@ PictureToBmp(Tcl_Interp *interp, Blt_Chain chain, Blt_DBuffer dbuffer,
     unsigned int wordsPerRow, bytesPerRow;
     unsigned int imageSize, fileSize, infoHeaderSize, offsetToData;
     unsigned char *bp, *destBits;
-    Blt_Picture original;
 
-    original = Blt_GetNthPicture(chain, switchesPtr->index);
     srcPtr = original;
     if (switchesPtr->flags & EXPORT_ALPHA) {
 	bitsPerPixel = 32;
@@ -1475,11 +1470,11 @@ ReadBmp(Tcl_Interp *interp, const char *fileName, Blt_DBuffer dbuffer)
 }
 
 static Tcl_Obj *
-WriteBmp(Tcl_Interp *interp, Blt_Chain chain)
+WriteBmp(Tcl_Interp *interp, Blt_Picture picture)
 {
-    Tcl_Obj *objPtr;
     Blt_DBuffer dbuffer;
     BmpExportSwitches switches;
+    Tcl_Obj *objPtr;
 
     /* Default export switch settings. */
     memset(&switches, 0, sizeof(switches));
@@ -1487,7 +1482,7 @@ WriteBmp(Tcl_Interp *interp, Blt_Chain chain)
 
     dbuffer = Blt_DBuffer_Create();
     objPtr = NULL;
-    if (PictureToBmp(interp, chain, dbuffer, &switches) == TCL_OK) {
+    if (PictureToBmp(interp, picture, dbuffer, &switches) == TCL_OK) {
 	char *bytes;
 
 	bytes = Blt_DBuffer_EncodeBase64(interp, dbuffer);
@@ -1530,7 +1525,7 @@ ImportBmp(
 	int nBytes;
 
 	bytes = Tcl_GetByteArrayFromObj(switches.dataObjPtr, &nBytes);
-	if (Blt_IsBase64((const char *)bytes, nBytes)) {
+	if (Blt_IsBase64(bytes, nBytes)) {
 	    if (Blt_DBuffer_DecodeBase64(interp, string, nBytes, dbuffer) 
 		!= TCL_OK) {
 		goto error;
@@ -1558,15 +1553,17 @@ ImportBmp(
 }
 
 static int
-ExportBmp(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
+ExportBmp(Tcl_Interp *interp, unsigned int index, Blt_Chain chain, 
+	  int objc, Tcl_Obj *const *objv)
 {
-    BmpExportSwitches switches;
     Blt_DBuffer dbuffer;
+    Blt_Picture picture;
+    BmpExportSwitches switches;
     int result;
 
     memset(&switches, 0, sizeof(switches));
     switches.bg.u32 = 0xFFFFFFFF; /* Default bgcolor is white. */
-
+    switches.index = index;
     if (Blt_ParseSwitches(interp, exportSwitches, objc - 3, objv + 3, 
 	&switches, BLT_SWITCH_DEFAULTS) < 0) {
 	return TCL_ERROR;
@@ -1576,9 +1573,13 @@ ExportBmp(Tcl_Interp *interp, Blt_Chain chain, int objc, Tcl_Obj *const *objv)
 		"use only one -file or -data switch.", (char *)NULL);
 	return TCL_ERROR;
     }
-
+    picture = Blt_GetNthPicture(chain, switches.index);
+    if (picture == NULL) {
+	Tcl_AppendResult(interp, "bad picture index.", (char *)NULL);
+	return TCL_ERROR;
+    }
     dbuffer = Blt_DBuffer_Create();
-    result = PictureToBmp(interp, chain, dbuffer, &switches);
+    result = PictureToBmp(interp, picture, dbuffer, &switches);
     if (result != TCL_OK) {
 	Tcl_AppendResult(interp, "can't convert \"", 
 		Tcl_GetString(objv[2]), "\"", (char *)NULL);

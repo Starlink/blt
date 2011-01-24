@@ -267,41 +267,73 @@ XGeometryErrorProc(ClientData clientData, XErrorEvent *errEventPtr)
 }
 
 int
-Blt_GetWindowRegion(
-    Display *display,
-    Window window,
-    int *xPtr, int *yPtr, 
-    int *widthPtr, int *heightPtr)
+Blt_GetWindowRegion(Display *display, Window window, int *xPtr, int *yPtr, 
+		    int *widthPtr, int *heightPtr)
 {
     Tk_ErrorHandler handler;
     Window root;
     int any = -1;
     int result;
     int x, y;
-    unsigned int width, height, borderWidth, depth;
+    unsigned int w, h, bw, depth;
 
     handler = Tk_CreateErrorHandler(display, any, X_GetGeometry, any, 
 	XGeometryErrorProc, &result);
-    result = XGetGeometry(display, window, &root, &x, &y, &width, &height, 
-	&borderWidth, &depth);
-    Tk_DeleteErrorHandler(handler);
-    XSync(display, False);
+    result = XGetGeometry(display, window, &root, &x, &y, &w, &h, &bw, &depth);
     if (!result) {
-	return TCL_ERROR;
-    }
-    if (xPtr != NULL) {
-	*xPtr = x;
-    }
-    if (yPtr != NULL) {
-	*yPtr = y;
+	goto error;
     }
     if (widthPtr != NULL) {
-	*widthPtr = (int)width;
+	*widthPtr = (int)w;
     }
     if (heightPtr != NULL) {
-	*heightPtr = (int)height;
+	*heightPtr = (int)h;
     }
+    if ((xPtr != NULL) || (yPtr != NULL)) {
+	int rootX, rootY;
+	rootX = rootY = 0;
+
+	do {
+	    Window *children, parent;
+	    unsigned int n;
+	    
+	    parent = -1;
+	    fprintf(stderr, "before geomtry window=%x, root=%x parent=%x\n", 
+		    window, root, parent);
+	    result = XGetGeometry(display, window, &root, &x, &y, &w, &h, 
+				  &bw, &depth);
+	    if (!result) {
+		goto error;
+	    }
+	    rootX += x + bw;
+	    rootY += y + bw;
+	    fprintf(stderr, "before window=%x, root=%x parent=%x\n", 
+		    window, root, parent);
+	    result = XQueryTree(display, window, &root, &parent, &children, &n);
+	    fprintf(stderr, "after window=%x, root=%x parent=%x\n", 
+		    window, root, parent);
+	    XFree(children);
+	    if (!result) {
+		goto error;
+	    }
+	    window = parent;
+	} while (window != root);
+
+	if (xPtr != NULL) {
+	    *xPtr = rootX;
+	}
+	if (yPtr != NULL) {
+	    *yPtr = rootY;
+	}
+    }
+    Tk_DeleteErrorHandler(handler);
+    XSync(display, False);
     return TCL_OK;
+ error:
+    Tk_DeleteErrorHandler(handler);
+    XSync(display, False);
+    fprintf(stderr, "failed to get window region\n");
+    return TCL_ERROR;
 }
 
 /*

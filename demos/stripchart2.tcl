@@ -242,12 +242,12 @@ if 0 {
         blt::table $win $win.del 3,1 -anchor e -padx 4 -pady 4
     }
 
-    $win.rate set 10
+    $win.rate set 1000
     catch {$win.smooth.[.sc element cget $name -smooth] invoke} mesg
 
     set sources($name-choice) $cwin
     set sources($name-controls) $win
-    set sources($name-stream) [after 10 [list source_event $name 10]]
+    set sources($name-stream) [after 100 [list source_event $name 10]]
     set sources($name-x) $xvname
     set sources($name-y) $yvname
     set sources($name-w) $wvname

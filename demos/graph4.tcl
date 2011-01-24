@@ -1,6 +1,7 @@
 #!../src/bltwish
 
 package require BLT
+package require blt_datatable_vector
 source scripts/demo.tcl
 
 set tcl_precision 15 
@@ -11,13 +12,12 @@ image create picture bgTexture -file ./images/chalk.gif
 option add *default			normal
 option add *Button.tile			bgTexture
 
-option add *Htext.font			-*-times*-bold-r-*-*-18-*-*
-option add *Text.font			"Serif 18"
+#option add *Htext.font			-*-times*-bold-r-*-*-18-*-*
+#option add *Text.font			"Serif 18"
 option add *header.font			"{Times New Roman} 12"
-option add *footer.font			-*-times*-medium-r-*-*-18-*-*
+#option add *footer.font			-*-times*-medium-r-*-*-18-*-*
 option add *Graph.relief		raised
 #option add *Graph.borderWidth		2
-option add *Graph.Legend.activeBackground white
 option add *Graph.height		5i
 option add *Graph.plotBackground	black
 option add *Graph.width			7i
@@ -25,11 +25,7 @@ option add *Graph.tile			bgTexture
 option add *Graph.halo			0
 
 option add *Graph.title			"s27.out"
-option add *Graph.font			"Arial bold 18"
 
-option add *Axis.tickFont		"Courier 10"
-#option add *Axis.titleFont		-*-helvetica-bold-r-*-*-140-*
-option add *Axis.titleFont		"Arial 10 bold"
 option add *Axis.titleColor		red2
 option add *x.title			"Time"
 option add *y.title			"Signals"
@@ -53,7 +49,6 @@ option add *Grid.hide			no
 option add *Legend.ActiveRelief		sunken
 option add *Legend.Position		right
 option add *Legend.Relief		flat
-option add *Legend.font			{ {Times New Roman} 6 } 
 option add *Legend.Pad			0
 option add *Legend.hide			no
 

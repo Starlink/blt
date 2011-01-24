@@ -33,41 +33,33 @@ instdirs =	$(prefix) \
 
 INSTALL =	@INSTALL@
 INSTALL_DATA =	@INSTALL_DATA@
-INSTALL_ROOT = 
 SHELL =		/bin/sh
+MKDIR_P =	@MKDIR_P@
 RM =		rm -f
 
 subdirs =	src library man demos 
 
 all:  
-	(cd src; $(MAKE) all)
-	(cd library; $(MAKE) all)
-	(cd man; $(MAKE) all)
-	(cd demos; $(MAKE) all)
+	for i in $(subdirs); do \
+	   $(MAKE) -C $$i all || exit 1 ; \
+	done
 
 install: mkdirs install-all 
 
-install-all:
-	(cd src; $(MAKE) install)
-	(cd library; $(MAKE) install)
-	(cd man; $(MAKE) install)
-	(cd demos; $(MAKE) install)
+install-all: 
+	for i in $(subdirs); do \
+	   $(MAKE) -C $$i install || exit 1 ; \
+	done
 
 mkdirs:
 	@for i in $(instdirs) ; do \
-          if test -d $(INSTALL_ROOT)$$i ; then \
-	    : ; \
-	  else \
-            echo " mkdir $(INSTALL_ROOT)$$i" ; \
-	    $(INSTALL) -d $(INSTALL_ROOT)$$i ; \
-          fi ; \
+	  $(MKDIR_P) $(DESTDIR)$$i; \
         done
 
 clean:
-	(cd src; $(MAKE) clean)
-	(cd library; $(MAKE) clean)
-	(cd man; $(MAKE) clean)
-	(cd demos; $(MAKE) clean)
+	for i in $(subdirs); do \
+	   $(MAKE) -C $$i clean || exit 1 ; \
+	done
 	$(RM) *.bak *\~ "#"* *pure* .pure*
 
 GENERATED_FILES = \

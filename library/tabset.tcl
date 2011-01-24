@@ -112,25 +112,25 @@ bind Tabset <ButtonRelease-3> {
 # ----------------------------------------------------------------------
 
 bind Tabset <KeyPress-Up> { 
-    blt::Tabset::Select %W "up" 
+    blt::Tabset::MoveFocus %W "up" 
 }
 bind Tabset <KeyPress-Down> { 
-    blt::Tabset::Select %W "down" 
+    blt::Tabset::MoveFocus %W "down" 
 }
 bind Tabset <KeyPress-Right> { 
-    blt::Tabset::Select %W "right" 
+    blt::Tabset::MoveFocus %W "right" 
 }
 bind Tabset <KeyPress-Left> { 
-    blt::Tabset::Select %W "left" 
+    blt::Tabset::MoveFocus %W "left" 
 }
 bind Tabset <KeyPress-Home> { 
-    blt::Tabset::Select %W "first" 
+    blt::Tabset::MoveFocus %W "first" 
 }
 bind Tabset <KeyPress-End> { 
-    blt::Tabset::Select %W "last" 
+    blt::Tabset::MoveFocus %W "last" 
 }
 bind Tabset <KeyPress-space> { 
-    %W invoke focus 
+    blt::Tabset::Select %W "focus" 
 }
 
 bind Tabset <KeyPress-Return> { 
@@ -197,6 +197,26 @@ proc blt::Tabset::Select { w tab } {
 	    raise [winfo toplevel $tearoff]
 	}
 	$w invoke $index
+    }
+}
+
+# ----------------------------------------------------------------------
+#
+# MoveFocus --
+#
+#	Invokes the command for the tab.  If the widget associated tab 
+#	is currently torn off, the tearoff is raised.
+#
+# Arguments:	
+#	widget		Tabset widget.
+#	x y		Unused.
+#
+# ----------------------------------------------------------------------
+proc blt::Tabset::MoveFocus { w tab } {
+    set index [$w index $tab]
+    if { $index != "" } {
+	$w focus $index
+	$w see $index
     }
 }
 
@@ -361,7 +381,18 @@ proc blt::Tabset::Init { w } {
     $w bind Perforation <Leave> { 
 	%W perforation activate off
     }
-    $w bind Perforation <ButtonPress-1> { 
+    $w bind Perforation <ButtonRelease-1> { 
 	%W perforation invoke 
+    }
+    $w bind Button <Enter> { 
+	%W button activate current 
+    }
+    $w bind Button <Leave> { 
+	%W button activate ""
+    }
+    $w bind Button <ButtonRelease-1> { 
+	if { [catch {%W close current}] == 0 } {
+	    %W delete current
+	}
     }
 }

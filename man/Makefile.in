@@ -4,13 +4,15 @@
 
 prefix =	@prefix@
 mandir =	@mandir@
-sectiondir =	$(mandir)/mann
+manndir =	$(mandir)/mann
+man1dir =	$(mandir)/man1
+man3dir =	$(mandir)/man3
 srcdir =	@srcdir@
 datadir =	@datadir@
 datarootdir =	@datarootdir@
 version =	@BLT_VERSION@
 
-instdirs =	$(mandir) $(mandir)/mann $(mandir)/man3
+instdirs =	$(man1dir) $(manndir) $(man3dir)
 
 MAN_N =		BLT.n barchart.n beep.n bgexec.n bitmap.n \
 		bltdebug.n busy.n container.n cutbuffer.n \
@@ -29,9 +31,9 @@ MANPAGES =	$(MAN_N) $(MAN_3)
 
 INSTALL =	@INSTALL@
 INSTALL_DATA =	@INSTALL_DATA@
-INSTALL_ROOT = 
 SHELL =		/bin/sh
 RM =		rm -rf
+MKDIR_P =	@MKDIR_P@
 VPATH =		$(srcdir)
 
 all: man.macros $(MANPAGES)
@@ -40,22 +42,18 @@ install: mkdirs install-mann install-man3
 
 install-mann: $(MAN_N)
 	for i in *.n ; do \
-		$(INSTALL_DATA) $$i $(INSTALL_ROOT)$(mandir)/mann; \
+		$(INSTALL_DATA) $$i $(DESTDIR)$(manndir); \
 	done
 
 install-man3: $(MAN_3)
 	for i in *.3 ; do \
-		$(INSTALL_DATA) $$i $(INSTALL_ROOT)$(mandir)/man3; \
+		$(INSTALL_DATA) $$i $(DESTDIR)$(man3dir); \
 	done
 
 mkdirs:
 	@for i in $(instdirs) ; do \
-          if test -d $(INSTALL_ROOT)$$i ; then \
-            : ; \
-          else \
-            echo " mkdir -p $(INSTALL_ROOT)$$i" ; \
-            mkdir -p $(INSTALL_ROOT)$$i ; \
-          fi ; \
+            echo "$(MKDIR_P) $(DESTDIR)$$i" ; \
+	    $(MKDIR_P) $(DESTDIR)$$i ; \
 	done
 
 .SUFFIXES: .n .mann .3 .man3

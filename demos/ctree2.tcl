@@ -25,33 +25,21 @@ puts [$tree label 0]
 #    -postcommand {.e.m configure -width [winfo width .e] ; update} \
 set myIcon ""
 blt::combobutton .b \
-    -width 200  \
+    -text "Select Directory" \
+    -command "puts {button pressed}" \
     -font { arial 10 bold } \
-    -indicatoron no \
-    -textvariable myText1 \
-    -iconvariable myIcon1 \
-    -menu .b.m \
-    -menuanchor se \
-    -command "puts {button pressed}"
+    -menu .b.m 
 
 blt::combotree .b.m \
     -tree $tree \
     -borderwidth 1 \
     -font { arial 10 } \
-    -textvariable myText1 \
-    -iconvariable myIcon1 \
     -separator / \
-    -width 400 \
-    -height -200 \
-    -xscrollcommand { .b.m.xbar set } \
-    -yscrollcommand { .b.m.ybar set } \
     -yscrollbar .b.m.ybar \
     -xscrollbar .b.m.xbar
 
-blt::tk::scrollbar .b.m.xbar -orient horizontal -command { .b.m xview } \
-    -width 17
-blt::tk::scrollbar .b.m.ybar -orient vertical -command { .b.m yview } \
-    -width 17 
+blt::tk::scrollbar .b.m.xbar
+blt::tk::scrollbar .b.m.ybar
 
 focus .b
 

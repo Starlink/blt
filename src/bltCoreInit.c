@@ -134,6 +134,9 @@ static Tcl_AppInitProc *cmdProcs[] =
 #ifndef NO_BGEXEC
     Blt_BgexecCmdInitProc,
 #endif
+#ifndef NO_PTYEXEC
+    Blt_PtyExecCmdInitProc,
+#endif
 #ifndef NO_CRC32
     Blt_Crc32CmdInitProc,
 #endif
@@ -141,7 +144,7 @@ static Tcl_AppInitProc *cmdProcs[] =
     Blt_CsvCmdInitProc,
 #endif
 #ifndef NO_DATATABLE
-    Blt_DataTableCmdInitProc,
+    Blt_TableCmdInitProc,
 #endif
 #ifndef NO_DDE
     Blt_DdeCmdInitProc,
@@ -163,18 +166,6 @@ static Tcl_AppInitProc *cmdProcs[] =
 #endif
     (Tcl_AppInitProc *) NULL
 };
-
-Tcl_Obj *
-Blt_EmptyStringObj(void) 
-{
-    static Tcl_Obj *emptyStringObjPtr;
-
-    if (emptyStringObjPtr == NULL) {
-	emptyStringObjPtr = Tcl_NewStringObj("", 0);
-    }
-    Tcl_IncrRefCount(emptyStringObjPtr);
-    return emptyStringObjPtr;
-}
 
 double 
 Blt_NaN(void)

@@ -37,23 +37,26 @@
 #include "bltHash.h"
 #include "bltBgStyle.h"
 #include "bltPainter.h"
+#include "bltSwitch.h"
 
 static const char emptyString[] = "";
 
-#define CM_ALLOC_MAX_DOUBLE_SIZE	(1<<16)
-#define CM_ALLOC_MAX_CHUNK		(1<<16)
+#define MAXSCROLLBARTHICKNESS	100
 
-#define CM_REDRAW		(1<<0)
-#define CM_LAYOUT		(1<<1)
-#define CM_FOCUS		(1<<2)
-#define CM_XSCROLL		(1<<3)
-#define CM_YSCROLL		(1<<4)
-#define CM_SCROLL		(CM_XSCROLL|CM_YSCROLL)
-#define CM_SELECT		(1<<5)
-#define CM_MAPPED		(1<<6)
+#define REDRAW_PENDING		(1<<0)
+#define LAYOUT_PENDING		(1<<1)
+#define UPDATE_PENDING		(1<<2)
+#define FOCUS			(1<<3)
+#define SCROLLX			(1<<4)
+#define SCROLLY			(1<<5)
+#define SCROLL_PENDING		(SCROLLX|SCROLLY)
 
-#define CM_INSTALL_SCROLLBAR_X	(1<<8)
-#define CM_INSTALL_SCROLLBAR_Y	(1<<9)
+#define INSTALL_XSCROLLBAR	(1<<8)
+#define INSTALL_YSCROLLBAR	(1<<9)
+
+#define RESTRICT_MIN		(1<<10)
+#define RESTRICT_MAX		(1<<11)
+#define RESTRICT_NONE		(0)
 
 #define VAR_FLAGS (TCL_GLOBAL_ONLY|TCL_TRACE_WRITES|TCL_TRACE_UNSETS)
 
@@ -72,6 +75,7 @@ static const char emptyString[] = "";
     (Tk_Height((cm)->tkwin) - 2 * (cm)->borderWidth - (cm)->xScrollbarHeight)
 
 #define FCLAMP(x)	((((x) < 0.0) ? 0.0 : ((x) > 1.0) ? 1.0 : (x)))
+#define CLAMP(x,min,max) ((((x) < (min)) ? (min) : ((x) > (max)) ? (max) : (x)))
 
 #define ITEM_IPAD	   3
 #define ITEM_XPAD	   2
@@ -79,25 +83,25 @@ static const char emptyString[] = "";
 #define ITEM_SEP_HEIGHT	   6
 #define ITEM_L_IND_WIDTH  19
 #define ITEM_L_IND_HEIGHT 19
-#define ITEM_R_IND_WIDTH  17
-#define ITEM_R_IND_HEIGHT 17
+#define ITEM_R_IND_WIDTH  13
+#define ITEM_R_IND_HEIGHT 13
 
-#define ITEM_MAP	  (1<<1)  /* Item needs to be remapped  */
-#define ITEM_REDRAW	  (1<<2)  /* Item needs to be redrawn. */
-#define ITEM_SELECTED	  (1<<4)  /* Radiobutton/checkbutton is selected. */
+#define ITEM_MAP	  (1<<1)	/* Item needs to be remapped  */
+#define ITEM_REDRAW	  (1<<2)	/* Item needs to be redrawn. */
+#define ITEM_SELECTED	  (1<<4)	/* Radiobutton/checkbutton is
+					 * selected. */
 
 /* Item state. */
-#define ITEM_NORMAL	  (1<<5)  /* Draw item normally. */
-#define ITEM_DISABLED	  (1<<6)  /* Item is disabled. */
-#define ITEM_ACTIVE	  (1<<7)  /* Item is currently active. */
-#define ITEM_STATE_MASK   ((ITEM_DISABLED)|(ITEM_ACTIVE)|(ITEM_NORMAL))
+#define ITEM_NORMAL	  (1<<5)	/* Draw item normally. */
+#define ITEM_DISABLED	  (1<<6)	/* Item is disabled. */
+#define ITEM_STATE_MASK   ((ITEM_DISABLED)|(ITEM_NORMAL))
 
 /* Item type. */
-#define ITEM_BUTTON	  (1<<9)  /* Item is command button. */
-#define ITEM_RADIOBUTTON  (1<<10) /* Item is radiobutton. */
-#define ITEM_CHECKBUTTON  (1<<11) /* Item is checkbutton. */
-#define ITEM_CASCADE	  (1<<12) /* Item is cascade. */
-#define ITEM_SEPARATOR	  (1<<13) /* Item is separator. */
+#define ITEM_BUTTON	  (1<<9)	/* Item is command button. */
+#define ITEM_RADIOBUTTON  (1<<10)	/* Item is radiobutton. */
+#define ITEM_CHECKBUTTON  (1<<11)	/* Item is checkbutton. */
+#define ITEM_CASCADE	  (1<<12)	/* Item is cascade. */
+#define ITEM_SEPARATOR	  (1<<13)	/* Item is separator. */
 #define ITEM_TYPE_MASK    ((ITEM_BUTTON)|(ITEM_RADIOBUTTON)|(ITEM_CHECKBUTTON)|\
 			   (ITEM_CASCADE)|(ITEM_SEPARATOR))
 
@@ -105,14 +109,24 @@ static const char emptyString[] = "";
 #define DEF_COMBO_CURSOR            ((char *)NULL)
 #define DEF_COMBO_HEIGHT	    "0"
 #define DEF_COMBO_ICON_VARIABLE	    ((char *)NULL)
-#define DEF_COMBO_POST_CMD	    ((char *)NULL)
+#define DEF_COMBO_POSTCOMMAND	    ((char *)NULL)
 #define DEF_COMBO_RELIEF	    "solid"
 #define DEF_COMBO_SCROLLBAR	    ((char *)NULL)
 #define DEF_COMBO_SCROLL_CMD	    ((char *)NULL)
 #define DEF_COMBO_SCROLL_INCR	    "2"
 #define DEF_COMBO_TAKE_FOCUS        "1"
 #define DEF_COMBO_TEXT_VARIABLE	    ((char *)NULL)
+#define DEF_COMBO_UNPOSTCOMMAND	    ((char *)NULL)
 #define DEF_COMBO_WIDTH             "0"
+#define	DEF_COMBO_CHECKBUTTON_FILL_COLOR	(char *)NULL
+#define	DEF_COMBO_CHECKBUTTON_OUTLINE_COLOR	(char *)NULL
+#define	DEF_COMBO_CHECKBUTTON_COLOR		STD_INDICATOR_COLOR
+#define DEF_COMBO_CHECKBUTTON_SIZE		"12"
+#define DEF_COMBO_RADIOBUTTON_FILL_COLOR	RGB_WHITE
+#define	DEF_COMBO_RADIOBUTTON_OUTLINE_COLOR	RGB_BLACK
+#define DEF_COMBO_RADIOBUTTON_COLOR		STD_INDICATOR_COLOR
+#define DEF_COMBO_RADIOBUTTON_SIZE		"12"
+
 #define DEF_ITEM_ACCELERATOR	    ((char *)NULL)
 #define DEF_ITEM_BITMAP             ((char *)NULL)
 #define DEF_ITEM_COMMAND	    ((char *)NULL)
@@ -145,14 +159,13 @@ static const char emptyString[] = "";
 #define DEF_STYLE_DISABLED_FG       DISABLED_FOREGROUND
 #define DEF_STYLE_FG                RGB_BLACK
 #define DEF_STYLE_FONT		    STD_FONT_SMALL
-#define DEF_STYLE_IND_BG	    RGB_WHITE
-#define DEF_STYLE_IND_FG	    RGB_BLACK
+#define DEF_STYLE_IND_FILL_COLOR    (char *)NULL
+#define DEF_STYLE_IND_OUTLINE_COLOR (char *)NULL
+#define DEF_STYLE_IND_COLOR	    (char *)NULL
 #define DEF_STYLE_IND_SIZE	    "12"
 #define DEF_STYLE_RELIEF	    "flat"
-#define DEF_STYLE_SEL_BG	    RGB_GREY82
-#define DEF_STYLE_SEL_FG	    RGB_BLACK
 #define DISABLED_BACKGROUND	    RGB_GREY90
-#define DISABLED_FOREGROUND         RGB_GREY82
+#define DISABLED_FOREGROUND         RGB_GREY70
 
 
 static Blt_OptionFreeProc FreeStyleProc;
@@ -202,6 +215,14 @@ static Blt_CustomOption stateOption = {
     ObjToStateProc, StateToObjProc, NULL, (ClientData)0
 };
 
+static Blt_OptionParseProc ObjToRestrictProc;
+static Blt_OptionPrintProc RestrictToObjProc;
+static Blt_CustomOption restrictOption = {
+    ObjToRestrictProc, RestrictToObjProc, NULL, (ClientData)0
+};
+
+extern Blt_CustomOption bltLimitsOption;
+
 typedef struct _ComboMenu ComboMenu;
 
 /*
@@ -216,31 +237,28 @@ typedef struct _ComboMenu ComboMenu;
  *	For the combomenu widget, we never need more than a single instance of
  *	an image, regardless of how many times it's used.  Cache the image,
  *	maintaining a reference count for each image used in the widget.  It's
- *	likely that the comboview widget will use many instances of the same
+ *	likely that the combomenu widget will use many instances of the same
  *	image.
  */
 
 typedef struct _Icon {
-    Tk_Image tkImage;		/* The Tk image being cached. */
-
-    Blt_HashEntry *hPtr;	/* Hash table pointer to the image. */
-
-    int refCount;		/* Reference count for this image. */
-
-    short int width, height;	/* Dimensions of the cached image. */
+    Tk_Image tkImage;			/* The Tk image being cached. */
+    Blt_HashEntry *hPtr;		/* Hash table pointer to the image. */
+    int refCount;			/* Reference count for this image. */
+    short int width, height;		/* Dimensions of the cached image. */
 } *Icon;
 
 #define IconHeight(i)	((i)->height)
 #define IconWidth(i)	((i)->width)
 #define IconImage(i)	((i)->tkImage)
-#define IconName(i)	(Blt_NameOfImage(IconImage(i)))
+#define IconName(i)	(Blt_Image_Name(IconImage(i)))
 
 typedef struct {
     const char *name;
     Blt_HashEntry *hPtr;
     ComboMenu *comboPtr;
-    int refCount;		/* Indicates if the style is currently
-				 * in use in the combomenu. */
+    int refCount;			/* Indicates if the style is currently
+					 * in use in the combomenu. */
     int borderWidth;
     int relief;
     int activeRelief;
@@ -254,26 +272,23 @@ typedef struct {
     XColor *activeFgColor;
     XColor *disabledFgColor;
 
-    Blt_Font accelFont;		/* Font of accelerator text. */
-    XColor *accelNormalColor;	/* Color of accelerator text. */
-    XColor *accelDisabledColor;	/* Color of accelerator text. */
-    XColor *accelActiveColor;	/* Color of accelerator background. */
+    Blt_Font accelFont;			/* Font of accelerator text. */
+    XColor *accelNormalColor;		/* Color of accelerator text. */
+    XColor *accelDisabledColor;		/* Color of accelerator text. */
+    XColor *accelActiveColor;		/* Color of accelerator background. */
 
-    Blt_Font labelFont;		/* Font of the label */
-    XColor *labelNormalColor;	/* Color of label text. */
-    XColor *labelDisabledColor;	/* Color of label background. */
-    XColor *labelActiveColor;	/* Color of label background. */
+    Blt_Font labelFont;			/* Font of the label */
+    XColor *labelNormalColor;		/* Color of label text. */
+    XColor *labelDisabledColor;		/* Color of label background. */
+    XColor *labelActiveColor;		/* Color of label background. */
 
     /* Radiobuttons, checkbuttons, and cascades. */
     Blt_Picture radiobutton[3];
     Blt_Picture checkbutton[3];
 
-    XColor *indBgColor;
-    XColor *indFgColor;
-    GC indBgGC;
-    GC indFgGC;
-    XColor *selBgColor;
-    XColor *selFgColor;
+    XColor *indOutlineColor;
+    XColor *indFillColor;
+    XColor *indColor;
     
     GC accelActiveGC;
     GC accelDisabledGC;
@@ -318,20 +333,21 @@ static Blt_ConfigSpec styleConfigSpecs[] =
 	Blt_Offset(Style, labelNormalColor), 0},
     {BLT_CONFIG_FONT, "-font", (char *)NULL, (char *)NULL, DEF_STYLE_FONT, 
         Blt_Offset(Style, labelFont), 0},
-    {BLT_CONFIG_COLOR, "-indicatorbackground", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_IND_BG, Blt_Offset(Style, indBgColor), 0},
-    {BLT_CONFIG_COLOR, "-indicatorforeground", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_IND_FG, Blt_Offset(Style, indFgColor), 0},
+    {BLT_CONFIG_COLOR, "-indicatorfillcolor", (char *)NULL, (char *)NULL, 
+        DEF_STYLE_IND_FILL_COLOR, Blt_Offset(Style, indFillColor), 
+        BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-indicatoroutlinecolor", (char *)NULL, (char *)NULL, 
+	DEF_STYLE_IND_OUTLINE_COLOR, Blt_Offset(Style, indOutlineColor), 
+        BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-indicatorcolor", (char *)NULL, (char *)NULL, 
+	DEF_STYLE_IND_COLOR, Blt_Offset(Style, indColor), 
+        BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_PIXELS_NNEG, "-indicatorsize", (char *)NULL, (char *)NULL, 
 	DEF_STYLE_IND_SIZE, Blt_Offset(Style, reqIndWidth), 
         BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_RELIEF, "-relief", (char *)NULL, (char *)NULL, 
 	DEF_STYLE_RELIEF, Blt_Offset(Style, relief), 
         BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_COLOR, "-selectbackground", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_SEL_BG, Blt_Offset(Style, selBgColor), 0},
-    {BLT_CONFIG_COLOR, "-selectforeground", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_SEL_FG, Blt_Offset(Style, selFgColor), 0},
     {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
 	0, 0}
 };
@@ -347,50 +363,40 @@ static Blt_ConfigSpec styleConfigSpecs[] =
  * right indicator:     cascade item only.
  */
 typedef struct  {
-    ComboMenu *comboPtr;	/* Combomenu containing this item. */
-    long index;			/* Index of the item numbered from 1. */
-
-    int xWorld, yWorld;		/* Upper left world-coordinate of item
-				 * in menu. */
-    
-    Style *stylePtr;		/* Style used by this item. */
-
-    unsigned int flags;		/* Contains various bits of
-				 * information about the item, such as
-				 * type, state. */
+    ComboMenu *comboPtr;		/* Combomenu containing this item. */
+    long index;				/* Index of the item (numbered from 0)*/
+    int xWorld, yWorld;			/* Upper left world-coordinate of item
+					 * in menu. */
+    Style *stylePtr;			/* Style used by this item. */
+    unsigned int flags;			/* Contains various bits of
+					 * information about the item, such as
+					 * type, state. */
     Blt_ChainLink link;
     int relief;
-
-    int underline;		/* Underlined character. */
-
-    int indent;			/* # of pixels to indent the icon. */
-
-    Icon image;			/* If non-NULL, image to be displayed instead
-				 * of text label. */
-
-    Icon icon;			/* Button, RadioButton, and CheckButton
-				 * entries. */
-
-    const char *label;		/* Label to be displayed. */
-
-    const char *accel;		/* Accelerator text. May be NULL.*/
-
-
-    Tcl_Obj *cmdObjPtr;		/* Command to be invoked when item is
-				 * clicked. */
-
-    Tcl_Obj *dataObjPtr;	/* User-data associated with this item. */
-
-    Tcl_Obj *varNameObjPtr;	/* Variable associated with the item value. */
-
-    Tcl_Obj *valueObjPtr;	/* Radiobutton value. */
+    int underline;			/* Underlined character. */
+    int indent;				/* # of pixels to indent the icon. */
+    Icon image;				/* If non-NULL, image to be displayed
+					 * instead of text label. */
+    Icon icon;				/* Button, RadioButton, and
+					 * CheckButton entries. */
+    const char *label;			/* Label to be displayed. */
+    const char *accel;			/* Accelerator text. May be NULL.*/
+    Tcl_Obj *cmdObjPtr;			/* Command to be invoked when item is
+					 * clicked. */
+    Tcl_Obj *dataObjPtr;		/* User-data associated with this
+					 * item. */
+    Tcl_Obj *variableObjPtr;		/* Name of TCL variable.  If non-NULL,
+					 * this variable will be set to the
+					 * value string of the selected
+					 * item. */
+    Tcl_Obj *valueObjPtr;		/* Radiobutton value. */
 
     /* Checkbutton on and off values. */
-    Tcl_Obj *onValueObjPtr;	/* Checkbutton on-value. */
-    Tcl_Obj *offValueObjPtr;	/* Checkbutton off-value. */
+    Tcl_Obj *onValueObjPtr;		/* Checkbutton on-value. */
+    Tcl_Obj *offValueObjPtr;		/* Checkbutton off-value. */
 
     /* Cascade menu. */
-    Tcl_Obj *menuObjPtr;	/* Name of the sub-menu. */
+    Tcl_Obj *menuObjPtr;		/* Name of the sub-menu. */
 
     Tcl_Obj *tagsObjPtr;
 
@@ -443,7 +449,7 @@ static Blt_ConfigSpec itemConfigSpecs[] =
     {BLT_CONFIG_OBJ, "-value", (char *)NULL, (char *)NULL, DEF_ITEM_VALUE, 
          Blt_Offset(Item, valueObjPtr), BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_CUSTOM, "-variable", (char *)NULL, (char *)NULL, 
-	DEF_ITEM_VARIABLE, Blt_Offset(Item, varNameObjPtr), BLT_CONFIG_NULL_OK,
+	DEF_ITEM_VARIABLE, Blt_Offset(Item, variableObjPtr), BLT_CONFIG_NULL_OK,
 	&traceVarOption},
     {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
 	0, 0}
@@ -452,54 +458,55 @@ static Blt_ConfigSpec itemConfigSpecs[] =
 struct _ComboMenu {
 
     /*
-     * This works around a bug in the Tk API.  Under under Win32, Tk tries to
+     * This works around a bug in the Tk API.  Under Win32, Tk tries to
      * read the widget record of toplevel windows (TopLevel or Frame widget),
      * to get its menu name field.  What this means is that we must carefully
      * arrange the fields of this widget so that the menuName field is at the
      * same offset in the structure.
      */
 
-    Tk_Window tkwin;		/* Window that embodies the frame.  NULL
-				 * means that the window has been destroyed
-				 * but the data structures haven't yet been
-				 * cleaned up. */
-
-    Display *display;		/* Display containing widget.  Used, among
-				 * other things, so that resources can be
-				 * freed even after tkwin has gone away. */
-
-    Tcl_Interp *interp;		/* Interpreter associated with widget.  Used
-				 * to delete widget command. */
-
-    Tcl_Command cmdToken;	/* Token for widget's command. */
-
-    Tcl_Obj *postCmdObjPtr;	/* If non-NULL, command to be executed when
-				 * this menu is posted. */
+    Tk_Window tkwin;			/* Window that embodies the frame.
+					 * NULL means that the window has been
+					 * destroyed but the data structures
+					 * haven't yet been cleaned up. */
+    Display *display;			/* Display containing widget.  Used,
+					 * among other things, so that
+					 * resources can be freed even after
+					 * tkwin has gone away. */
+    Tcl_Interp *interp;			/* Interpreter associated with widget.
+					 * Used to delete widget command. */
+    Tcl_Command cmdToken;		/* Token for widget's command. */
+    Tcl_Obj *postCmdObjPtr;		/* If non-NULL, command to be executed
+					 * when this menu is posted. */
+    Tcl_Obj *unpostCmdObjPtr;		/* If non-NULL, command to be executed
+					 * when this menu is posted. */
     unsigned int flags;
+    Tcl_Obj *iconVarObjPtr;		/* Name of TCL variable.  If non-NULL,
+					 * this variable will be set to the
+					 * name of the Tk image representing
+					 * the icon of the selected item.  */
+    Tcl_Obj *textVarObjPtr;		/* Name of TCL variable.  If non-NULL,
+					 * this variable will be set to the
+					 * text string of the label of the
+					 * selected item. */
+    Tcl_Obj *takeFocusObjPtr;		/* Value of -takefocus option; not
+					 * used in the C code, but used by
+					 * keyboard * traversal scripts. */
+    char *menuName;			/* Textual description of menu to use
+					 * for menubar. Malloc-ed, may be
+					 * NULL. */
+    Tk_Cursor cursor;			/* Current cursor for window or None. */
 
-    Tcl_Obj *iconVarObjPtr;	/* Name of TCL variable.  If non-NULL, this
-				 * variable will be set to the name of the Tk
-				 * image representing the icon of the selected
-				 * item.  */
+    Tk_Anchor anchor;
 
-    Tcl_Obj *textVarObjPtr;	/* Name of TCL variable.  If non-NULL, this
-				 * variable will be set to the text string of
-				 * the label of the selected item. */
-
-    Tcl_Obj *takeFocusObjPtr;	/* Value of -takefocus option; not used in the
-				 * C code, but used by keyboard traversal
-				 * scripts. */
-
-    char *menuName;		/* Textual description of menu to use for
-				 * menubar. Malloc-ed, may be NULL. */
-
-    Tk_Cursor cursor;		/* Current cursor for window or None. */
-
-    int reqWidth, reqHeight;     
+    Blt_Limits reqWidth, reqHeight;     
     int relief;
     int borderWidth;
 
-    Style defStyle;		/* Default style. */
+    Style defStyle;			/* Default style. */
+
+    int parentWidth;
+    int normalWidth, normalHeight;
 
     int xScrollUnits, yScrollUnits;
 
@@ -509,51 +516,64 @@ struct _ComboMenu {
     /* Commands to control horizontal and vertical scrollbars. */
     Tcl_Obj *xScrollCmdObjPtr, *yScrollCmdObjPtr;
 
-    Blt_HashTable tagTable;	/* Table of tags. */
-    Blt_HashTable labelTable;	/* Table of labels. */
-    Blt_HashTable iconTable;	/* Table of icons. */
+    Blt_HashTable tagTable;		/* Table of tags. */
+    Blt_HashTable labelTable;		/* Table of labels (hashtables). */
+    Blt_HashTable iconTable;		/* Table of icons. */
 
     Blt_Chain chain;
 
-    Item *activePtr;		/* If non-NULL, item that is currently active.
-				 * If a cascade item, a submenu may be
-				 * posted. */
+    Item *activePtr;			/* If non-NULL, item that is currently
+					 * active.  If a cascade item, a
+					 * submenu may be posted. */
     Item *postedPtr;
 
-    Item *firstPtr, *lastPtr;	/* Defines the range of visible items. */
+    Item *firstPtr, *lastPtr;		/* Defines the range of visible
+					 * items. */
 
-    int xOffset, yOffset;	/* Scroll offsets of viewport in world. */ 
-    int worldWidth, worldHeight;  /* Dimension of entire menu. */
+    int xOffset, yOffset;		/* Scroll offsets of viewport in
+					 * world. */ 
+    int worldWidth, worldHeight;	/* Dimension of entire menu. */
 
-    Tk_Window xScrollbar;	/* Horizontal scrollbar to be used if
-				 * necessary. If NULL, no x-scrollbar is
-				 * used. */
-    Tk_Window yScrollbar;	/* Vertical scrollbar to be used if
-				 * necessary. If NULL, no y-scrollbar is
-				 * used. */
+    Tk_Window xScrollbar;		/* Horizontal scrollbar to be used if
+					 * necessary. If NULL, no x-scrollbar
+					 * is used. */
+    Tk_Window yScrollbar;		/* Vertical scrollbar to be used if
+					 * necessary. If NULL, no y-scrollbar
+					 * is used. */
 
     short int yScrollbarWidth, xScrollbarHeight;
     short int leftIndWidth, rightIndWidth;
     short int labelWidth, iconWidth;
 
-    Blt_HashTable styleTable;	/* Table of styles used in this menu. */
+    Blt_HashTable styleTable;		/* Table of styles used. */
 
     Icon rbIcon;	
     Icon cbIcon;	
     Icon casIcon;	
 
+    XColor *checkButtonFillColor;
+    XColor *checkButtonOutlineColor;
+    XColor *checkButtonColor;
+    int checkButtonReqSize;
+
+    XColor *radioButtonFillColor;
+    XColor *radioButtonOutlineColor;
+    XColor *radioButtonColor;
+    int radioButtonReqSize;
+
     /*
      * Scanning Information:
      */
-    int scanAnchorX;		/* Horizontal scan anchor in screen
-				 * x-coordinates. */
-    int scanX;			/* x-offset of the start of the horizontal
-				 * scan in world coordinates.*/
-    int scanAnchorY;		/* Vertical scan anchor in screen
-				 * y-coordinates. */
-    int scanY;			/* y-offset of the start of the vertical scan
-				 * in world coordinates.*/
-
+    int scanAnchorX;			/* Horizontal scan anchor in screen
+					 * x-coordinates. */
+    int scanX;				/* x-offset of the start of the
+					 * horizontal scan in world
+					 * coordinates.*/
+    int scanAnchorY;			/* Vertical scan anchor in screen
+					 * y-coordinates. */
+    int scanY;				/* y-offset of the start of the
+					 * vertical scan in world
+					 * coordinates.*/
     short int width, height;
     Blt_Painter painter;
 };
@@ -602,8 +622,9 @@ static Blt_ConfigSpec comboConfigSpecs[] =
 	DEF_STYLE_FG, Blt_Offset(ComboMenu, defStyle.labelNormalColor), 0},
     {BLT_CONFIG_FONT, "-font", "font", "Font", DEF_STYLE_FONT, 
 	Blt_Offset(ComboMenu, defStyle.labelFont), 0},
-    {BLT_CONFIG_PIXELS, "-height", "height", "Height", DEF_COMBO_HEIGHT, 
-	Blt_Offset(ComboMenu, reqHeight), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_CUSTOM, "-height", "height", "Height", DEF_COMBO_HEIGHT, 
+	Blt_Offset(ComboMenu, reqHeight), BLT_CONFIG_DONT_SET_DEFAULT,
+	&bltLimitsOption},
     {BLT_CONFIG_OBJ, "-iconvariable", "iconVariable", "IconVariable", 
 	DEF_COMBO_ICON_VARIABLE, Blt_Offset(ComboMenu, iconVarObjPtr), 
         BLT_CONFIG_NULL_OK},
@@ -612,10 +633,13 @@ static Blt_ConfigSpec comboConfigSpecs[] =
 	Blt_Offset(ComboMenu, defStyle.borderWidth), 
 	BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_OBJ, "-postcommand", "postCommand", "PostCommand", 
-	DEF_COMBO_POST_CMD, Blt_Offset(ComboMenu, postCmdObjPtr), 
+	DEF_COMBO_POSTCOMMAND, Blt_Offset(ComboMenu, postCmdObjPtr), 
 	BLT_CONFIG_NULL_OK},
     {BLT_CONFIG_RELIEF, "-relief", "relief", "Relief", DEF_COMBO_RELIEF, 
 	Blt_Offset(ComboMenu, relief), BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_CUSTOM, "-restrictwidth", "restrictWidth", "RestrictWidth", 
+	(char *)NULL, Blt_Offset(ComboMenu, flags), BLT_CONFIG_DONT_SET_DEFAULT,
+	&restrictOption},
     {BLT_CONFIG_OBJ, "-textvariable", "textVariable", "TextVariable", 
 	DEF_COMBO_TEXT_VARIABLE, Blt_Offset(ComboMenu, textVarObjPtr), 
         BLT_CONFIG_NULL_OK},
@@ -640,15 +664,13 @@ static Blt_ConfigSpec comboConfigSpecs[] =
     {BLT_CONFIG_OBJ, "-takefocus", "takeFocus", "TakeFocus",
 	DEF_COMBO_TAKE_FOCUS, Blt_Offset(ComboMenu, takeFocusObjPtr), 
 	BLT_CONFIG_NULL_OK},
-    {BLT_CONFIG_PIXELS, "-width", "width", "Width", DEF_COMBO_WIDTH, 
-	Blt_Offset(ComboMenu, reqWidth), BLT_CONFIG_DONT_SET_DEFAULT},
-    {BLT_CONFIG_COLOR, "-indicatorbackground", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_IND_BG, Blt_Offset(ComboMenu, defStyle.indBgColor), 0},
-    {BLT_CONFIG_COLOR, "-indicatorforeground", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_IND_FG, Blt_Offset(ComboMenu, defStyle.indFgColor), 0},
-    {BLT_CONFIG_PIXELS_NNEG, "-indicatorsize", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_IND_SIZE, Blt_Offset(ComboMenu, defStyle.reqIndWidth), 
-        BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_OBJ, "-unpostcommand", "unpostCommand", "UnpostCommand", 
+	DEF_COMBO_UNPOSTCOMMAND, Blt_Offset(ComboMenu, unpostCmdObjPtr), 
+	BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_CUSTOM, "-width", "width", "Width", DEF_COMBO_WIDTH, 
+	Blt_Offset(ComboMenu, reqWidth), BLT_CONFIG_DONT_SET_DEFAULT,
+	&bltLimitsOption},
+#ifdef notdef
     {BLT_CONFIG_CUSTOM, "-radioimage", (char *)NULL, (char *)NULL, 
 	DEF_ITEM_IMAGE, Blt_Offset(ComboMenu, rbIcon), BLT_CONFIG_NULL_OK, 
         &iconOption},
@@ -658,10 +680,29 @@ static Blt_ConfigSpec comboConfigSpecs[] =
     {BLT_CONFIG_CUSTOM, "-cascadeimage", (char *)NULL, (char *)NULL, 
 	DEF_ITEM_IMAGE, Blt_Offset(ComboMenu, casIcon), BLT_CONFIG_NULL_OK,
         &iconOption},
-    {BLT_CONFIG_COLOR, "-selectbackground", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_SEL_BG, Blt_Offset(ComboMenu, defStyle.selBgColor), 0},
-    {BLT_CONFIG_COLOR, "-selectforeground", (char *)NULL, (char *)NULL, 
-	DEF_STYLE_SEL_FG, Blt_Offset(ComboMenu, defStyle.selFgColor), 0},
+#endif
+    {BLT_CONFIG_COLOR, "-checkbuttonfillcolor", (char *)NULL, (char *)NULL, 
+	DEF_COMBO_CHECKBUTTON_FILL_COLOR, 
+        Blt_Offset(ComboMenu, checkButtonFillColor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-checkbuttonoutlinecolor", (char *)NULL, (char *)NULL, 
+	DEF_COMBO_CHECKBUTTON_OUTLINE_COLOR,
+	Blt_Offset(ComboMenu, checkButtonOutlineColor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-checkbuttoncolor", (char *)NULL, (char *)NULL, 
+	DEF_COMBO_CHECKBUTTON_COLOR, Blt_Offset(ComboMenu, checkButtonColor),0},
+    {BLT_CONFIG_PIXELS_NNEG, "-checkbuttonsize", (char *)NULL, (char *)NULL, 
+	DEF_COMBO_CHECKBUTTON_SIZE, Blt_Offset(ComboMenu, checkButtonReqSize), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
+    {BLT_CONFIG_COLOR, "-radiobuttonfillcolor", (char *)NULL, (char *)NULL, 
+	DEF_COMBO_RADIOBUTTON_FILL_COLOR, 
+        Blt_Offset(ComboMenu, radioButtonFillColor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-radiobuttonoutlinecolor", (char *)NULL, (char *)NULL, 
+	DEF_COMBO_RADIOBUTTON_OUTLINE_COLOR, 
+        Blt_Offset(ComboMenu, radioButtonOutlineColor), BLT_CONFIG_NULL_OK},
+    {BLT_CONFIG_COLOR, "-radiobuttoncolor", (char *)NULL, (char *)NULL, 
+	DEF_COMBO_RADIOBUTTON_COLOR, Blt_Offset(ComboMenu, radioButtonColor),0},
+    {BLT_CONFIG_PIXELS_NNEG, "-radiobuttonsize", (char *)NULL, (char *)NULL, 
+	DEF_COMBO_RADIOBUTTON_SIZE, Blt_Offset(ComboMenu, radioButtonReqSize), 
+        BLT_CONFIG_DONT_SET_DEFAULT},
     {BLT_CONFIG_END, (char *)NULL, (char *)NULL, (char *)NULL, (char *)NULL, 
 	0, 0}
 };
@@ -675,49 +716,96 @@ static Blt_ConfigSpec comboConfigSpecs[] =
  */
 
 typedef enum { 
-    ITER_INDEX, ITER_RANGE, ITER_ALL, ITER_TAG, ITER_TYPE
+    ITER_SINGLE, ITER_ALL, ITER_TAG, ITER_TYPE, ITER_PATTERN
 } IteratorType;
 
 typedef struct _Iterator {
-    ComboMenu *comboPtr;	/* ComboMenu that we're iterating over. */
+    ComboMenu *comboPtr;		/* ComboMenu that we're iterating
+					 * over. */
 
-    IteratorType type;		/* Type of iteration:
-				 * ITER_TAG		By item tag.
-				 * ITER_ALL		By every item.
-				 * ITER_INDEX		Single item: either 
-				 *			tag or index.
-				 * ITER_RANGE		Over a consecutive 
-				 *			range of indices.
-				 * ITER_TYPE		Over a single item 
-				 *			type.
-				 */
+    IteratorType type;			/* Type of iteration:
+					 * ITER_TAG	By item tag.
+					 * ITER_ALL	By every item.
+					 * ITER_SINGLE	Single item: either 
+					 *		tag or index.
+					 * ITER_TYPE	Over a single item 
+					 *		type.
+					 */
 
-    Item *startPtr, *last;	/* Starting and ending item.  Starting point
-				 * of search, saved if iterator is reused.
-				 * Used for ITER_ALL and ITER_INDEX
-				 * searches. */
-    Item *endPtr;		/* Ending item (inclusive). */
+    Item *startPtr, *last;		/* Starting and ending item.  Starting
+					 * point of search, saved if iterator
+					 * is reused.  Used for ITER_ALL and
+					 * ITER_SINGLE searches. */
+    Item *endPtr;			/* Ending item (inclusive). */
+    Item *nextPtr;			/* Next item. */
+    int itemType;			/* For tag-based searches. */
+    char *tagName;			/* If non-NULL, is the tag that we are
+					 * currently iterating over. */
 
-    Item *nextPtr;		/* Next item. */
+    Blt_HashTable *tablePtr;		/* Pointer to tag hash table. */
 
-    int itemType;
-				/* For tag-based searches. */
-    char *tagName;		/* If non-NULL, is the tag that we are
-				 * currently iterating over. */
-
-    Blt_HashTable *tablePtr;	/* Pointer to tag hash table. */
-
-    Blt_HashSearch cursor;	/* Search iterator for tag hash table. */
+    Blt_HashSearch cursor;		/* Search iterator for tag hash
+					 * table. */
+    Blt_ChainLink link;
 } ItemIterator;
 
 static Tk_GeomRequestProc ScrollbarGeometryProc;
 static Tk_GeomLostSlaveProc ScrollbarCustodyProc;
 static Tk_GeomMgr comboMgrInfo = {
-    (char *)"combomenu",	/* Name of geometry manager used by winfo */
-    ScrollbarGeometryProc,	/* Procedure to for new geometry requests */
-    ScrollbarCustodyProc,	/* Procedure when scrollbar is taken away */
+    (char *)"combomenu",		/* Name of geometry manager used by
+					 * winfo. */
+    ScrollbarGeometryProc,		/* Procedure to for new geometry
+					 * requests. */
+    ScrollbarCustodyProc,		/* Procedure when scrollbar is taken
+					 * away. */
 };
 
+static Blt_SwitchParseProc TypeSwitch;
+static Blt_SwitchCustom typeSwitch = {
+    TypeSwitch, NULL, NULL,
+};
+static Blt_SwitchParseProc ItemSwitch;
+static Blt_SwitchCustom itemSwitch = {
+    ItemSwitch, NULL, NULL,
+};
+
+#define FIND_DECREASING	(1<<0)
+#define FIND_UNDERLINE	(1<<1)
+#define FIND_GLOB	1
+#define FIND_REGEXP	2
+
+typedef struct {
+    unsigned int mask;
+    int search;
+    int type;
+    Item *fromPtr;
+} FindSwitches;
+
+static Blt_SwitchSpec findSwitches[] = 
+{
+    {BLT_SWITCH_CUSTOM, "-from", "item",
+	Blt_Offset(FindSwitches, fromPtr), 0, 0, &itemSwitch},
+    {BLT_SWITCH_BITMASK, "-decreasing", "",
+	Blt_Offset(FindSwitches, mask), 0, FIND_DECREASING},
+    {BLT_SWITCH_VALUE, "-glob", "",
+	Blt_Offset(FindSwitches, search), 0, FIND_GLOB},
+    {BLT_SWITCH_VALUE, "-regexp", "",
+	Blt_Offset(FindSwitches, search), 0, FIND_REGEXP},
+    {BLT_SWITCH_CUSTOM, "-type", "type",
+	Blt_Offset(FindSwitches, type), 0, 0, &typeSwitch},
+    {BLT_SWITCH_BITMASK, "-underline", "",
+	Blt_Offset(FindSwitches, mask), 0, FIND_UNDERLINE},
+    {BLT_SWITCH_END}
+};
+
+typedef int (ComboMenuCmdProc)(ComboMenu *comboPtr, Tcl_Interp *interp, 
+	int objc, Tcl_Obj *const *objv);
+static int GetItemIterator(Tcl_Interp *interp, ComboMenu *comboPtr,
+	Tcl_Obj *objPtr, ItemIterator *iterPtr);
+static int GetItemFromObj(Tcl_Interp *interp, ComboMenu *comboPtr,
+	Tcl_Obj *objPtr, Item **itemPtrPtr);
+
+static Tcl_IdleProc ConfigureScrollbarsProc;
 static Tcl_IdleProc DisplayItem;
 static Tcl_IdleProc DisplayComboMenu;
 static Tcl_FreeProc DestroyComboMenu;
@@ -727,14 +815,6 @@ static Tcl_ObjCmdProc ComboMenuInstCmdProc;
 static Tcl_CmdDeleteProc ComboMenuInstCmdDeletedProc;
 static Tcl_VarTraceProc ItemVarTraceProc;
 static Tk_ImageChangedProc IconChangedProc;
-
-static int GetItemIterator(Tcl_Interp *interp, ComboMenu *comboPtr,
-	Tcl_Obj *objPtr, ItemIterator *iterPtr);
-static int GetItemFromObj(Tcl_Interp *interp, ComboMenu *comboPtr,
-	Tcl_Obj *objPtr, Item **itemPtrPtr);
-
-typedef int (ComboMenuCmdProc)(ComboMenu *comboPtr, Tcl_Interp *interp, 
-	int objc, Tcl_Obj *const *objv);
 
 /*
  *---------------------------------------------------------------------------
@@ -755,9 +835,9 @@ typedef int (ComboMenuCmdProc)(ComboMenu *comboPtr, Tcl_Interp *interp,
 static void
 EventuallyRedraw(ComboMenu *comboPtr) 
 {
-    if ((comboPtr->tkwin != NULL) && !(comboPtr->flags & CM_REDRAW)) {
+    if ((comboPtr->tkwin != NULL) && !(comboPtr->flags & REDRAW_PENDING)) {
 	Tcl_DoWhenIdle(DisplayComboMenu, comboPtr);
-	comboPtr->flags |= CM_REDRAW;
+	comboPtr->flags |= REDRAW_PENDING;
     }
 }
 
@@ -784,10 +864,27 @@ EventuallyRedrawItem(Item *itemPtr)
 
     comboPtr = itemPtr->comboPtr;
     if ((comboPtr->tkwin != NULL) && 
-	((comboPtr->flags & CM_REDRAW) == 0) &&
+	((comboPtr->flags & REDRAW_PENDING) == 0) &&
 	((itemPtr->flags & ITEM_REDRAW) == 0)) {
 	Tcl_DoWhenIdle(DisplayItem, itemPtr);
 	itemPtr->flags |= ITEM_REDRAW;
+    }
+}
+
+static void
+ConfigureScrollbarsProc(ClientData clientData)
+{
+    ComboMenu *comboPtr = clientData;
+    Tcl_Interp *interp;
+
+    interp = comboPtr->interp;
+    /* 
+     * Execute the initialization procedure on this widget.
+     */
+    comboPtr->flags &= ~UPDATE_PENDING;
+    if (Tcl_VarEval(interp, "::blt::ComboMenu::ConfigureScrollbars ", 
+	Tk_PathName(comboPtr->tkwin), (char *)NULL) != TCL_OK) {
+	Tcl_BackgroundError(interp);
     }
 }
 
@@ -827,22 +924,26 @@ DestroyItem(Item *itemPtr)
     ReleaseTags(comboPtr, itemPtr);
     iconOption.clientData = comboPtr;
     Blt_FreeOptions(itemConfigSpecs, (char *)itemPtr, comboPtr->display, 0);
-    if (itemPtr->link != NULL) {
-	Blt_Chain_DeleteLink(comboPtr->chain, itemPtr->link);
+    if (comboPtr->activePtr == itemPtr) {
+	comboPtr->activePtr = NULL;
     }
+    if (comboPtr->postedPtr == itemPtr) {
+	comboPtr->postedPtr = NULL;
+    }
+    Blt_Chain_DeleteLink(comboPtr->chain, itemPtr->link);
 }
 
 static void
 DestroyItems(ComboMenu *comboPtr)
 {
-    Blt_ChainLink link;
+    Blt_ChainLink link, next;
 
-    for (link = Blt_Chain_FirstLink(comboPtr->chain); link != NULL;
-	 link = Blt_Chain_NextLink(link)) {
+    for (link = Blt_Chain_FirstLink(comboPtr->chain); link != NULL; 
+	 link = next) {
 	Item *itemPtr;
 
+	next = Blt_Chain_NextLink(link);
 	itemPtr = Blt_Chain_GetValue(link);
-	itemPtr->link = NULL;
 	DestroyItem(itemPtr);
     }
     Blt_Chain_Destroy(comboPtr->chain);
@@ -859,9 +960,9 @@ NewItem(ComboMenu *comboPtr)
     itemPtr->comboPtr = comboPtr;
     itemPtr->flags |= (ITEM_BUTTON | ITEM_NORMAL);
     itemPtr->link = link;
-    itemPtr->index = Blt_Chain_GetLength(comboPtr->chain) + 1;
+    itemPtr->index = Blt_Chain_GetLength(comboPtr->chain);
     Blt_Chain_LinkAfter(comboPtr->chain, link, NULL);
-    itemPtr->label = (char *)emptyString;
+    itemPtr->label = emptyString;
     itemPtr->underline = -1;
     return itemPtr;
 }
@@ -985,6 +1086,62 @@ StepItem(Item *itemPtr)
     return NULL;
 }
 
+static int
+SelectItem(Tcl_Interp *interp, ComboMenu *comboPtr, Item *itemPtr, int newState)
+{
+    int result;
+
+    if (itemPtr->flags & (ITEM_CASCADE|ITEM_SEPARATOR)) {
+	return TCL_OK;
+    }
+
+    result = TCL_OK;
+    if (newState == -1) {
+	newState = (itemPtr->flags & ITEM_SELECTED) == 0;
+    }
+    if ((comboPtr->iconVarObjPtr != NULL) && (itemPtr->icon != NULL)) {
+	Tcl_Obj *objPtr;
+	
+	objPtr = Tcl_NewStringObj(IconName(itemPtr->icon), -1);
+	if (Tcl_ObjSetVar2(interp, comboPtr->iconVarObjPtr, NULL, objPtr, 
+			   TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG) == NULL) {
+	    return TCL_ERROR;
+	}
+    }
+    if ((comboPtr->textVarObjPtr != NULL) && (itemPtr->label != emptyString)) {
+	Tcl_Obj *objPtr;
+	
+	objPtr = Tcl_NewStringObj(itemPtr->label, -1);
+	if (Tcl_ObjSetVar2(interp, comboPtr->textVarObjPtr, NULL, objPtr, 
+			   TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG) == NULL) {
+	    return TCL_ERROR;
+	}
+    }
+    if (itemPtr->variableObjPtr != NULL) {
+	Tcl_Obj *objPtr;
+	
+	objPtr = NULL;
+	if (itemPtr->flags & ITEM_CHECKBUTTON) {
+	    objPtr = (newState) ? 
+		itemPtr->onValueObjPtr : itemPtr->offValueObjPtr;
+	} else {
+	    objPtr = itemPtr->valueObjPtr;
+	    if (objPtr == NULL) {
+		objPtr = Tcl_NewStringObj(itemPtr->label, -1);
+	    }
+	}
+	if (objPtr != NULL) {
+	    Tcl_IncrRefCount(objPtr);
+	    if (Tcl_ObjSetVar2(interp, itemPtr->variableObjPtr, NULL, objPtr, 
+			       TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG) == NULL) {
+		result = TCL_ERROR;
+	    }
+	    Tcl_DecrRefCount(objPtr);
+	}
+    }
+    return result;
+}
+
 /*
  *---------------------------------------------------------------------------
  *
@@ -1009,145 +1166,131 @@ ActivateItem(ComboMenu *comboPtr, Item *itemPtr)
 	return;		/* Item is already active. */
     }
     if (comboPtr->activePtr != NULL) {
-	comboPtr->activePtr->flags &= ~ITEM_STATE_MASK;
-	comboPtr->activePtr->flags |= ITEM_NORMAL;
 	EventuallyRedrawItem(comboPtr->activePtr);
     }
     comboPtr->activePtr = itemPtr;
     if (itemPtr != NULL) {
-	itemPtr->flags &= ~ITEM_STATE_MASK;
-	itemPtr->flags |= ITEM_ACTIVE;
 	EventuallyRedrawItem(itemPtr);
     }
 }
 
-static void
-ComputeMenuCoords(ComboMenu *comboPtr, int menuAnchor, int *xPtr, int *yPtr)
+/*
+ *---------------------------------------------------------------------------
+ *
+ * GetBoundedWidth --
+ *
+ *	Bounds a given width value to the limits described in the limit
+ *	structure.  The initial starting value may be overridden by the nominal
+ *	value in the limits.
+ *
+ * Results:
+ *	Returns the constrained value.
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+GetBoundedWidth(ComboMenu *comboPtr, int w)	
 {
-    int rootX, rootY, x, y, w, h;
+    /*
+     * Check widgets for requested width values;
+     */
+    if (comboPtr->reqWidth.flags & LIMITS_NOM_SET) {
+	w = comboPtr->reqWidth.nom;	/* Override initial value */
+    }
+    if (w < comboPtr->reqWidth.min) {
+	w = comboPtr->reqWidth.min;	/* Bounded by minimum value */
+    }
+    if (w > comboPtr->reqWidth.max) {
+	w = comboPtr->reqWidth.max;	/* Bounded by maximum value */
+    }
+    if (comboPtr->flags & (RESTRICT_MIN|RESTRICT_MAX)) {
+	Tk_Window parent;
+
+	parent = Tk_Parent(comboPtr->tkwin);
+	if ((comboPtr->flags & RESTRICT_MIN) && (w < Tk_Width(parent))) {
+	    w = Tk_Width(parent);
+	}
+	if ((comboPtr->flags & RESTRICT_MAX) && (w > Tk_Width(parent))) {
+	    w = Tk_Width(parent);
+	}
+    }
+    {
+	int screenWidth, screenHeight;
+
+	Blt_SizeOfScreen(comboPtr->tkwin, &screenWidth, &screenHeight);
+	if (w > screenWidth) {
+	    w = screenWidth;
+	}
+    }
+    return w;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * GetBoundedHeight --
+ *
+ *	Bounds a given value to the limits described in the limit structure.
+ *	The initial starting value may be overridden by the nominal value in
+ *	the limits.
+ *
+ * Results:
+ *	Returns the constrained value.
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+GetBoundedHeight(ComboMenu *comboPtr, int h)	
+{
+    /*
+     * Check widgets for requested height values;
+     */
+    if (comboPtr->reqHeight.flags & LIMITS_NOM_SET) {
+	h = comboPtr->reqHeight.nom;	/* Override initial value */
+    }
+    if (h < comboPtr->reqHeight.min) {
+	h = comboPtr->reqHeight.min;	/* Bounded by minimum value */
+    }
+    if (h > comboPtr->reqHeight.max) {
+	h = comboPtr->reqHeight.max;	/* Bounded by maximum value */
+    }
+    if (h > HeightOfScreen(Tk_Screen(comboPtr->tkwin))) {
+	h = HeightOfScreen(Tk_Screen(comboPtr->tkwin));
+    }
+    return h;
+}
+
+static void
+FixMenuCoords(ComboMenu *comboPtr, Tk_Window parent, int *xPtr, int *yPtr)
+{
+    int x, y, w, h, pw, ph;
     int screenWidth, screenHeight;
-    Tk_Window parent;
 
-    parent = Tk_Parent(comboPtr->tkwin);
-    screenWidth = WidthOfScreen(Tk_Screen(comboPtr->tkwin));
-    screenHeight = HeightOfScreen(Tk_Screen(comboPtr->tkwin));
+    Blt_SizeOfScreen(comboPtr->tkwin, &screenWidth, &screenHeight);
+    x = *xPtr, y = *yPtr;
 
-    Tk_GetRootCoords(parent, &rootX, &rootY);
-    if (rootX < 0) {
-	rootX = 0;
+    /* Determine the size of the menu. */
+    w = Tk_ReqWidth(comboPtr->tkwin);
+    h = Tk_ReqHeight(comboPtr->tkwin);
+    if (parent == comboPtr->tkwin) {	/* This is a popup. */
+	pw = w;
+	ph = h;
+    } else {
+	pw = Tk_Width(parent);
+	ph = Tk_Height(parent);
     }
-    if (rootY < 0) {
-	rootY = 0;
-    }
-
-    x = rootX, y = rootY;
-    w = Tk_Width(comboPtr->tkwin);
-    if (w <= 1) {
-	w = Tk_ReqWidth(comboPtr->tkwin);
-    }
-    h = Tk_Height(comboPtr->tkwin);
-    if (h <= 1) {
-	h = Tk_Height(comboPtr->tkwin);
-    }
-
-    switch(menuAnchor) {
-    case TK_ANCHOR_W:
-    case TK_ANCHOR_SW:
-	y += Tk_Height(parent);
-	if ((y + h) > screenHeight) {
-	    /* If we go offscreen on the bottom, show as 'NW'. */
-	    y = rootY - h;
-	    if (y < 0) {
-		y = 0;
-	    }
-	}
-	fprintf(stderr, "W,SW x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), w);
-	if ((x + w) > screenWidth) {
-	    x = screenWidth - w;
-	}
-	break;
-    case TK_ANCHOR_CENTER:
-    case TK_ANCHOR_S:
-	x += (Tk_Width(parent) - w) / 2;
-	y += Tk_Height(parent);
-	if ((y + h) > screenHeight) {
-	    /* If we go offscreen on the bottom, show as 'N'. */
-	    y = rootY - h;
-	    if (y < 0) {
-		y = 0;
-	    }
-	}
-	fprintf(stderr, "C,S x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), w);
-	if (x < 0) {
-	    x = 0;
-	} else if ((x + w) > screenWidth) {
-	    x = screenWidth - w;
-	}
-	break;
-    case TK_ANCHOR_E:
-    case TK_ANCHOR_SE:
-	x += Tk_Width(parent) - w;
-	y += Tk_Height(parent);
-	if ((y + h) > screenHeight) {
-	    /* If we go offscreen on the bottom, show as 'NE'. */
-	    y = rootY - h;
-	    if (y < 0) {
-		y = 0;
-	    }
-	}
-	fprintf(stderr, "E,SE x=%d, y=%d w=%d, mrw=%d\n", x, y, 
-		Tk_Width(parent), w);
-	if (x < 0) {
-	    x = 0;
-	}
-	break;
-    case TK_ANCHOR_NW:
-	y -= h;
+    if ((y + h) > screenHeight) {
+	y -= (ph + h);			/* Flip to show menu above. */
 	if (y < 0) {
-	    /* If we go offscreen on the top, show as 'SW'. */
-	    y = rootY + Tk_Height(parent);
-	    if ((y + h) > screenHeight) {
-		y = screenHeight - h;
-	    }
+	    y = 0;
 	}
-	fprintf(stderr, "NW x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), w);
-	if ((x + w) > screenWidth) {
-	    x = screenWidth - w;
-	}
-	break;
-    case TK_ANCHOR_N:
-	x += (Tk_Width(parent) - w) / 2;
-	y -= h;
-	if (y < 0) {
-	    /* If we go offscreen on the top, show as 'S'. */
-	    y = rootY + Tk_Height(parent);
-	    if ((y + h) > screenHeight) {
-		y = screenHeight - h;
-	    }
-	}
-	fprintf(stderr, "N x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), w);
-	if (x < 0) {
-	    x = 0;
-	} else if ((x + w) > screenWidth) {
-	    x = screenWidth - w;
-	}
-	break;
-    case TK_ANCHOR_NE:
-	x += Tk_Width(parent) - w;
-	y -= h;
-	if (y < 0) {
-	    /* If we go offscreen on the top, show as 'SE'. */
-	    y = rootY + Tk_Height(parent);
-	    if ((y + h) > screenHeight) {
-		y = screenHeight - h;
-	    }
-	}
-	fprintf(stderr, "NE x=%d, w=%d, mrw=%d\n", x, Tk_Width(parent), w);
+    }
+    if ((x + w) > screenWidth) {
+	x -= pw;			/* Flip to show menu on left side. */
 	if (x < 0) {
 	    x = 0;
 	}
-	break;
-    }    
+    }
     *xPtr = x;
     *yPtr = y;
 }
@@ -1167,34 +1310,6 @@ ComputeItemGeometry(ComboMenu *comboPtr, Item *itemPtr)
     if (itemPtr->flags & ITEM_SEPARATOR) {
 	itemPtr->height = ITEM_SEP_HEIGHT;
 	itemPtr->width = 0;
-    } else {
-	if (itemPtr->flags & (ITEM_RADIOBUTTON | ITEM_CHECKBUTTON)) {
-	    Blt_FontMetrics fm;
-
-	    Blt_GetFontMetrics(itemPtr->stylePtr->labelFont, &fm);
-	    itemPtr->leftIndWidth = itemPtr->leftIndHeight =
-		(fm.linespace) + 4 * ITEM_YPAD;
-#ifdef notdef
-	    itemPtr->leftIndWidth = ITEM_L_IND_WIDTH;
-	    itemPtr->leftIndHeight = ITEM_L_IND_HEIGHT;
-#endif
-	    if (itemPtr->stylePtr->reqIndWidth > 0) {
-		itemPtr->leftIndWidth = itemPtr->leftIndHeight = 
-		    itemPtr->stylePtr->reqIndWidth + 2 * ITEM_YPAD;
-	    }
-	    if (itemPtr->height < itemPtr->leftIndHeight) {
-		itemPtr->height = itemPtr->leftIndHeight;
-	    }
-	    itemPtr->width += itemPtr->leftIndWidth + 2 * ITEM_IPAD;
-	}
-	if (itemPtr->icon != NULL) {
-	    itemPtr->iconWidth = IconWidth(itemPtr->icon);
-	    itemPtr->iconHeight = IconHeight(itemPtr->icon);
-	    if (itemPtr->height < IconHeight(itemPtr->icon)) {
-		itemPtr->height = IconHeight(itemPtr->icon);
-	    }
-	    itemPtr->width += itemPtr->iconWidth + ITEM_IPAD;
-	}
 	if (itemPtr->image != NULL) {
 	    itemPtr->labelWidth = IconWidth(itemPtr->image);
 	    itemPtr->labelHeight = IconHeight(itemPtr->image);
@@ -1215,6 +1330,64 @@ ComputeItemGeometry(ComboMenu *comboPtr, Item *itemPtr)
 	if (itemPtr->labelWidth > 0) {
 	    itemPtr->width += itemPtr->labelWidth + ITEM_IPAD;
 	}
+    } else {
+	if (itemPtr->flags & (ITEM_RADIOBUTTON | ITEM_CHECKBUTTON)) {
+	    Blt_FontMetrics fm;
+	    size_t reqSize;
+
+	    Blt_GetFontMetrics(itemPtr->stylePtr->labelFont, &fm);
+	    itemPtr->leftIndWidth = itemPtr->leftIndHeight =
+		(fm.linespace) + 4 * ITEM_YPAD;
+#ifdef notdef
+	    itemPtr->leftIndWidth = ITEM_L_IND_WIDTH;
+	    itemPtr->leftIndHeight = ITEM_L_IND_HEIGHT;
+#endif
+	    reqSize = itemPtr->stylePtr->reqIndWidth;
+	    if (reqSize == 0) { 
+		reqSize = (itemPtr->flags & ITEM_RADIOBUTTON) ?
+		    comboPtr->radioButtonReqSize : comboPtr->checkButtonReqSize;
+	    }
+	    if (reqSize > 0) {
+		itemPtr->leftIndWidth = itemPtr->leftIndHeight = 
+		    reqSize + 2*ITEM_YPAD;
+	    }
+	    if (itemPtr->height < itemPtr->leftIndHeight) {
+		itemPtr->height = itemPtr->leftIndHeight;
+	    }
+	    itemPtr->width += itemPtr->leftIndWidth + 2 * ITEM_IPAD;
+	}
+
+	if (itemPtr->icon != NULL) {
+	    itemPtr->iconWidth = IconWidth(itemPtr->icon);
+	    itemPtr->iconHeight = IconHeight(itemPtr->icon);
+	    if (itemPtr->height < IconHeight(itemPtr->icon)) {
+		itemPtr->height = IconHeight(itemPtr->icon);
+	    }
+	    itemPtr->width += itemPtr->iconWidth + ITEM_IPAD;
+	}
+
+	if (itemPtr->image != NULL) {
+	    itemPtr->labelWidth = IconWidth(itemPtr->image);
+	    itemPtr->labelHeight = IconHeight(itemPtr->image);
+	    if (itemPtr->height < itemPtr->labelHeight) {
+		itemPtr->height = itemPtr->labelHeight;
+	    }
+	} else if (itemPtr->label != emptyString) {
+	    unsigned int w, h;
+	    
+	    Blt_GetTextExtents(itemPtr->stylePtr->labelFont, 0, itemPtr->label,
+		 -1, &w, &h);
+	    itemPtr->labelWidth = w;
+	    itemPtr->labelHeight = h;
+	    if (itemPtr->height < itemPtr->labelHeight) {
+		itemPtr->height = itemPtr->labelHeight;
+	    }
+	}
+
+	if (itemPtr->labelWidth > 0) {
+	    itemPtr->width += itemPtr->labelWidth + ITEM_IPAD;
+	}
+
 	if (itemPtr->flags & ITEM_CASCADE) {
 	    itemPtr->rightIndWidth = ITEM_R_IND_WIDTH;
 	    itemPtr->rightIndHeight = ITEM_R_IND_HEIGHT;
@@ -1287,11 +1460,47 @@ static void
 ComputeVisibleItems(ComboMenu *comboPtr)
 {
     Item *itemPtr;
+    int cavityWidth, cavityHeight;
 
     if (Blt_Chain_GetLength(comboPtr->chain) == 0) {
 	comboPtr->firstPtr = comboPtr->lastPtr = NULL;
 	return;
     }
+    cavityWidth = Tk_Width(comboPtr->tkwin);
+    cavityHeight = Tk_Height(comboPtr->tkwin);
+    comboPtr->xScrollbarHeight = comboPtr->yScrollbarWidth = 0;
+    if ((comboPtr->xScrollbar != NULL) && (comboPtr->worldWidth > cavityWidth)){
+	comboPtr->xScrollbarHeight = Tk_ReqHeight(comboPtr->xScrollbar);
+	if (comboPtr->xScrollbarHeight > MAXSCROLLBARTHICKNESS) {
+	    comboPtr->xScrollbarHeight = MAXSCROLLBARTHICKNESS;
+	}
+	cavityHeight -= comboPtr->xScrollbarHeight;
+    } 
+    if ((comboPtr->yScrollbar != NULL) && (comboPtr->worldHeight>cavityHeight)){
+	comboPtr->yScrollbarWidth = Tk_ReqWidth(comboPtr->yScrollbar);
+	if (comboPtr->yScrollbarWidth > MAXSCROLLBARTHICKNESS) {
+	    comboPtr->yScrollbarWidth = MAXSCROLLBARTHICKNESS;
+	}
+	cavityWidth -= comboPtr->yScrollbarWidth;
+    }
+    if ((comboPtr->xScrollbar != NULL) && (comboPtr->xScrollbarHeight == 0) && 
+	(comboPtr->worldWidth > cavityWidth)) {
+	comboPtr->xScrollbarHeight = Tk_ReqHeight(comboPtr->xScrollbar);
+	if (comboPtr->xScrollbarHeight > MAXSCROLLBARTHICKNESS) {
+	    comboPtr->xScrollbarHeight = MAXSCROLLBARTHICKNESS;
+	}
+	cavityHeight -= comboPtr->xScrollbarHeight;
+    }
+    if ((comboPtr->yScrollbar != NULL) && (comboPtr->yScrollbarWidth == 0) && 
+	(comboPtr->worldHeight > cavityHeight)) {
+	comboPtr->yScrollbarWidth = Tk_ReqWidth(comboPtr->yScrollbar);
+	if (comboPtr->yScrollbarWidth > MAXSCROLLBARTHICKNESS) {
+	    comboPtr->yScrollbarWidth = MAXSCROLLBARTHICKNESS;
+	}
+	cavityWidth -= comboPtr->yScrollbarWidth;
+    }
+    comboPtr->width = cavityWidth;
+    comboPtr->height = cavityHeight;
     itemPtr = SearchForItem(comboPtr, NULL, NULL, comboPtr->yOffset);
     if (itemPtr == NULL) {
 	Blt_ChainLink link;
@@ -1336,11 +1545,12 @@ NearestItem(ComboMenu *comboPtr, int x, int y, int selectOne)
     Item *itemPtr;
 
     if (comboPtr->firstPtr == NULL) {
-	return NULL;		/* No visible entries. */
+	return NULL;			/* No visible entries. */
     }
     if ((x < 0) || (x >= Tk_Width(comboPtr->tkwin)) || 
 	(y < 0) || (y >= Tk_Height(comboPtr->tkwin))) {
-	return NULL;		/* Screen coordinates are outside of menu. */
+	return NULL;			/* Screen coordinates are outside of
+					 * menu. */
     }
     /*
      * Item positions are saved in world coordinates. Convert the text point
@@ -1369,8 +1579,7 @@ ComputeCascadeMenuCoords(ComboMenu *comboPtr, Item *itemPtr, Tk_Window menuWin,
 
     x = Tk_Width(comboPtr->tkwin);
     y = SCREENY(comboPtr, itemPtr->yWorld);
-    screenWidth = WidthOfScreen(Tk_Screen(menuWin));
-    screenHeight = HeightOfScreen(Tk_Screen(menuWin));
+    Blt_SizeOfScreen(comboPtr->tkwin, &screenWidth, &screenHeight);
     Tk_GetRootCoords(comboPtr->tkwin, &rootX, &rootY);
     if (rootX < 0) {
 	rootX = 0;
@@ -1417,17 +1626,17 @@ ComputeCascadeMenuCoords(ComboMenu *comboPtr, Item *itemPtr, Tk_Window menuWin,
  */
 static int
 UnpostCascade(
-    Tcl_Interp *interp,		/* Used for invoking "unpost" commands and
-				 * reporting errors. */
-    ComboMenu *comboPtr)	/* Information about the menu. */
+    Tcl_Interp *interp,			/* Used for invoking "unpost" commands
+					 * and reporting errors. */
+    ComboMenu *comboPtr)		/* Information about the menu. */
 {
     Item *itemPtr = comboPtr->postedPtr;
     char *menuName;
     Tk_Window menuWin;
 
     if ((itemPtr == NULL) || (itemPtr->menuObjPtr == NULL)) {
-	return TCL_OK;		/* No item currenly posted or no menu
-				 * designated for cascade item. */
+	return TCL_OK;			/* No item currenly posted or no menu
+					 * designated for cascade item. */
     }
     comboPtr->postedPtr = NULL;
     assert((itemPtr != NULL) && (itemPtr->flags & ITEM_CASCADE));
@@ -1485,25 +1694,25 @@ UnpostCascade(
  */
 static int
 PostCascade(
-    Tcl_Interp *interp,		/* Used for invoking "post" command
-				 * and reporting errors. */
-    ComboMenu *comboPtr,	/* Information about the menu. */
-    Item *itemPtr)		/* Cascade item   */
+    Tcl_Interp *interp,			/* Used for invoking "post" command
+					 * and reporting errors. */
+    ComboMenu *comboPtr,		/* Information about the menu. */
+    Item *itemPtr)			/* Cascade item   */
 {
     char *menuName;
     Tk_Window menuWin;
 
     assert((itemPtr != NULL) && (itemPtr->flags & ITEM_CASCADE));
     if (itemPtr->menuObjPtr == NULL) {
-	return TCL_OK;		/* No menu was designated for this
-				 * cascade item. */
+	return TCL_OK;			/* No menu was designated for this
+					 * cascade item. */
     }
     if (comboPtr->postedPtr == itemPtr) {
 #ifdef notdef
 	fprintf(stderr, "postcascade: %s is already posted\n",
 		Tcl_GetString(itemPtr->menuObjPtr));
 #endif
-	return TCL_OK;		/* Item is already posted. */
+	return TCL_OK;			/* Item is already posted. */
     }
     menuName = Tcl_GetString(itemPtr->menuObjPtr);
     menuWin = Tk_NameToWindow(interp, menuName, comboPtr->tkwin);
@@ -1532,15 +1741,7 @@ PostCascade(
 	objv[1] = Tcl_NewStringObj("post", 4);
 	objv[2] = Tcl_NewIntObj(x);
 	objv[3] = Tcl_NewIntObj(y);
-	Tcl_IncrRefCount(objv[0]);
-	Tcl_IncrRefCount(objv[1]);
-	Tcl_IncrRefCount(objv[2]);
-	Tcl_IncrRefCount(objv[3]);
-	result = Tcl_EvalObjv(interp, 4, objv, 0);
-	Tcl_DecrRefCount(objv[3]);
-	Tcl_DecrRefCount(objv[2]);
-	Tcl_DecrRefCount(objv[1]);
-	Tcl_DecrRefCount(objv[0]);
+	result = Blt_GlobalEvalObjv(interp, 4, objv);
 	if (result != TCL_OK) {
 	    return result;
 	}
@@ -1551,11 +1752,12 @@ PostCascade(
 }
 
 static void
-ComputeMenuGeometry(ComboMenu *comboPtr)
+ComputeComboGeometry(ComboMenu *comboPtr)
 {
     int xWorld, yWorld;
     Blt_ChainLink link;
     int w, h;
+    int reqWidth, reqHeight;
 
     /* 
      * Step 1.  Collect the maximum widths of the items in their individual
@@ -1604,54 +1806,35 @@ ComputeMenuGeometry(ComboMenu *comboPtr)
     }
     comboPtr->worldWidth += ITEM_IPAD;
     comboPtr->xScrollbarHeight = comboPtr->yScrollbarWidth = 0;
-    if (comboPtr->reqWidth > 0) {
-	w = comboPtr->reqWidth;
-    } else {
-	Tk_Window parent;
 
-	w = comboPtr->worldWidth;
-	parent = Tk_Parent(comboPtr->tkwin);
-	if (Tk_Class(parent) != Tk_GetUid("ComboMenu")) {
-	    w = Tk_Width(parent);
-	    if (w <= 1) {
-		w = Tk_ReqWidth(parent);
-	    }
-	}
-	if (comboPtr->reqWidth < 0) {
-	    int w2;
-	    w2 = MIN(-comboPtr->reqWidth, comboPtr->worldWidth);
-	    if (w < w2) {
-		w = w2;
-	    }
-	}
-	if (WidthOfScreen(Tk_Screen(comboPtr->tkwin)) < w) {
-	    w = WidthOfScreen(Tk_Screen(comboPtr->tkwin));
-	}
-    }
-    if ((comboPtr->worldWidth > w) && (comboPtr->xScrollbar != NULL)) {
+    /* Figure out the requested size of the widget.  This will also tell us if
+     * we need scrollbars. */
+ 
+    reqWidth = comboPtr->worldWidth + 2 * comboPtr->borderWidth;
+    reqHeight = comboPtr->worldHeight + 2 * comboPtr->borderWidth;
+
+    w = GetBoundedWidth(comboPtr, reqWidth);
+    h = GetBoundedHeight(comboPtr, reqHeight);
+
+
+    if ((reqWidth > w) && (comboPtr->xScrollbar != NULL)) {
 	comboPtr->xScrollbarHeight = Tk_ReqHeight(comboPtr->xScrollbar);
+	h = GetBoundedHeight(comboPtr, reqHeight + comboPtr->xScrollbarHeight);
     }
-    if (comboPtr->reqHeight > 0) {
-	h = comboPtr->reqHeight;
-    } else if (comboPtr->reqHeight < 0) {
-	h = MIN(-comboPtr->reqHeight, comboPtr->worldHeight);
-    } else {
-	h=MIN(HeightOfScreen(Tk_Screen(comboPtr->tkwin)),comboPtr->worldHeight);
-    }
-    if ((comboPtr->worldHeight > h) && (comboPtr->yScrollbar != NULL)) {
+    if ((reqHeight > h) && (comboPtr->yScrollbar != NULL)) {
 	comboPtr->yScrollbarWidth = Tk_ReqWidth(comboPtr->yScrollbar);
+	w = GetBoundedWidth(comboPtr, reqWidth + comboPtr->yScrollbarWidth);
     }
-#ifndef notdef
-    if (comboPtr->reqWidth == 0) {
-#ifdef notdef
-	w += 2 * (comboPtr->borderWidth + 2 * ITEM_IPAD);
-#endif
-	w += comboPtr->yScrollbarWidth;
+    /* Save the computed width so that we only override the menu width if the
+     * parent (combobutton/comboentry) width is greater than the normal size
+     * of the menu.  */
+    comboPtr->normalWidth = w;
+    comboPtr->normalHeight = h;
+    if (h < 20) {
+	h = 20;
     }
-#endif
-    if (comboPtr->reqHeight == 0) {
-	h += comboPtr->xScrollbarHeight;
-	h += 2 * comboPtr->borderWidth;
+    if (w < comboPtr->parentWidth) {
+	w = comboPtr->parentWidth;
     }
     comboPtr->width = w;
     comboPtr->height = h;
@@ -1672,7 +1855,7 @@ ComputeMenuGeometry(ComboMenu *comboPtr)
 	(h != Tk_ReqHeight(comboPtr->tkwin))) {
 	Tk_GeometryRequest(comboPtr->tkwin, w, h);
     }
-    comboPtr->flags |= CM_SCROLL | CM_LAYOUT;
+    comboPtr->flags |= SCROLL_PENDING | LAYOUT_PENDING;
 }
 
 static void
@@ -1821,8 +2004,8 @@ SetTag(Tcl_Interp *interp, Item *itemPtr, const char *tagName)
     long dummy;
     
     if ((strcmp(tagName, "all") == 0) || (strcmp(tagName, "end") == 0)) {
-	return TCL_OK;		/* Don't need to create reserved
-				 * tags. */
+	return TCL_OK;			/* Don't need to create reserved
+					 * tags. */
     }
     if (tagName[0] == '\0') {
 	if (interp != NULL) {
@@ -1888,7 +2071,7 @@ GetTagTable(ComboMenu *comboPtr, const char *tagName)
 
     hPtr = Blt_FindHashEntry(&comboPtr->tagTable, tagName);
     if (hPtr == NULL) {
-	return NULL;		/* No tag by that name. */
+	return NULL;			/* No tag by that name. */
     }
     return Blt_GetHashValue(hPtr);
 }
@@ -1933,9 +2116,11 @@ ManageScrollbar(ComboMenu *comboPtr, Tk_Window scrollbar)
 /*ARGSUSED*/
 static void
 InstallScrollbar(
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
     ComboMenu *comboPtr,
-    Tcl_Obj *objPtr,		/* String representing scrollbar window. */
+    Tcl_Obj *objPtr,			/* String representing scrollbar
+					 * window. */
     Tk_Window *tkwinPtr)
 {
     Tk_Window tkwin;
@@ -1965,7 +2150,7 @@ InstallXScrollbar(ClientData clientData)
 {
     ComboMenu *comboPtr = clientData;
 
-    comboPtr->flags &= ~CM_INSTALL_SCROLLBAR_X;
+    comboPtr->flags &= ~INSTALL_XSCROLLBAR;
     InstallScrollbar(comboPtr->interp, comboPtr, comboPtr->xScrollbarObjPtr,
 		     &comboPtr->xScrollbar);
 }
@@ -1975,7 +2160,7 @@ InstallYScrollbar(ClientData clientData)
 {
     ComboMenu *comboPtr = clientData;
 
-    comboPtr->flags &= ~CM_INSTALL_SCROLLBAR_Y;
+    comboPtr->flags &= ~INSTALL_YSCROLLBAR;
     InstallScrollbar(comboPtr->interp, comboPtr, comboPtr->yScrollbarObjPtr,
 		     &comboPtr->yScrollbar);
 }
@@ -1991,6 +2176,10 @@ GetIconFromObj(Tcl_Interp *interp, ComboMenu *comboPtr, Tcl_Obj *objPtr,
     const char *iconName;
 
     iconName = Tcl_GetString(objPtr);
+    if (iconName[0] == '\0') {
+	*iconPtr = NULL;
+	return TCL_OK;
+    }
     hPtr = Blt_CreateHashEntry(&comboPtr->iconTable, iconName, &isNew);
     if (isNew) {
 	Tk_Image tkImage;
@@ -2053,12 +2242,15 @@ FindItemByLabel(ComboMenu *comboPtr, const char *label)
 
     hPtr = Blt_FindHashEntry(&comboPtr->labelTable, label);
     if (hPtr != NULL) {
-	Blt_Chain chain;
-	Blt_ChainLink link;
+	Blt_HashTable *tablePtr;
+	Blt_HashEntry *h2Ptr;
+	Blt_HashSearch iter;
 
-	chain = Blt_GetHashValue(hPtr);
-	link = Blt_Chain_FirstLink(chain);
-	return Blt_Chain_GetValue(link);
+	tablePtr = Blt_GetHashValue(hPtr);
+	h2Ptr = Blt_FirstHashEntry(tablePtr, &iter);
+	if (h2Ptr != NULL) {
+	    return Blt_GetHashValue(h2Ptr);
+	}
     }
     return NULL;
 }
@@ -2066,20 +2258,22 @@ FindItemByLabel(ComboMenu *comboPtr, const char *label)
 static char *
 NewLabel(Item *itemPtr, const char *label)
 {
-    Blt_Chain chain;
-    Blt_HashEntry *hPtr;
+    Blt_HashEntry *hPtr, *h2Ptr;
+    Blt_HashTable *tablePtr;
     int isNew;
     ComboMenu *comboPtr;
 
     comboPtr = itemPtr->comboPtr;
     hPtr = Blt_CreateHashEntry(&comboPtr->labelTable, label, &isNew);
     if (isNew) {
-	chain = Blt_Chain_Create();
-	Blt_SetHashValue(hPtr, chain);
+	tablePtr = Blt_AssertMalloc(sizeof(Blt_HashTable));
+	Blt_InitHashTable(tablePtr, BLT_ONE_WORD_KEYS);
+	Blt_SetHashValue(hPtr, tablePtr);
     } else {
-	chain = Blt_GetHashValue(hPtr);
+	tablePtr = Blt_GetHashValue(hPtr);
     }
-    Blt_Chain_Append(chain, itemPtr);
+    h2Ptr = Blt_CreateHashEntry(tablePtr, (char *)itemPtr, &isNew);
+    Blt_SetHashValue(h2Ptr, itemPtr);
     return Blt_GetHashKey(&comboPtr->labelTable, hPtr);
 }
 
@@ -2090,23 +2284,18 @@ RemoveLabel(ComboMenu *comboPtr, Item *itemPtr)
 	
     hPtr = Blt_FindHashEntry(&comboPtr->labelTable, itemPtr->label);
     if (hPtr != NULL) {
-	Blt_Chain chain;
-	Blt_ChainLink link;
+	Blt_HashTable *tablePtr;
+	Blt_HashEntry *h2Ptr;
 	
-	chain = Blt_GetHashValue(hPtr);
-	for (link = Blt_Chain_FirstLink(chain); link != NULL;
-	     link = Blt_Chain_NextLink(link)) {
-	    Item *ip;
-	    
-	    ip = Blt_Chain_GetValue(link);
-	    if (ip == itemPtr) {
-		itemPtr->label = (char *)emptyString;
-		Blt_Chain_DeleteLink(chain, link);
-		if (Blt_Chain_GetLength(chain) == 0) {
-		    Blt_Chain_Destroy(chain);
-		    Blt_DeleteHashEntry(&comboPtr->labelTable, hPtr);
-		    return;
-		}
+	tablePtr = Blt_GetHashValue(hPtr);
+	h2Ptr = Blt_FindHashEntry(tablePtr, (char *)itemPtr);
+	if (h2Ptr != NULL) {
+	    itemPtr->label = emptyString;
+	    Blt_DeleteHashEntry(tablePtr, h2Ptr);
+	    if (tablePtr->numEntries == 0) {
+		Blt_DeleteHashEntry(&comboPtr->labelTable, hPtr);
+		Blt_DeleteHashTable(tablePtr);
+		Blt_Free(tablePtr);
 	    }
 	}
     }
@@ -2120,10 +2309,11 @@ DestroyLabels(ComboMenu *comboPtr)
 
     for (hPtr = Blt_FirstHashEntry(&comboPtr->labelTable, &iter); 
 	 hPtr != NULL; hPtr = Blt_NextHashEntry(&iter)) {
-	Blt_Chain chain;
+	Blt_HashTable *tablePtr;
 	
-	chain = Blt_GetHashValue(hPtr);
-	Blt_Chain_Destroy(chain);
+	tablePtr = Blt_GetHashValue(hPtr);
+	Blt_DeleteHashTable(tablePtr);
+	Blt_Free(tablePtr);
     }
     Blt_DeleteHashTable(&comboPtr->labelTable);
 }
@@ -2132,18 +2322,18 @@ static void
 MoveItem(ComboMenu *comboPtr, Item *itemPtr, int dir, Item *wherePtr)
 {
     if (Blt_Chain_GetLength(comboPtr->chain) == 1) {
-	return;			/* Can't rearrange one item. */
+	return;				/* Can't rearrange one item. */
     }
     Blt_Chain_UnlinkLink(comboPtr->chain, itemPtr->link);
     switch(dir) {
-    case 0:			/* After */
+    case 0:				/* After */
 	Blt_Chain_LinkAfter(comboPtr->chain, itemPtr->link, wherePtr->link);
 	break;
-    case 1:			/* At */
+    case 1:				/* At */
 	Blt_Chain_LinkAfter(comboPtr->chain, itemPtr->link, wherePtr->link);
 	break;
     default:
-    case 2:			/* Before */
+    case 2:				/* Before */
 	Blt_Chain_LinkBefore(comboPtr->chain, itemPtr->link, wherePtr->link);
 	break;
     }
@@ -2151,7 +2341,7 @@ MoveItem(ComboMenu *comboPtr, Item *itemPtr, int dir, Item *wherePtr)
 	Blt_ChainLink link;
 	long count;
 
-	for (count = 1, link = Blt_Chain_FirstLink(comboPtr->chain); 
+	for (count = 0, link = Blt_Chain_FirstLink(comboPtr->chain); 
 	     link != NULL; link = Blt_Chain_NextLink(link), count++) {
 	    itemPtr = Blt_Chain_GetValue(link);
 	    itemPtr->index = count;
@@ -2233,16 +2423,20 @@ NameOfType(unsigned int flags)
 static Item *
 NextTaggedItem(ItemIterator *iterPtr)
 {
-    if (iterPtr->type == ITER_TAG) {
-	Blt_HashEntry *hPtr;
+    Item *itemPtr;
 
-	hPtr = Blt_NextHashEntry(&iterPtr->cursor); 
-	if (hPtr != NULL) {
-	    return Blt_GetHashValue(hPtr);
+    switch (iterPtr->type) {
+    case ITER_TAG:
+	{
+	    Blt_HashEntry *hPtr;
+	    
+	    hPtr = Blt_NextHashEntry(&iterPtr->cursor); 
+	    if (hPtr != NULL) {
+		return Blt_GetHashValue(hPtr);
+	    }
 	}
-    } else if (iterPtr->type == ITER_TYPE) {
-	Item *itemPtr;
-
+	break;
+    case ITER_TYPE:
 	itemPtr = iterPtr->nextPtr;
 	if (itemPtr == NULL) {
 	    return itemPtr;
@@ -2259,16 +2453,33 @@ NextTaggedItem(ItemIterator *iterPtr)
 	    iterPtr->nextPtr = StepItem(itemPtr);
 	}
 	return itemPtr;
-    } else if (iterPtr->nextPtr != NULL) {
-	Item *itemPtr;
-	
-	itemPtr = iterPtr->nextPtr;
-	if (itemPtr == iterPtr->endPtr) {
-	    iterPtr->nextPtr = NULL;
-	} else {
-	    iterPtr->nextPtr = StepItem(itemPtr);
+
+    case ITER_ALL:
+	if (iterPtr->link != NULL) {
+	    itemPtr = Blt_Chain_GetValue(iterPtr->link);
+	    iterPtr->link = Blt_Chain_NextLink(iterPtr->link);
+	    return itemPtr;
 	}
-	return itemPtr;
+	break;
+
+    case ITER_PATTERN:
+	{
+	    Blt_ChainLink link;
+	    
+	    for (link = iterPtr->link; link != NULL; 
+		 link = Blt_Chain_NextLink(link)) {
+		Item *itemPtr;
+		
+		itemPtr = Blt_Chain_GetValue(iterPtr->link);
+		if (Tcl_StringMatch(itemPtr->label, iterPtr->tagName)) {
+		    iterPtr->link = Blt_Chain_NextLink(link);
+		    return itemPtr;
+		}
+	    }
+	    break;
+	}
+    default:
+	break;
     }	
     return NULL;
 }
@@ -2289,17 +2500,47 @@ NextTaggedItem(ItemIterator *iterPtr)
 static Item *
 FirstTaggedItem(ItemIterator *iterPtr)
 {
-    if (iterPtr->type == ITER_TAG) {
-	Blt_HashEntry *hPtr;
-	
-	hPtr = Blt_FirstHashEntry(iterPtr->tablePtr, &iterPtr->cursor);
-	if (hPtr == NULL) {
-	    return NULL;
+    Item *itemPtr;
+	    
+    switch (iterPtr->type) {
+    case ITER_TAG: 
+	{
+	    Blt_HashEntry *hPtr;
+	    
+	    hPtr = Blt_FirstHashEntry(iterPtr->tablePtr, &iterPtr->cursor);
+	    if (hPtr == NULL) {
+		return NULL;
+	    }
+	    return Blt_GetHashValue(hPtr);
 	}
-	return Blt_GetHashValue(hPtr);
-    } else if (iterPtr->type == ITER_TYPE) {
-	Item *itemPtr;
+	break;
 
+    case ITER_ALL:
+	if (iterPtr->link != NULL) {
+	    itemPtr = Blt_Chain_GetValue(iterPtr->link);
+	    iterPtr->link = Blt_Chain_NextLink(iterPtr->link);
+	    return itemPtr;
+	}
+	break;
+
+    case ITER_PATTERN:
+	{
+	    Blt_ChainLink link;
+	    
+	    for (link = iterPtr->link; link != NULL; 
+		 link = Blt_Chain_NextLink(link)) {
+		Item *itemPtr;
+		
+		itemPtr = Blt_Chain_GetValue(iterPtr->link);
+		if (Tcl_StringMatch(itemPtr->label, iterPtr->tagName)) {
+		    iterPtr->link = Blt_Chain_NextLink(link);
+		    return itemPtr;
+		}
+	    }
+	}
+	break;
+
+    case ITER_TYPE:
 	itemPtr = iterPtr->startPtr;
 	if (itemPtr == NULL) {
 	    return itemPtr;
@@ -2316,9 +2557,8 @@ FirstTaggedItem(ItemIterator *iterPtr)
 	    iterPtr->nextPtr = StepItem(itemPtr);
 	}
 	return itemPtr;
-    } else if (iterPtr->startPtr != NULL) {
-	Item *itemPtr;
-	
+
+    case ITER_SINGLE:
 	itemPtr = iterPtr->startPtr;
 	iterPtr->nextPtr = NextTaggedItem(iterPtr);
 	return itemPtr;
@@ -2331,19 +2571,16 @@ FirstTaggedItem(ItemIterator *iterPtr)
  *
  * GetItemFromObj --
  *
- *	Gets the item associated the given index, tag, or label.  This routine
+ *	Get the item associated the given index, tag, or label.  This routine
  *	is used when you want only one item.  It's an error if more than one
- *	item is specified (e.g. "all" tag or range "1:4").  It's also an error
- *	if the tag is empty (no items are currently tagged).
+ *	item is specified (e.g. "all" tag).  It's also an error if the tag is
+ *	empty (no items are currently tagged).
  *
  *---------------------------------------------------------------------------
  */
 static int 
-GetItemFromObj(
-    Tcl_Interp *interp, 
-    ComboMenu *comboPtr,
-    Tcl_Obj *objPtr,
-    Item **itemPtrPtr)
+GetItemFromObj(Tcl_Interp *interp, ComboMenu *comboPtr, Tcl_Obj *objPtr,
+	      Item **itemPtrPtr)
 {
     ItemIterator iter;
     Item *firstPtr;
@@ -2368,6 +2605,98 @@ GetItemFromObj(
     return TCL_OK;
 }
 
+static int
+GetItemByIndex(Tcl_Interp *interp, ComboMenu *comboPtr, const char *string, 
+	      int length, Item **itemPtrPtr)
+{
+    Item *itemPtr;
+    char c;
+    long pos;
+
+    itemPtr = NULL;
+    c = string[0];
+    if ((isdigit(c)) && (TclGetLong(NULL, string, &pos) == TCL_OK)) {
+	Blt_ChainLink link;
+
+	link = Blt_Chain_GetNthLink(comboPtr->chain, pos);
+	if (link != NULL) {
+	    itemPtr = Blt_Chain_GetValue(link);
+	} 
+	if (itemPtr == NULL) {
+	    if (interp != NULL) {
+		Tcl_AppendResult(interp, "can't find item: bad index \"", 
+			string, "\"", (char *)NULL);
+	    }
+	    return TCL_ERROR;
+	}		
+    } else if ((c == 'n') && (strcmp(string, "next") == 0)) {
+	itemPtr = NextItem(comboPtr->activePtr);
+	if (itemPtr == NULL) {
+	    itemPtr = comboPtr->activePtr;
+	}
+    } else if ((c == 'p') && (strcmp(string, "previous") == 0)) {
+	itemPtr = PrevItem(comboPtr->activePtr);
+	if (itemPtr == NULL) {
+	    itemPtr = comboPtr->activePtr;
+	}
+    } else if ((c == 'e') && (strcmp(string, "end") == 0)) {
+	itemPtr = LastItem(comboPtr);
+    } else if ((c == 'f') && (strcmp(string, "first") == 0)) {
+	itemPtr = FirstItem(comboPtr);
+    } else if ((c == 'l') && (strcmp(string, "last") == 0)) {
+	itemPtr = LastItem(comboPtr);
+    } else if ((c == 'v') && (strcmp(string, "view.top") == 0)) {
+	itemPtr = comboPtr->firstPtr;
+    } else if ((c == 'v') && (strcmp(string, "view.bottom") == 0)) {
+	itemPtr = comboPtr->lastPtr;
+    } else if ((c == 'n') && (strcmp(string, "none") == 0)) {
+	itemPtr = NULL;
+    } else if ((c == 'a') && (strcmp(string, "active") == 0)) {
+	itemPtr = comboPtr->activePtr;
+#ifdef notdef
+    } else if ((c == 'f') && (strcmp(string, "focus") == 0)) {
+	itemPtr = comboPtr->focusPtr;
+#endif
+    } else if (c == '@') {
+	int x, y;
+
+	if (Blt_GetXY(comboPtr->interp, comboPtr->tkwin, string, &x, &y) 
+	    != TCL_OK) {
+	    return TCL_ERROR;
+	}
+	itemPtr = NearestItem(comboPtr, x, y, TRUE);
+#ifdef notdef
+	if ((itemPtr != NULL) && (itemPtr->flags & ITEM_DISABLED)) {
+	    itemPtr = NextItem(itemPtr);
+	}
+#endif
+    } else {
+	return TCL_CONTINUE;
+    }
+    *itemPtrPtr = itemPtr;
+    return TCL_OK;
+}
+
+static Item *
+GetItemByLabel(ComboMenu *comboPtr, const char *string)
+{
+    Blt_HashEntry *hPtr;
+    
+    hPtr = Blt_FindHashEntry(&comboPtr->labelTable, string);
+    if (hPtr != NULL) {
+	Blt_HashTable *tablePtr;
+	Blt_HashEntry *h2Ptr;
+	Blt_HashSearch iter;
+
+	tablePtr = Blt_GetHashValue(hPtr);
+	h2Ptr = Blt_FirstHashEntry(tablePtr, &iter);
+	if (h2Ptr != NULL) {
+	    return Blt_GetHashValue(h2Ptr);
+	}
+    }
+    return NULL;
+}
+
 
 /*
  *---------------------------------------------------------------------------
@@ -2386,6 +2715,20 @@ GetItemFromObj(
  *	 "end"		Last item.
  *	 "none"		No item.
  *
+ *	 number		Item at position in the list of items.
+ *	 @x,y		Item closest to the specified X-Y screen coordinates.
+ *	 "active"	Item mouse is located over.
+ *	 "focus"	Item is the widget's focus.
+ *	 "select"	Currently selected item.
+ *	 "right"	Next item from the focus item.
+ *	 "left"		Previous item from the focus item.
+ *	 "up"		Next item from the focus item.
+ *	 "down"		Previous item from the focus item.
+ *	 "end"		Last item in list.
+ *	"index:number"  Item at index number in list of items.
+ *	"tag:string"	Item(s) tagged by "string".
+ *	"label:pattern"	Item(s) with label matching "pattern".
+ *	
  * Results:
  *	If the string is successfully converted, TCL_OK is returned.  The
  *	pointer to the node is returned via itemPtrPtr.  Otherwise, TCL_ERROR
@@ -2395,179 +2738,90 @@ GetItemFromObj(
  *---------------------------------------------------------------------------
  */
 static int
-GetItemIterator(
-    Tcl_Interp *interp,
-    ComboMenu *comboPtr,
-    Tcl_Obj *objPtr,
-    ItemIterator *iterPtr)
+GetItemIterator(Tcl_Interp *interp, ComboMenu *comboPtr, Tcl_Obj *objPtr,
+	       ItemIterator *iterPtr)
 {
     Item *itemPtr, *startPtr, *endPtr;
+    Blt_HashTable *tablePtr;
     char *string;
     char c;
-    int badrange;
     int nBytes;
-    char *p, *pend, *rp;
-    long lval;
+    int length;
+    int result;
 
     iterPtr->comboPtr = comboPtr;
-    iterPtr->type = ITER_INDEX;
+    iterPtr->type = ITER_SINGLE;
     iterPtr->tagName = Tcl_GetStringFromObj(objPtr, &nBytes);
     iterPtr->nextPtr = NULL;
     iterPtr->startPtr = iterPtr->endPtr = NULL;
 
-    if (comboPtr->flags & CM_LAYOUT) {
-	ComputeMenuGeometry(comboPtr);
+    if (comboPtr->flags & LAYOUT_PENDING) {
+	ComputeComboGeometry(comboPtr);
     }
-    if (comboPtr->flags & CM_SCROLL) {
+    if (comboPtr->flags & SCROLL_PENDING) {
 	ComputeVisibleItems(comboPtr);
     } 
-    rp = NULL;
-    for (p = iterPtr->tagName, pend = p + nBytes; p < pend; p++) {
-	if (*p != '-') {
-	    continue;
-	}
-	if (rp != NULL) {
-	    /* Found more than one range specifier. We'll assume it's not a
-	     * range and try is as a regular index, tag, or label. */
-	    rp = NULL;
-	    break;
-	}
-	rp = p;
-    } 
-    badrange = FALSE;
-    if ((rp != NULL) && (rp != iterPtr->tagName) && (rp != (pend - 1))) {
-	long length;
-	Tcl_Obj *objPtr1, *objPtr2;
-	Item *fromPtr, *toPtr;
-	int result;
-	
-	length = rp - iterPtr->tagName;
-	objPtr1 = Tcl_NewStringObj(iterPtr->tagName, length);
-	rp++;
-	objPtr2 = Tcl_NewStringObj(rp, pend - rp);
-	result = GetItemFromObj(interp, comboPtr, objPtr1, &fromPtr);
-	if ((fromPtr != NULL) && (result == TCL_OK)) {
-	    result = GetItemFromObj(interp, comboPtr, objPtr2, &toPtr);
-	}
-	Tcl_DecrRefCount(objPtr1);
-	Tcl_DecrRefCount(objPtr2);
-	if ((toPtr != NULL) && (result == TCL_OK)) {
-	    iterPtr->startPtr = fromPtr;
-	    iterPtr->endPtr = toPtr;
-	    iterPtr->type = ITER_RANGE;
-	    return TCL_OK;
-	}
-	badrange = TRUE;
-    }
-    string = Tcl_GetString(objPtr);
+    string = Tcl_GetStringFromObj(objPtr, &length);
     c = string[0];
     iterPtr->startPtr = iterPtr->endPtr = comboPtr->activePtr;
     startPtr = endPtr = itemPtr = NULL;
     if (c == '\0') {
 	startPtr = endPtr = NULL;
-    } else if (Tcl_GetLongFromObj(NULL, objPtr, &lval) == TCL_OK) {
-	if (lval < 0) {
-	    itemPtr = NULL;
-	} else {
-	    itemPtr = FindItemByIndex(comboPtr, (long)lval);
-	}
-	if (itemPtr == NULL) {
-	    if (interp != NULL) {
-		Tcl_AppendResult(interp, "can't find item: bad index \"", 
-				 Tcl_GetString(objPtr), "\"", (char *)NULL);
-	    }
-	    return TCL_ERROR;
-	}		
-	startPtr = endPtr = itemPtr;
-    } else if ((c == 'a') && (strcmp(iterPtr->tagName, "active") == 0)) {
-	startPtr = endPtr = comboPtr->activePtr;
-    } else if ((c == 'n') && (strcmp(iterPtr->tagName, "next") == 0)) {
-	itemPtr = NextItem(comboPtr->activePtr);
-	if (itemPtr == NULL) {
-	    itemPtr = comboPtr->activePtr;
-	}
-	startPtr = endPtr = itemPtr;
-    } else if ((c == 'p') && (strcmp(iterPtr->tagName, "previous") == 0)) {
-	itemPtr = PrevItem(comboPtr->activePtr);
-	if (itemPtr == NULL) {
-	    itemPtr = comboPtr->activePtr;
-	}
-	startPtr = endPtr = itemPtr;
-    } else if ((c == 'e') && (strcmp(iterPtr->tagName, "end") == 0)) {
-	startPtr = endPtr = LastItem(comboPtr);
-    } else if ((c == 'f') && (strcmp(iterPtr->tagName, "first") == 0)) {
-	startPtr = endPtr = FirstItem(comboPtr);
-    } else if ((c == 'l') && (strcmp(iterPtr->tagName, "last") == 0)) {
-	startPtr = endPtr = LastItem(comboPtr);
-    } else if ((c == 'v') && (strcmp(iterPtr->tagName, "view.top") == 0)) {
-	startPtr = endPtr = comboPtr->firstPtr;
-    } else if ((c == 'v') && (strcmp(iterPtr->tagName, "view.bottom") == 0)) {
-	startPtr = endPtr = comboPtr->lastPtr;
-    } else if ((c == 'n') && (strcmp(iterPtr->tagName, "none") == 0)) {
-	startPtr = endPtr = NULL;
-    } else if ((c == 'a') && (strcmp(iterPtr->tagName, "all") == 0)) {
+    } 
+    iterPtr->type = ITER_SINGLE;
+    result = GetItemByIndex(interp, comboPtr, string, length, &itemPtr);
+    if (result == TCL_ERROR) {
+	return TCL_ERROR;
+    }
+    if (result == TCL_OK) {
+	iterPtr->startPtr = iterPtr->endPtr = itemPtr;
+	return TCL_OK;
+    }
+    if ((c == 'a') && (strcmp(iterPtr->tagName, "all") == 0)) {
 	iterPtr->type  = ITER_ALL;
-	startPtr = BeginItem(comboPtr);
-	endPtr   = EndItem(comboPtr);
-    } else if (c == '@') {
-	int x, y;
-
-	if (Blt_GetXY(comboPtr->interp, comboPtr->tkwin, iterPtr->tagName, 
-		      &x, &y) != TCL_OK) {
+	iterPtr->link = Blt_Chain_FirstLink(comboPtr->chain);
+    } else if ((c == 'i') && (length > 6) && 
+	       (strncmp(string, "index:", 6) == 0)) {
+	if (GetItemByIndex(interp, comboPtr, string + 6, length - 6, &itemPtr) 
+	    != TCL_OK) {
 	    return TCL_ERROR;
 	}
-	itemPtr = NearestItem(comboPtr, x, y, TRUE);
-	if ((itemPtr != NULL) && (itemPtr->flags & ITEM_DISABLED)) {
-	    itemPtr = NextItem(itemPtr);
+	iterPtr->startPtr = iterPtr->endPtr = itemPtr;
+    } else if ((c == 't') && (length > 4) && 
+	       (strncmp(string, "tag:", 4) == 0)) {
+	Blt_HashTable *tablePtr;
+
+	tablePtr = GetTagTable(comboPtr, string + 4);
+	if (tablePtr == NULL) {
+	    Tcl_AppendResult(interp, "can't find a tag \"", string + 5,
+			"\" in \"", Tk_PathName(comboPtr->tkwin), "\"",
+			(char *)NULL);
+	    return TCL_ERROR;
 	}
-	startPtr = endPtr = itemPtr;
+	iterPtr->tagName = string + 4;
+	iterPtr->tablePtr = tablePtr;
+	iterPtr->type = ITER_TAG;
+    } else if ((c == 'l') && (length > 6) && 
+	       (strncmp(string, "label:", 6) == 0)) {
+	iterPtr->link = Blt_Chain_FirstLink(comboPtr->chain);
+	iterPtr->tagName = string + 6;
+	iterPtr->type = ITER_PATTERN;
+    } else if ((itemPtr = GetItemByLabel(comboPtr, string)) != NULL) {
+	iterPtr->startPtr = iterPtr->endPtr = itemPtr;
+    } else if ((tablePtr = GetTagTable(comboPtr, string)) != NULL) {
+	iterPtr->tagName = string;
+	iterPtr->tablePtr = tablePtr;
+	iterPtr->type = ITER_TAG;
     } else {
-	int type;
-
-	itemPtr = FindItemByLabel(comboPtr, iterPtr->tagName);
-	if (itemPtr != NULL) {
-	    startPtr = endPtr = itemPtr;
-	} else if (GetTypeFromObj(NULL, objPtr, &type) == TCL_OK) {
-	    iterPtr->type = ITER_TYPE;
-	    iterPtr->itemType = type;
-	    iterPtr->startPtr = BeginItem(comboPtr);
-	    iterPtr->endPtr   = EndItem(comboPtr);
-	    return TCL_OK;
-	} else {
-	    iterPtr->tablePtr = GetTagTable(comboPtr, iterPtr->tagName);
-	    if (iterPtr->tablePtr != NULL) {
-		iterPtr->type = ITER_TAG;
-		return TCL_OK;
-	    }
-	    if (interp != NULL) {
-		Tcl_AppendResult(interp, "can't find tag or item \"", string,
-			"\" in \"", Tk_PathName(comboPtr->tkwin), "\"", 
-		(char *)NULL);
-	    }
-	    return TCL_ERROR;
-	}
-    }
-    if (startPtr != NULL) {
-	iterPtr->startPtr = startPtr;
-    }
-    if (endPtr != NULL) {
-	iterPtr->endPtr = endPtr;
-    }
-    iterPtr->startPtr = startPtr;
-    iterPtr->endPtr = endPtr;
-#ifdef notdef
-    if (iterPtr->startPtr == NULL) {
 	if (interp != NULL) {
-	    Tcl_AppendResult(interp, "can't find tag or combomenu item \"", 
-		string,
-		"\" in \"", Tk_PathName(comboPtr->tkwin), "\"", (char *)NULL);
+	    Tcl_AppendResult(interp, "can't find item index, label, or tag \"", 
+		string, "\" in \"", Tk_PathName(comboPtr->tkwin), "\"", 
+			     (char *)NULL);
 	}
 	return TCL_ERROR;
     }	
-#endif
     return TCL_OK;
 }
-
     
 static int
 ConfigureItem(
@@ -2590,12 +2844,8 @@ ConfigureItem(
 }
 
 static int
-ConfigureStyle(
-    Tcl_Interp *interp, 
-    Style *stylePtr,
-    int objc,
-    Tcl_Obj *const *objv,
-    int flags)
+ConfigureStyle(Tcl_Interp *interp, Style *stylePtr, int objc, 
+	       Tcl_Obj *const *objv, int flags)
 {
     ComboMenu *comboPtr = stylePtr->comboPtr;
     unsigned int gcMask;
@@ -2667,24 +2917,6 @@ ConfigureStyle(
     }
     stylePtr->accelActiveGC = newGC;
 
-    /* Indicator foreground. */
-    gcMask = GCForeground;
-    gcValues.foreground = stylePtr->indFgColor->pixel;
-    newGC = Tk_GetGC(comboPtr->tkwin, gcMask, &gcValues);
-    if (stylePtr->indFgGC != NULL) {
-	Tk_FreeGC(comboPtr->display, stylePtr->indFgGC);
-    }
-    stylePtr->indFgGC = newGC;
-
-    /* Indicator background */
-    gcMask = GCForeground;
-    gcValues.foreground = stylePtr->indBgColor->pixel;
-    newGC = Tk_GetGC(comboPtr->tkwin, gcMask, &gcValues);
-    if (stylePtr->indBgGC != NULL) {
-	Tk_FreeGC(comboPtr->display, stylePtr->indBgGC);
-    }
-    stylePtr->indBgGC = newGC;
-
 #ifdef notdef
     if (itemPtr->flags & (ITEM_RADIOBUTTON | ITEM_CHECKBUTTON)) {
 	itemPtr->leftIndWidth = ITEM_L_IND_WIDTH + 2 * ITEM_IPAD;
@@ -2695,13 +2927,11 @@ ConfigureStyle(
 }
 
 static int
-ConfigureComboMenu(
-    Tcl_Interp *interp, 
-    ComboMenu *comboPtr,
-    int objc,
-    Tcl_Obj *const *objv,
-    int flags)
+ConfigureComboMenu(Tcl_Interp *interp, ComboMenu *comboPtr, int objc,
+		   Tcl_Obj *const *objv, int flags)
 {
+    int updateNeeded;
+
     if (Blt_ConfigureWidgetFromObj(interp, comboPtr->tkwin, comboConfigSpecs, 
 	objc, objv, (char *)comboPtr, flags) != TCL_OK) {
 	return TCL_ERROR;
@@ -2711,6 +2941,7 @@ ConfigureComboMenu(
 	return TCL_ERROR;
     }	
 
+    updateNeeded = FALSE;
     /* Install the embedded scrollbars as needed.  We defer installing the
      * scrollbars so the scrollbar widgets don't have to exist when they are
      * specified by the -xscrollbar and -yscrollbar options respectively. The
@@ -2721,19 +2952,27 @@ ConfigureComboMenu(
 	    UnmanageScrollbar(comboPtr, comboPtr->xScrollbar);
 	    comboPtr->xScrollbar = NULL;
 	}
-	if ((comboPtr->flags & CM_INSTALL_SCROLLBAR_X) == 0) {
+	if ((comboPtr->flags & INSTALL_XSCROLLBAR) == 0) {
 	    Tcl_DoWhenIdle(InstallXScrollbar, comboPtr);
-	    comboPtr->flags |= CM_INSTALL_SCROLLBAR_X;
+	    comboPtr->flags |= INSTALL_XSCROLLBAR;
 	}	    
+	updateNeeded = TRUE;
     }
     if (Blt_ConfigModified(comboConfigSpecs, "-yscrollbar", (char *)NULL)) {
 	if (comboPtr->yScrollbar != NULL) {
 	    UnmanageScrollbar(comboPtr, comboPtr->yScrollbar);
 	    comboPtr->yScrollbar = NULL;
 	}
-	if ((comboPtr->flags & CM_INSTALL_SCROLLBAR_Y) == 0) {
+	if ((comboPtr->flags & INSTALL_YSCROLLBAR) == 0) {
 	    Tcl_DoWhenIdle(InstallYScrollbar, comboPtr);
-	    comboPtr->flags |= CM_INSTALL_SCROLLBAR_Y;
+	    comboPtr->flags |= INSTALL_YSCROLLBAR;
+	}	    
+	updateNeeded = TRUE;
+    }
+    if (updateNeeded) {
+	if ((comboPtr->flags & UPDATE_PENDING) == 0) {
+	    Tcl_DoWhenIdle(ConfigureScrollbarsProc, comboPtr);
+	    comboPtr->flags |= UPDATE_PENDING;
 	}	    
     }
     return TCL_OK;
@@ -2773,23 +3012,23 @@ ComboMenuEventProc(ClientData clientData, XEvent *eventPtr)
 	    EventuallyRedraw(comboPtr);
 	}
     } else if (eventPtr->type == ConfigureNotify) {
-	comboPtr->flags |= (CM_SCROLL | CM_LAYOUT);
+	comboPtr->flags |= (SCROLL_PENDING | LAYOUT_PENDING);
 	EventuallyRedraw(comboPtr);
     } else if ((eventPtr->type == FocusIn) || (eventPtr->type == FocusOut)) {
 	if (eventPtr->xfocus.detail == NotifyInferior) {
 	    return;
 	}
 	if (eventPtr->type == FocusIn) {
-	    comboPtr->flags |= CM_FOCUS;
+	    comboPtr->flags |= FOCUS;
 	} else {
-	    comboPtr->flags &= ~CM_FOCUS;
+	    comboPtr->flags &= ~FOCUS;
 	}
 	EventuallyRedraw(comboPtr);
     } else if (eventPtr->type == DestroyNotify) {
 	if (comboPtr->tkwin != NULL) {
 	    comboPtr->tkwin = NULL; 
 	}
-	if (comboPtr->flags & CM_REDRAW) {
+	if (comboPtr->flags & REDRAW_PENDING) {
 	    Tcl_CancelIdleCall(DisplayComboMenu, comboPtr);
 	}
 	Tcl_EventuallyFree(comboPtr, DestroyComboMenu);
@@ -2812,9 +3051,9 @@ ComboMenuEventProc(ClientData clientData, XEvent *eventPtr)
  */
 static void
 ScrollbarEventProc(
-    ClientData clientData,	/* Pointer to Entry structure for widget
-				 * referred to by eventPtr. */
-    XEvent *eventPtr)		/* Describes what just happened. */
+    ClientData clientData,		/* Pointer to Entry structure for
+					 * widget referred to by eventPtr. */
+    XEvent *eventPtr)			/* Describes what just happened. */
 {
     ComboMenu *comboPtr = clientData;
 
@@ -2826,7 +3065,7 @@ ScrollbarEventProc(
 	} else if (eventPtr->xany.window == Tk_WindowId(comboPtr->xScrollbar)) {
 	    comboPtr->xScrollbar = NULL;
 	} 
-	comboPtr->flags |= CM_LAYOUT;;
+	comboPtr->flags |= LAYOUT_PENDING;;
 	EventuallyRedraw(comboPtr);
     }
 }
@@ -2851,9 +3090,9 @@ ScrollbarEventProc(
 /* ARGSUSED */
 static void
 ScrollbarCustodyProc(
-    ClientData clientData,	/* Information about the combomenu. */
-    Tk_Window tkwin)		/* Scrollbar stolen by another geometry
-				 * manager. */
+    ClientData clientData,		/* Information about the combomenu. */
+    Tk_Window tkwin)			/* Scrollbar stolen by another geometry
+					 * manager. */
 {
     ComboMenu *comboPtr = (ComboMenu *)clientData;
 
@@ -2867,7 +3106,7 @@ ScrollbarCustodyProc(
 	return;		
     }
     Tk_UnmaintainGeometry(tkwin, comboPtr->tkwin);
-    comboPtr->flags |= CM_LAYOUT;
+    comboPtr->flags |= LAYOUT_PENDING;
     EventuallyRedraw(comboPtr);
 }
 
@@ -2890,12 +3129,13 @@ ScrollbarCustodyProc(
 /* ARGSUSED */
 static void
 ScrollbarGeometryProc(
-    ClientData clientData,	/* ComboMenu widget record.  */
-    Tk_Window tkwin)		/* Scrollbar whose geometry has changed. */
+    ClientData clientData,		/* ComboMenu widget record.  */
+    Tk_Window tkwin)			/* Scrollbar whose geometry has
+					 * changed. */
 {
     ComboMenu *comboPtr = (ComboMenu *)clientData;
 
-    comboPtr->flags |= CM_LAYOUT;
+    comboPtr->flags |= LAYOUT_PENDING;
     EventuallyRedraw(comboPtr);
 }
 
@@ -2918,19 +3158,19 @@ ScrollbarGeometryProc(
  */
 static char *
 ItemVarTraceProc(
-    ClientData clientData,	/* Information about the item. */
-    Tcl_Interp *interp,		/* Interpreter containing variable. */
-    const char *name1,		/* First part of variable's name. */
-    const char *name2,		/* Second part of variable's name. */
-    int flags)			/* Describes what just happened. */
+    ClientData clientData,		/* Information about the item. */
+    Tcl_Interp *interp,			/* Interpreter containing variable. */
+    const char *name1,			/* First part of variable's name. */
+    const char *name2,			/* Second part of variable's name. */
+    int flags)				/* Describes what just happened. */
 {
     Item *itemPtr = clientData;
-    Tcl_Obj *valueObjPtr;
+    Tcl_Obj *objPtr;
     int bool;
 
-    assert(itemPtr->varNameObjPtr != NULL);
+    assert(itemPtr->variableObjPtr != NULL);
     if (flags & TCL_INTERP_DESTROYED) {
-    	return NULL;		/* Interpreter is going away. */
+    	return NULL;			/* Interpreter is going away. */
 
     }
     /*
@@ -2941,28 +3181,28 @@ ItemVarTraceProc(
 	if (flags & TCL_TRACE_DESTROYED) {
 	    char *varName;
 
-	    varName = Tcl_GetString(itemPtr->varNameObjPtr);
+	    varName = Tcl_GetString(itemPtr->variableObjPtr);
 	    Tcl_TraceVar(interp, varName, VAR_FLAGS, ItemVarTraceProc, 
 		clientData);
 	}
 	goto done;
     }
 
-    if ((itemPtr->flags & (ITEM_RADIOBUTTON | ITEM_CHECKBUTTON)) == 0) {
-	return NULL;		/* Not a radiobutton or checkbutton. */
+    if ((itemPtr->flags & (ITEM_RADIOBUTTON|ITEM_CHECKBUTTON|ITEM_BUTTON))==0) {
+	return NULL;		       /* Not a radiobutton or checkbutton. */
     }
 
     /*
      * Use the value of the variable to update the selected status of the
      * item.
      */
-    valueObjPtr = Tcl_ObjGetVar2(interp, itemPtr->varNameObjPtr, NULL, 
-		TCL_GLOBAL_ONLY);
-    if (valueObjPtr == NULL) {
-	return NULL;		/* Can't get value of variable. */
+    objPtr = Tcl_ObjGetVar2(interp, itemPtr->variableObjPtr, NULL, 
+			    TCL_GLOBAL_ONLY);
+    if (objPtr == NULL) {
+	return NULL;			/* Can't get value of variable. */
     }
     bool = 0;
-    if (itemPtr->flags & ITEM_RADIOBUTTON) {
+    if (itemPtr->flags & (ITEM_BUTTON|ITEM_RADIOBUTTON)) {
 	const char *string;
 
 	if (itemPtr->valueObjPtr == NULL) {
@@ -2973,30 +3213,43 @@ ItemVarTraceProc(
 	if (string == NULL) {
 	    return NULL;
 	}
-	bool = (strcmp(string, Tcl_GetString(valueObjPtr)) == 0);
+	bool = (strcmp(string, Tcl_GetString(objPtr)) == 0);
     } else if (itemPtr->flags & ITEM_CHECKBUTTON) {
 	if (itemPtr->onValueObjPtr == NULL) {
-	    if (Tcl_GetBooleanFromObj(NULL, valueObjPtr, &bool) != TCL_OK) {
+	    if (Tcl_GetBooleanFromObj(NULL, objPtr, &bool) != TCL_OK) {
 		return NULL;
 	    }
 	} else {
-	    bool =  (strcmp(Tcl_GetString(valueObjPtr), 
+	    bool =  (strcmp(Tcl_GetString(objPtr), 
 			    Tcl_GetString(itemPtr->onValueObjPtr)) == 0);
 	}
     }
     if (bool) {
-       if (itemPtr->flags & ITEM_SELECTED) {
-	   return NULL;	/* Already selected. */
-       }
-       itemPtr->flags |= ITEM_SELECTED;
+	ComboMenu *comboPtr;
+
+	if (itemPtr->flags & ITEM_SELECTED) {
+	    return NULL;			/* Already selected. */
+	}
+	comboPtr = itemPtr->comboPtr;
+	if ((comboPtr->textVarObjPtr != NULL) && 
+	    (itemPtr->label != emptyString)) {
+	    Tcl_Obj *objPtr;
+	    
+	    objPtr = Tcl_NewStringObj(itemPtr->label, -1);
+	    if (Tcl_ObjSetVar2(interp, comboPtr->textVarObjPtr, NULL, objPtr, 
+			       TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG) == NULL) {
+		return TCL_ERROR;
+	    }
+	}
+	itemPtr->flags |= ITEM_SELECTED;
     } else if (itemPtr->flags & ITEM_SELECTED) {
 	itemPtr->flags &= ~ITEM_SELECTED;
     } else {
-	return NULL;		/* Already deselected. */
+	return NULL;			/* Already deselected. */
     }
  done:
     EventuallyRedraw(itemPtr->comboPtr);
-    return NULL;		/* Done. */
+    return NULL;			/* Done. */
 }
 
 /*ARGSUSED*/
@@ -3006,23 +3259,23 @@ FreeTraceVarProc(ClientData clientData, Display *display, char *widgRec,
 {
     Item *itemPtr = (Item *)(widgRec);
 
-    if (itemPtr->varNameObjPtr != NULL) {
-	char *varName;
+    if (itemPtr->variableObjPtr != NULL) {
+	const char *varName;
 	ComboMenu *comboPtr;
 
 	comboPtr = itemPtr->comboPtr;
-	varName = Tcl_GetString(itemPtr->varNameObjPtr);
+	varName = Tcl_GetString(itemPtr->variableObjPtr);
 	Tcl_UntraceVar(comboPtr->interp, varName, VAR_FLAGS, ItemVarTraceProc, 
 		itemPtr);
-	Tcl_DecrRefCount(itemPtr->varNameObjPtr);
-	itemPtr->varNameObjPtr = NULL;
+	Tcl_DecrRefCount(itemPtr->variableObjPtr);
+	itemPtr->variableObjPtr = NULL;
     }
 }
 
 /*
  *---------------------------------------------------------------------------
 
- * ObjToTraceVar --
+ * ObjToTraceVarProc --
  *
  *	Convert the string representation of a color into a XColor pointer.
  *
@@ -3035,29 +3288,30 @@ FreeTraceVarProc(ClientData clientData, Display *display, char *widgRec,
 /*ARGSUSED*/
 static int
 ObjToTraceVarProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representing style. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representing style. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Item *itemPtr = (Item *)(widgRec);
-    char *varName;
+    const char *varName;
 
     /* Remove the current trace on the variable. */
-    if (itemPtr->varNameObjPtr != NULL) {
-	varName = Tcl_GetString(itemPtr->varNameObjPtr);
+    if (itemPtr->variableObjPtr != NULL) {
+	varName = Tcl_GetString(itemPtr->variableObjPtr);
 	Tcl_UntraceVar(interp, varName, VAR_FLAGS, ItemVarTraceProc, itemPtr);
-	Tcl_DecrRefCount(itemPtr->varNameObjPtr);
-	itemPtr->varNameObjPtr = NULL;
+	Tcl_DecrRefCount(itemPtr->variableObjPtr);
+	itemPtr->variableObjPtr = NULL;
     }
     varName = Tcl_GetString(objPtr);
     if ((varName[0] == '\0') && (flags & BLT_CONFIG_NULL_OK)) {
 	return TCL_OK;
     }
-    itemPtr->varNameObjPtr = objPtr;
+    itemPtr->variableObjPtr = objPtr;
     Tcl_IncrRefCount(objPtr);
     Tcl_TraceVar(interp, varName, VAR_FLAGS, ItemVarTraceProc, itemPtr);
     return TCL_OK;
@@ -3078,31 +3332,28 @@ ObjToTraceVarProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 TraceVarToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget information record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget information record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Item *itemPtr = (Item *)(widgRec);
     Tcl_Obj *objPtr;
 
-    if (itemPtr->varNameObjPtr == NULL) {
+    if (itemPtr->variableObjPtr == NULL) {
 	objPtr = Tcl_NewStringObj("", -1);
     } else {
-	objPtr = itemPtr->varNameObjPtr;
+	objPtr = itemPtr->variableObjPtr;
     }
     return objPtr;
 }
 
 /*ARGSUSED*/
 static void
-FreeStyleProc(
-    ClientData clientData,
-    Display *display,		/* Not used. */
-    char *widgRec,
-    int offset)
+FreeStyleProc(ClientData clientData, Display *display, char *widgRec, 
+	      int offset)
 {
     Style *stylePtr = *(Style **)(widgRec + offset);
 
@@ -3127,12 +3378,13 @@ FreeStyleProc(
 /*ARGSUSED*/
 static int
 ObjToStyleProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representing style. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representing style. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     ComboMenu *comboPtr;
@@ -3173,11 +3425,11 @@ ObjToStyleProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 StyleToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget information record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget information record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Style *stylePtr = *(Style **)(widgRec + offset);
@@ -3189,6 +3441,93 @@ StyleToObjProc(
 	objPtr = Tcl_NewStringObj(stylePtr->name, -1);
     }
     return objPtr;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ObjToRestrictProc --
+ *
+ *	Convert the string representation of an item state into a flag.
+ *
+ * Results:
+ *	The return value is a standard TCL result.  The state flags are
+ *	updated.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ObjToRestrictProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representing state. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
+    int flags)	
+{
+    unsigned int *flagsPtr = (unsigned int *)(widgRec + offset);
+    char *string;
+    int flag;
+
+    string = Tcl_GetString(objPtr);
+    if (strcmp(string, "min") == 0) {
+	flag = RESTRICT_MIN;
+    } else if (strcmp(string, "max") == 0) {
+	flag = RESTRICT_MAX;
+    } else if (strcmp(string, "both") == 0) {
+	flag = RESTRICT_MIN|RESTRICT_MAX;
+    } else if (strcmp(string, "none") == 0) {
+	flag = 0;
+    } else {
+	Tcl_AppendResult(interp, "unknown state \"", string, 
+		"\": should be active, disabled, or normal.", (char *)NULL);
+	return TCL_ERROR;
+    }
+    *flagsPtr &= ~(RESTRICT_MIN|RESTRICT_MAX);
+    *flagsPtr |= flag;
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * RestrictToObjProc --
+ *
+ *	Return the string representation of the restrict flags.
+ *
+ * Results:
+ *	The name representing the style is returned.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static Tcl_Obj *
+RestrictToObjProc(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget information record */
+    int offset,				/* Offset to field in structure */
+    int flags)	
+{
+    unsigned int *flagsPtr = (unsigned int *)(widgRec + offset);
+    int restrict;
+
+    restrict = *flagsPtr & (RESTRICT_MIN|RESTRICT_MAX);
+    switch (restrict) {
+    case RESTRICT_MIN:
+	return Tcl_NewStringObj("min", -1);	
+    case RESTRICT_MAX:
+	return Tcl_NewStringObj("max", -1);
+    case (RESTRICT_MIN|RESTRICT_MAX):
+	return Tcl_NewStringObj("both", -1);
+    case RESTRICT_NONE:
+	return Tcl_NewStringObj("none", -1);
+    }
+    return NULL;
 }
 
 /*
@@ -3207,12 +3546,13 @@ StyleToObjProc(
 /*ARGSUSED*/
 static int
 ObjToStateProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representing state. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representing state. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Item *itemPtr = (Item *)(widgRec);
@@ -3222,9 +3562,7 @@ ObjToStateProc(
     int flag;
 
     string = Tcl_GetString(objPtr);
-    if (strcmp(string, "active") == 0) {
-	flag = ITEM_ACTIVE;
-    } else if (strcmp(string, "disabled") == 0) {
+    if (strcmp(string, "disabled") == 0) {
 	flag = ITEM_DISABLED;
     } else if (strcmp(string, "normal") == 0) {
 	flag = ITEM_NORMAL;
@@ -3234,7 +3572,7 @@ ObjToStateProc(
 	return TCL_ERROR;
     }
     if (itemPtr->flags & flag) {
-	return TCL_OK;		/* State is already set to value. */
+	return TCL_OK;			/* State is already set to value. */
     }
     comboPtr = itemPtr->comboPtr;
     if (comboPtr->activePtr != itemPtr) {
@@ -3243,10 +3581,6 @@ ObjToStateProc(
     }
     *flagsPtr &= ~ITEM_STATE_MASK;
     *flagsPtr |= flag;
-    if (flag == ITEM_ACTIVE) {
-	ActivateItem(comboPtr, itemPtr);
-	comboPtr->activePtr = itemPtr;
-    }
     return TCL_OK;
 }
 
@@ -3265,11 +3599,11 @@ ObjToStateProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 StateToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget information record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget information record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     unsigned int state = *(unsigned int *)(widgRec + offset);
@@ -3277,8 +3611,6 @@ StateToObjProc(
 
     if (state & ITEM_NORMAL) {
 	objPtr = Tcl_NewStringObj("normal", -1);
-    } else if (state & ITEM_ACTIVE) {
-	objPtr = Tcl_NewStringObj("active", -1);
     } else if (state & ITEM_DISABLED) {
 	objPtr = Tcl_NewStringObj("disabled", -1);
     } else {
@@ -3286,6 +3618,7 @@ StateToObjProc(
     }
     return objPtr;
 }
+
 
 /*ARGSUSED*/
 static void
@@ -3318,12 +3651,13 @@ FreeTagsProc(
 /*ARGSUSED*/
 static int
 ObjToTagsProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representing style. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representing style. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     ComboMenu *comboPtr;
@@ -3363,11 +3697,11 @@ ObjToTagsProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 TagsToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget information record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget information record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Blt_HashEntry *hPtr;
@@ -3411,12 +3745,12 @@ TagsToObjProc(
 static void
 IconChangedProc(
     ClientData clientData,
-    int x, int y, int w, int h,      /* Not used. */
-    int imageWidth, int imageHeight) /* Not used. */
+    int x, int y, int w, int h,		/* Not used. */
+    int imageWidth, int imageHeight)	/* Not used. */
 {
     ComboMenu *comboPtr = clientData;
 
-    comboPtr->flags |= (CM_LAYOUT | CM_SCROLL);
+    comboPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
     EventuallyRedraw(comboPtr);
 }
 
@@ -3437,12 +3771,14 @@ IconChangedProc(
 /*ARGSUSED*/
 static int
 ObjToIconProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* Tcl_Obj representing the new value. */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* Tcl_Obj representing the new
+					 * value. */
     char *widgRec,
-    int offset,			/* Offset to field in structure */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     ComboMenu *comboPtr = clientData;
@@ -3474,11 +3810,11 @@ ObjToIconProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 IconToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
+    Tk_Window tkwin,			/* Not used. */
     char *widgRec,
-    int offset,			/* Offset to field in structure */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Icon icon = *(Icon *)(widgRec + offset);
@@ -3487,7 +3823,7 @@ IconToObjProc(
     if (icon == NULL) {
 	objPtr = Tcl_NewStringObj("", 0);
     } else {
-	objPtr =Tcl_NewStringObj(Blt_NameOfImage(IconImage(icon)), -1);
+	objPtr =Tcl_NewStringObj(Blt_Image_Name(IconImage(icon)), -1);
     }
     return objPtr;
 }
@@ -3496,7 +3832,7 @@ IconToObjProc(
 static void
 FreeIconProc(
     ClientData clientData,
-    Display *display,		/* Not used. */
+    Display *display,			/* Not used. */
     char *widgRec,
     int offset)
 {
@@ -3514,7 +3850,7 @@ FreeIconProc(
 static void
 FreeLabelProc(
     ClientData clientData,
-    Display *display,		/* Not used. */
+    Display *display,			/* Not used. */
     char *widgRec,
     int offset)
 {
@@ -3540,12 +3876,13 @@ FreeLabelProc(
 /*ARGSUSED*/
 static int
 ObjToLabelProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representing style. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representing style. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Item *itemPtr = (Item *)(widgRec);
@@ -3577,24 +3914,23 @@ ObjToLabelProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 LabelToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget information record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget information record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     Item *itemPtr = (Item *)(widgRec);
     Tcl_Obj *objPtr;
 
     if (itemPtr->label == emptyString) {
-	objPtr = Blt_EmptyStringObj();
+	objPtr = Tcl_NewStringObj("", -1);
     } else {
 	objPtr = Tcl_NewStringObj(itemPtr->label, -1);
     }
     return objPtr;
 }
-
 
 /*
  *---------------------------------------------------------------------------
@@ -3612,12 +3948,13 @@ LabelToObjProc(
 /*ARGSUSED*/
 static int
 ObjToTypeProc(
-    ClientData clientData,	/* Not used. */
-    Tcl_Interp *interp,		/* Interpreter to send results back to */
-    Tk_Window tkwin,		/* Not used. */
-    Tcl_Obj *objPtr,		/* String representing type. */
-    char *widgRec,		/* Widget record */
-    int offset,			/* Offset to field in structure */
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Interpreter to send results back
+					 * to */
+    Tk_Window tkwin,			/* Not used. */
+    Tcl_Obj *objPtr,			/* String representing type. */
+    char *widgRec,			/* Widget record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     unsigned int *typePtr = (unsigned int *)(widgRec + offset);
@@ -3646,17 +3983,86 @@ ObjToTypeProc(
 /*ARGSUSED*/
 static Tcl_Obj *
 TypeToObjProc(
-    ClientData clientData,	/* Not used. */
+    ClientData clientData,		/* Not used. */
     Tcl_Interp *interp,
-    Tk_Window tkwin,		/* Not used. */
-    char *widgRec,		/* Widget information record */
-    int offset,			/* Offset to field in structure */
+    Tk_Window tkwin,			/* Not used. */
+    char *widgRec,			/* Widget information record */
+    int offset,				/* Offset to field in structure */
     int flags)	
 {
     int type = *(int *)(widgRec + offset);
     
     return Tcl_NewStringObj(NameOfType(type), -1);
 }
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * TypeSwitch --
+ *
+ *	Convert a string representing an item type into its integer value.
+ *
+ * Results:
+ *	The return value is a standard TCL result.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+TypeSwitch(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Not used. */
+    const char *switchName,		/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation */
+    char *record,			/* Structure record */
+    int offset,				/* Offset to field in structure */
+    int flags)				/* Not used. */
+{
+    unsigned int *typePtr = (unsigned int *)(record + offset);
+    int flag;
+
+    if (GetTypeFromObj(interp, objPtr, &flag) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    *typePtr &= ~ITEM_TYPE_MASK;
+    *typePtr |= flag;
+    return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ItemSwitch --
+ *
+ *	Convert a string representing an item into its pointer.
+ *
+ * Results:
+ *	The return value is a standard TCL result.
+ *
+ *---------------------------------------------------------------------------
+ */
+/*ARGSUSED*/
+static int
+ItemSwitch(
+    ClientData clientData,		/* Not used. */
+    Tcl_Interp *interp,			/* Not used. */
+    const char *switchName,		/* Not used. */
+    Tcl_Obj *objPtr,			/* String representation */
+    char *record,			/* Structure record */
+    int offset,				/* Offset to field in structure */
+    int flags)				/* Not used. */
+{
+    Item **itemPtrPtr = (Item **)(record + offset);
+    ComboMenu *comboPtr = clientData;
+    Item *itemPtr;
+
+    if (GetItemFromObj(NULL, comboPtr, objPtr, &itemPtr) != TCL_OK) {
+	return TCL_ERROR;
+    } 
+    *itemPtrPtr = itemPtr;
+    return TCL_OK;
+}
+
 
 /* Widget Operations */
 
@@ -3686,7 +4092,7 @@ ActivateOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc,
 	return TCL_ERROR;
     } 
     if (comboPtr->activePtr == itemPtr) {
-	return TCL_OK;		/* Item is already active. */
+	return TCL_OK;			/* Item is already active. */
     }
     ActivateItem(comboPtr, NULL);
     comboPtr->activePtr = NULL;
@@ -3724,7 +4130,7 @@ AddOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
     itemPtr = NewItem(comboPtr);
     if (ConfigureItem(interp, itemPtr, objc - 2, objv + 2, 0) != TCL_OK) {
 	DestroyItem(itemPtr);
-	return TCL_ERROR;	/* Error configuring the entry. */
+	return TCL_ERROR;		/* Error configuring the entry. */
     }
     EventuallyRedraw(comboPtr);
     Tcl_SetLongObj(Tcl_GetObjResult(interp), itemPtr->index);
@@ -3819,7 +4225,7 @@ ConfigureOp(
     if (result == TCL_ERROR) {
 	return TCL_ERROR;
     }
-    comboPtr->flags |= (CM_LAYOUT | CM_SCROLL);
+    comboPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -3894,6 +4300,39 @@ DeleteOp(
     return TCL_OK;
 }
 
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ExistsOp --
+ *
+ * Results:
+ *	Standard TCL result.
+ *
+ * Side effects:
+ *	Commands may get excecuted; variables may get set; sub-menus may
+ *	get posted.
+ *
+ *	.cm exists item 
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+ExistsOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
+{
+    Item *itemPtr;
+    int bool;
+
+    bool = FALSE;
+    if (GetItemFromObj(NULL, comboPtr, objv[2], &itemPtr) == TCL_OK) {
+	if (itemPtr != NULL) {
+	    bool = TRUE;
+	}
+    }
+    Tcl_SetBooleanObj(Tcl_GetObjResult(interp), bool);
+    return TCL_OK;
+}
+
 /*
  *---------------------------------------------------------------------------
  *
@@ -3902,29 +4341,37 @@ DeleteOp(
  *	Search for an item according to the string given.
  *
  * Results:
- *	NULL is always returned.
+ *	The index of the found item is returned.  If no item is found
+ *	-1 is returned.
  *
- * Side effects:
- *	The combomenu entry may become selected or deselected.
- *
- *   .cm find next|previous|underline pattern
+ *    .cm find string -from active -previous -underline -type separator 
  *
  *---------------------------------------------------------------------------
  */
 static int
 FindOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
-    const char *how, *pattern;
     long index;
+    FindSwitches switches;
+    const char *pattern;
 
+    /* Process switches  */
+    pattern = Tcl_GetString(objv[2]);
+    switches.mask = 0;
+    switches.type = 0;
+    itemSwitch.clientData = comboPtr;
+
+    switches.fromPtr = comboPtr->activePtr;
+    if (Blt_ParseSwitches(interp, findSwitches, objc - 3, objv + 3, &switches,
+	BLT_SWITCH_DEFAULTS) < 0) {
+	return TCL_ERROR;
+    }
     index = -1;
-    how = Tcl_GetString(objv[2]);
-    pattern = Tcl_GetString(objv[3]);
-    if (strcmp(how, "underline") == 0) {
+    if (switches.mask & FIND_UNDERLINE) {
 	Tcl_UniChar want;
 	Item *itemPtr;
 	
-	itemPtr = comboPtr->activePtr;
+	itemPtr = switches.fromPtr;
 	itemPtr = (itemPtr == NULL) ? FirstItem(comboPtr) : NextItem(itemPtr);
 	want = Tcl_UniCharAtIndex(pattern, 0);
 	want = Tcl_UniCharToLower(want);
@@ -3959,32 +4406,55 @@ FindOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 		}
 	    }
 	}
-    } else if (strcmp(how, "next") == 0) {
+    } else if (switches.mask & FIND_DECREASING) {
 	Item *itemPtr;
-	
-	itemPtr = comboPtr->activePtr;
-	itemPtr = (itemPtr == NULL) ? FirstItem(comboPtr) : NextItem(itemPtr);
-	for (/*empty*/; itemPtr != NULL; itemPtr = NextItem(itemPtr)) {
-	    if (Tcl_StringMatch(itemPtr->label, pattern)) {
-		index = itemPtr->index;
-		break;
-	    }
-	}
-    } else if (strcmp(how, "previous") == 0) {
-	Item *itemPtr;
-	
-	itemPtr = comboPtr->activePtr;
+
+	itemPtr = switches.fromPtr;
 	itemPtr = (itemPtr == NULL) ? LastItem(comboPtr) : PrevItem(itemPtr);
 	for (/*empty*/; itemPtr != NULL; itemPtr = PrevItem(itemPtr)) {
-	    if (Tcl_StringMatch(itemPtr->label, pattern)) {
+	    int found;
+
+	    if ((switches.type > 0) && ((switches.type & itemPtr->flags)==0)) {
+		continue;
+	    }
+	    if (switches.mask & FIND_GLOB) {
+		found = Tcl_StringMatch(itemPtr->label, pattern);
+	    } else if (switches.mask & FIND_REGEXP) {
+		found = Tcl_RegExpMatch(NULL, itemPtr->label, pattern); 
+	    } else {
+		found = (strcmp(itemPtr->label, pattern) == 0);
+	    }
+	    if (found) {
 		index = itemPtr->index;
 		break;
 	    }
 	}
     } else {
-	Tcl_AppendResult(interp, "unknown directive \"", how, "\": ",
-			 "should be next, last, or underline.", (char *)NULL);
-	return TCL_ERROR;
+	Blt_ChainLink link;
+	Item *itemPtr;
+
+	itemPtr = switches.fromPtr;
+	itemPtr = (itemPtr == NULL) ? FirstItem(comboPtr) : NextItem(itemPtr);
+	for (link = itemPtr->link; link != NULL; 
+	     link = Blt_Chain_NextLink(link)) {
+	    int found;
+	    
+	    itemPtr = Blt_Chain_GetValue(link);
+	    if ((switches.type > 0) && ((switches.type & itemPtr->flags)==0)) {
+		continue;
+	    }
+	    if (switches.search == FIND_GLOB) {
+		found = Tcl_StringMatch(itemPtr->label, pattern);
+	    } else if (switches.search == FIND_REGEXP) {
+		found = Tcl_RegExpMatch(NULL, itemPtr->label, pattern); 
+	    } else {
+		found = (strcmp(itemPtr->label, pattern) == 0);
+	    }
+	    if (found) {
+		index = itemPtr->index;
+		break;
+	    }
+	}
     }
     Tcl_SetLongObj(Tcl_GetObjResult(interp), index);
     return TCL_OK;
@@ -4007,11 +4477,7 @@ FindOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
  *---------------------------------------------------------------------------
  */
 static int
-IndexOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+IndexOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     Item *itemPtr;
     int index;
@@ -4056,51 +4522,8 @@ InvokeOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc,
 	return TCL_OK;		/* Item is currently disabled. */
     }
     result = TCL_OK;
-    Tcl_Preserve((ClientData)itemPtr);
-    if ((itemPtr->flags & (ITEM_CASCADE|ITEM_SEPARATOR)) == 0) {
-	if ((comboPtr->iconVarObjPtr != NULL) && (itemPtr->icon != NULL)) {
-	    Tcl_Obj *objPtr;
-
-	    objPtr = Tcl_NewStringObj(IconName(itemPtr->icon), -1);
-	    if (Tcl_ObjSetVar2(interp, comboPtr->iconVarObjPtr, NULL, objPtr, 
-			       TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG) == NULL) {
-		return TCL_ERROR;
-	    }
-	}
-	if ((comboPtr->textVarObjPtr != NULL) && 
-	    (itemPtr->label != emptyString)) {
-	    Tcl_Obj *objPtr;
-
-	    objPtr = Tcl_NewStringObj(itemPtr->label, -1);
-	    if (Tcl_ObjSetVar2(interp, comboPtr->textVarObjPtr, NULL, objPtr, 
-			       TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG) == NULL) {
-		return TCL_ERROR;
-	    }
-	}
-    }
-    if ((itemPtr->varNameObjPtr != NULL) &&
-	(itemPtr->flags & (ITEM_CHECKBUTTON|ITEM_RADIOBUTTON|ITEM_BUTTON))) {
-	Tcl_Obj *valueObjPtr;
-
-	valueObjPtr = NULL;
-	if (itemPtr->flags & ITEM_CHECKBUTTON) {
-	    valueObjPtr = (itemPtr->flags & ITEM_SELECTED) ?
-		itemPtr->offValueObjPtr : itemPtr->onValueObjPtr;
-	} else {
-	    valueObjPtr = itemPtr->valueObjPtr;
-	    if (valueObjPtr == NULL) {
-		valueObjPtr = Tcl_NewStringObj(itemPtr->label, -1);
-	    }
-	}
-	if (valueObjPtr != NULL) {
-	    Tcl_IncrRefCount(valueObjPtr);
-	    if (Tcl_ObjSetVar2(interp, itemPtr->varNameObjPtr, NULL, 
-		valueObjPtr, TCL_GLOBAL_ONLY|TCL_LEAVE_ERR_MSG) == NULL) {
-		result = TCL_ERROR;
-	    }
-	    Tcl_DecrRefCount(valueObjPtr);
-	}
-    }
+    Tcl_Preserve(itemPtr);
+    result = SelectItem(interp, comboPtr, itemPtr, -1);
     /*
      * We check nItems in addition to whether the item has a command because
      * that goes to zero if the combomenu is deleted (e.g., during command
@@ -4112,7 +4535,7 @@ InvokeOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc,
 	result = Tcl_EvalObjEx(interp, itemPtr->cmdObjPtr, TCL_EVAL_GLOBAL);
 	Tcl_DecrRefCount(itemPtr->cmdObjPtr);
     }
-    Tcl_Release((ClientData)itemPtr);
+    Tcl_Release(itemPtr);
     return result;
 }
 
@@ -4134,11 +4557,8 @@ InvokeOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc,
  *---------------------------------------------------------------------------
  */
 static int
-InsertOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+InsertOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	 Tcl_Obj *const *objv)
 {
     Item *itemPtr, *wherePtr;
     int dir;
@@ -4153,12 +4573,12 @@ InsertOp(
     if (wherePtr == NULL) {
 	Tcl_AppendResult(interp, "can't insert item: no index \"", 
 			 Tcl_GetString(objv[3]), "\"", (char *)NULL);
-    	return TCL_ERROR;	/* No item. */
+    	return TCL_ERROR;		/* No item. */
     }
     itemPtr = NewItem(comboPtr);
     if (ConfigureItem(interp, itemPtr, objc - 4, objv + 4, 0) != TCL_OK) {
 	DestroyItem(itemPtr);
-	return TCL_ERROR;	/* Error configuring the entry. */
+	return TCL_ERROR;		/* Error configuring the entry. */
     }
     MoveItem(comboPtr, itemPtr, dir, wherePtr);
     EventuallyRedraw(comboPtr);
@@ -4180,11 +4600,8 @@ InsertOp(
  *---------------------------------------------------------------------------
  */
 static int
-ItemConfigureOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+ItemConfigureOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+		Tcl_Obj *const *objv)
 {
     Item *itemPtr;
     ItemIterator iter;
@@ -4213,7 +4630,7 @@ ItemConfigureOp(
 	    return TCL_ERROR;
 	}
     }
-    comboPtr->flags |= (CM_LAYOUT | CM_SCROLL);
+    comboPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -4233,11 +4650,8 @@ ItemConfigureOp(
  *---------------------------------------------------------------------------
  */
 static int
-ItemCgetOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+ItemCgetOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	   Tcl_Obj *const *objv)
 {
     Item *itemPtr;
 
@@ -4318,7 +4732,7 @@ NamesOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 	    itemPtr = Blt_Chain_GetValue(link);
 	    if (Tcl_StringMatch(itemPtr->label, pattern)) {
 		if (itemPtr->label == emptyString) {
-		    objPtr = Blt_EmptyStringObj();
+		    objPtr = Tcl_NewStringObj("", -1);
 		} else {
 		    objPtr = Tcl_NewStringObj(itemPtr->label, -1);
 		}
@@ -4332,14 +4746,11 @@ NamesOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 
 /*ARGSUSED*/
 static int
-NearestOp(
-    ComboMenu *comboPtr,
-    Tcl_Interp *interp,
-    int objc,			/* Not used. */
-    Tcl_Obj *const *objv)
+NearestOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	  Tcl_Obj *const *objv)
 {
-    int x, y;			/* Screen coordinates of the test point. */
-    int wx, wy;			/* Screen coordinates of the test point. */
+    int x, y;			
+    int wx, wy;			
     Item *itemPtr;
     int isRoot;
     char *string;
@@ -4495,43 +4906,53 @@ NextOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
  *
  *	Posts this menu at the given root screen coordinates.
  *
- *  .cm post x y
+ *  .cm post ?switches?
  *
+ *	-anchor ne -fill yes -width 80 -x -y 
+ *	.cm post -x 0 -y 0 -reqwidth -reqheight -anchor -fill yes 
  *---------------------------------------------------------------------------
  */
 static int
-PostOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+PostOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     int x, y;
+    Tk_Window parent;
+    int menuWidth;
 
-    if (objc == 4) {
-	if ((Tcl_GetIntFromObj(interp, objv[2], &x) != TCL_OK) || 
-	    (Tcl_GetIntFromObj(interp, objv[3], &y) != TCL_OK)) {
-	    return TCL_ERROR;
-	} 
-    } else if (objc == 2) {
-	if (comboPtr->flags & CM_LAYOUT) {
-	    ComputeMenuGeometry(comboPtr);
-	}
-	ComputeMenuCoords(comboPtr, TK_ANCHOR_SE, &x, &y);
-    } else {
-	Tcl_AppendResult(interp, "wrong # of args: should be \"", 
-		Tcl_GetString(objv[0]), " post ?x y?\"", (char *)NULL);
+    if ((Tcl_GetIntFromObj(interp, objv[2], &x) != TCL_OK) || 
+	(Tcl_GetIntFromObj(interp, objv[3], &y) != TCL_OK)) {
 	return TCL_ERROR;
+    } 
+    parent = Tk_Parent(comboPtr->tkwin);
+    comboPtr->parentWidth = 0;
+    menuWidth = comboPtr->normalWidth;
+    if (menuWidth < Tk_Width(parent)) {
+	menuWidth = Tk_Width(parent);
     }
-#ifdef notdef
-    if (Tk_IsMapped(comboPtr->tkwin)) {
-	return TCL_OK;		/* This menu is already posted. */
-    }
-#endif
-    if (comboPtr->flags & CM_LAYOUT) {
-	ComputeMenuGeometry(comboPtr);
-    }
+    if (objc == 5) {
+	const char *string;
 
+	string = Tcl_GetString(objv[4]);
+	if (strcmp(string, "left") == 0) {
+	    /* Do nothing. */
+	} else if (strcmp(string, "right") == 0) {
+	    x -= menuWidth;
+	} else if (strcmp(string, "center") == 0) {
+	    x -= menuWidth / 2;
+	} else if (strcmp(string, "popup") == 0) {
+	    /* Do nothing. */
+	    parent = comboPtr->tkwin;
+	} else {
+	    Tcl_AppendResult(interp, "bad alignment value \"", string, 
+		"\": should be left, right, or center.", (char *)NULL);
+	    return TCL_ERROR;
+	}
+	comboPtr->parentWidth = Tk_Width(parent);
+    }
+    if (comboPtr->flags & LAYOUT_PENDING) {
+	ComputeComboGeometry(comboPtr);
+    }
+    FixMenuCoords(comboPtr, parent, &x, &y);
     /*
      * If there is a post command for the menu, execute it.  This may change
      * the size of the menu, so be sure to recompute the menu's geometry if
@@ -4541,7 +4962,8 @@ PostOp(
 	int result;
 
 	Tcl_IncrRefCount(comboPtr->postCmdObjPtr);
-	result = Tcl_EvalObjEx(interp, comboPtr->postCmdObjPtr,TCL_EVAL_GLOBAL);
+	result = Tcl_EvalObjEx(interp, comboPtr->postCmdObjPtr, 
+		TCL_EVAL_GLOBAL);
 	Tcl_DecrRefCount(comboPtr->postCmdObjPtr);
 	if (result != TCL_OK) {
 	    return result;
@@ -4553,8 +4975,8 @@ PostOp(
 	if (comboPtr->tkwin == NULL) {
 	    return TCL_OK;
 	}
-	if (comboPtr->flags & CM_LAYOUT) {
-	    ComputeMenuGeometry(comboPtr);
+	if (comboPtr->flags & LAYOUT_PENDING) {
+	    ComputeComboGeometry(comboPtr);
 	}
     }
 
@@ -4582,20 +5004,20 @@ PostOp(
     {
 	int vx, vy, vw, vh;
 	int tmp;
-	Screen *screenPtr;
+	int screenWidth, screenHeight;
 
-	Tk_GetVRootGeometry(Tk_Parent(comboPtr->tkwin), &vx, &vy, &vw, &vh);
+	Blt_SizeOfScreen(comboPtr->tkwin, &screenWidth, &screenHeight);
+	Tk_GetVRootGeometry(parent, &vx, &vy, &vw, &vh);
 	x += vx;
 	y += vy;
-	screenPtr = Tk_Screen(comboPtr->tkwin);
-	tmp = WidthOfScreen(screenPtr) - Tk_ReqWidth(comboPtr->tkwin);
+	tmp = screenWidth - Tk_Width(comboPtr->tkwin);
 	if (x > tmp) {
 	    x = tmp;
 	}
 	if (x < 0) {
 	    x = 0;
 	}
-	tmp = HeightOfScreen(screenPtr) - Tk_ReqHeight(comboPtr->tkwin);
+	tmp = screenHeight - Tk_Height(comboPtr->tkwin);
 	if (y > tmp) {
 	    y = tmp;
 	}
@@ -4634,11 +5056,8 @@ PostOp(
  *---------------------------------------------------------------------------
  */
 static int
-PostCascadeOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+PostCascadeOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	      Tcl_Obj *const *objv)
 {
     Item *itemPtr;
     char *string;
@@ -4648,16 +5067,17 @@ PostCascadeOp(
 	return TCL_ERROR;
     }
     if (itemPtr == comboPtr->postedPtr) {
-	return TCL_OK;		/* Nothing to do, submenu is already posted. */
+	return TCL_OK;			/* Nothing to do, submenu is already
+					 * posted. */
     }
     if (UnpostCascade(interp, comboPtr) != TCL_OK) {
-	return TCL_ERROR;	/* Error unposting submenu. */
+	return TCL_ERROR;		/* Error unposting submenu. */
     }
     if ((itemPtr != NULL) && (itemPtr->menuObjPtr != NULL) && 
 	((itemPtr->flags & (ITEM_CASCADE|ITEM_DISABLED)) == ITEM_CASCADE)) {
 	return PostCascade(interp, comboPtr, itemPtr);
     }
-    return TCL_OK;		/* No menu to post. */
+    return TCL_OK;			/* No menu to post. */
 }
 
 /*
@@ -4705,11 +5125,7 @@ PreviousOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc,
  */
 /*ARGSUSED*/
 static int
-ScanOp(
-    ComboMenu *comboPtr,
-    Tcl_Interp *interp,
-    int objc,			/* Not used. */
-    Tcl_Obj *const *objv)
+ScanOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     int oper;
     int x, y;
@@ -4770,7 +5186,7 @@ ScanOp(
 	}
 	comboPtr->xOffset = xWorld;
 	comboPtr->yOffset = yWorld;
-	comboPtr->flags |= CM_SCROLL;
+	comboPtr->flags |= SCROLL_PENDING;
 	EventuallyRedraw(comboPtr);
     }
     return TCL_OK;
@@ -4779,11 +5195,7 @@ ScanOp(
 
 /*ARGSUSED*/
 static int
-SeeOp(
-    ComboMenu *comboPtr,
-    Tcl_Interp *interp,
-    int objc,
-    Tcl_Obj *const *objv)
+SeeOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     Item *itemPtr;
     int x, y, w, h;
@@ -4792,7 +5204,7 @@ SeeOp(
     char *string;
 
     string = Tcl_GetString(objv[2]);
-    anchor = TK_ANCHOR_W;	/* Default anchor is West */
+    anchor = TK_ANCHOR_W;		/* Default anchor is West */
     if ((string[0] == '-') && (strcmp(string, "-anchor") == 0)) {
 	if (objc == 3) {
 	    Tcl_AppendResult(interp, "missing \"-anchor\" argument",
@@ -4883,10 +5295,47 @@ SeeOp(
     if ((y != comboPtr->yOffset) || (x != comboPtr->xOffset)) {
 	comboPtr->xOffset = x;
 	comboPtr->yOffset = y;
-	comboPtr->flags |= CM_SCROLL;
+	comboPtr->flags |= SCROLL_PENDING;
     }
     EventuallyRedraw(comboPtr);
     return TCL_OK;
+}
+
+/*
+ *---------------------------------------------------------------------------
+ *
+ * InvokeOp --
+ *
+ * Results:
+ *	Standard TCL result.
+ *
+ * Side effects:
+ *	Commands may get excecuted; variables may get set; sub-menus may
+ *	get posted.
+ *
+ *  .cm select item 
+ *
+ *---------------------------------------------------------------------------
+ */
+static int
+SelectOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	 Tcl_Obj *const *objv)
+{
+    Item *itemPtr;
+    const char *cmd;
+    int result;
+
+    if (GetItemFromObj(interp, comboPtr, objv[2], &itemPtr) != TCL_OK) {
+	return TCL_ERROR;
+    }
+    if ((itemPtr == NULL) || (itemPtr->flags & ITEM_DISABLED)) {
+	return TCL_OK;			/* Item is currently disabled. */
+    }
+    cmd = Tcl_GetString(objv[1]);
+    Tcl_Preserve(itemPtr);
+    result = SelectItem(interp, comboPtr, itemPtr, cmd[0] == 's');
+    Tcl_Release(itemPtr);
+    return result;
 }
 
 /*ARGSUSED*/
@@ -4901,11 +5350,8 @@ SizeOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 /* .m style create name option value option value */
     
 static int
-StyleCreateOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+StyleCreateOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	      Tcl_Obj *const *objv)
 {
     Style *stylePtr;
     Blt_HashEntry *hPtr;
@@ -4922,7 +5368,7 @@ StyleCreateOp(
     stylePtr->name = Blt_GetHashKey(&comboPtr->styleTable, hPtr);
     stylePtr->hPtr = hPtr;
     stylePtr->comboPtr = comboPtr;
-    stylePtr->borderWidth = 2;
+    stylePtr->borderWidth = 0;
     stylePtr->activeRelief = TK_RELIEF_RAISED;
     Blt_SetHashValue(hPtr, stylePtr);
     iconOption.clientData = comboPtr;
@@ -4934,11 +5380,8 @@ StyleCreateOp(
 }
 
 static int
-StyleCgetOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+StyleCgetOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	    Tcl_Obj *const *objv)
 {
     Style *stylePtr;
 
@@ -4951,11 +5394,8 @@ StyleCgetOp(
 }
 
 static int
-StyleConfigureOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+StyleConfigureOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+		 Tcl_Obj *const *objv)
 {
     int result, flags;
     Style *stylePtr;
@@ -4978,17 +5418,14 @@ StyleConfigureOp(
     if (result == TCL_ERROR) {
 	return TCL_ERROR;
     }
-    comboPtr->flags |= (CM_LAYOUT | CM_SCROLL);
+    comboPtr->flags |= (LAYOUT_PENDING | SCROLL_PENDING);
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
 
 static int
-StyleDeleteOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+StyleDeleteOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	      Tcl_Obj *const *objv)
 {
     Style *stylePtr;
 
@@ -5005,11 +5442,8 @@ StyleDeleteOp(
 }
 
 static int
-StyleNamesOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+StyleNamesOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	     Tcl_Obj *const *objv)
 {
     Blt_HashEntry *hPtr;
     Blt_HashSearch iter;
@@ -5069,11 +5503,7 @@ StyleOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 }
 
 static int
-TypeOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+TypeOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     Item *itemPtr;
 
@@ -5101,11 +5531,8 @@ TypeOp(
  *---------------------------------------------------------------------------
  */
 static int
-UnpostOp(
-    ComboMenu *comboPtr, 
-    Tcl_Interp *interp, 
-    int objc, 
-    Tcl_Obj *const *objv)
+UnpostOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	 Tcl_Obj *const *objv)
 {
     if (!Tk_IsMapped(comboPtr->tkwin)) {
 	return TCL_OK;		/* This menu is already unposted. */
@@ -5120,34 +5547,28 @@ UnpostOp(
     if (Tk_IsMapped(comboPtr->tkwin)) {
 	Tk_UnmapWindow(comboPtr->tkwin);
     }
-#ifdef notdef
-    {
+    /*
+     * If there is a post command for the menu, execute it.  This may change
+     * the size of the menu, so be sure to recompute the menu's geometry if
+     * needed.
+     */
+    if (comboPtr->unpostCmdObjPtr != NULL) {
 	int result;
 
-	Tcl_Obj *cmd[2];
-	char *path;
-	
-	path = Tk_PathName(Tk_Parent(comboPtr->tkwin));
-	cmd[0] = Tcl_NewStringObj(path, -1);
-	cmd[1] = Tcl_NewStringObj("unpost", 6);
-	Tcl_IncrRefCount(cmd[0]);
-	Tcl_IncrRefCount(cmd[1]);
-	result = Tcl_EvalObjv(interp, 2, cmd, 0);
-	Tcl_DecrRefCount(cmd[1]);
-	Tcl_DecrRefCount(cmd[0]);
-	return result;
+	Tcl_IncrRefCount(comboPtr->unpostCmdObjPtr);
+	result = Tcl_EvalObjEx(interp, comboPtr->unpostCmdObjPtr, 
+		TCL_EVAL_GLOBAL);
+	Tcl_DecrRefCount(comboPtr->unpostCmdObjPtr);
+	if (result != TCL_OK) {
+	    return TCL_ERROR;
+	}
     }
-#else
     return TCL_OK;
-#endif
 }
 
 static int
-XpositionOp(
-    ComboMenu *comboPtr,
-    Tcl_Interp *interp,
-    int objc,
-    Tcl_Obj *const *objv)
+XpositionOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	    Tcl_Obj *const *objv)
 {
     Item *itemPtr;
 
@@ -5164,11 +5585,7 @@ XpositionOp(
 }
 
 static int
-XviewOp(
-    ComboMenu *comboPtr,
-    Tcl_Interp *interp,
-    int objc,
-    Tcl_Obj *const *objv)
+XviewOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, Tcl_Obj *const *objv)
 {
     int w;
 
@@ -5183,10 +5600,10 @@ XviewOp(
 	 * Note: we are bounding the fractions between 0.0 and 1.0 to support
 	 * the "canvas"-style of scrolling.
 	 */
-	fract = (double)comboPtr->xOffset / comboPtr->worldHeight;
+	fract = (double)comboPtr->xOffset / (comboPtr->worldWidth+1);
 	objPtr = Tcl_NewDoubleObj(FCLAMP(fract));
 	Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-	fract = (double)(comboPtr->xOffset + w) / comboPtr->worldWidth;
+	fract = (double)(comboPtr->xOffset + w) / (comboPtr->worldWidth+1);
 	objPtr = Tcl_NewDoubleObj(FCLAMP(fract));
 	Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
 	Tcl_SetObjResult(interp, listObjPtr);
@@ -5194,20 +5611,17 @@ XviewOp(
     }
     if (Blt_GetScrollInfoFromObj(interp, objc - 2, objv + 2, &comboPtr->xOffset,
 	comboPtr->worldWidth, w, comboPtr->xScrollUnits, 
-	BLT_SCROLL_MODE_CANVAS) != TCL_OK) {
+	BLT_SCROLL_MODE_HIERBOX) != TCL_OK) {
 	return TCL_ERROR;
     }
-    comboPtr->flags |= CM_SCROLL;
+    comboPtr->flags |= SCROLL_PENDING;
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
 
 static int
-YpositionOp(
-    ComboMenu *comboPtr,
-    Tcl_Interp *interp,
-    int objc,
-    Tcl_Obj *const *objv)
+YpositionOp(ComboMenu *comboPtr, Tcl_Interp *interp, int objc, 
+	    Tcl_Obj *const *objv)
 {
     Item *itemPtr;
 
@@ -5243,10 +5657,10 @@ YviewOp(
 	 * Note: we are bounding the fractions between 0.0 and 1.0 to support
 	 * the "canvas"-style of scrolling.
 	 */
-	fract = (double)comboPtr->yOffset / comboPtr->worldHeight;
+	fract = (double)comboPtr->yOffset / (comboPtr->worldHeight+1);
 	objPtr = Tcl_NewDoubleObj(FCLAMP(fract));
 	Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
-	fract = (double)(comboPtr->yOffset + height) / comboPtr->worldHeight;
+	fract = (double)(comboPtr->yOffset + height) /(comboPtr->worldHeight+1);
 	objPtr = Tcl_NewDoubleObj(FCLAMP(fract));
 	Tcl_ListObjAppendElement(interp, listObjPtr, objPtr);
 	Tcl_SetObjResult(interp, listObjPtr);
@@ -5254,10 +5668,10 @@ YviewOp(
     }
     if (Blt_GetScrollInfoFromObj(interp, objc - 2, objv + 2, &comboPtr->yOffset,
 	comboPtr->worldHeight, height, comboPtr->yScrollUnits, 
-	BLT_SCROLL_MODE_CANVAS) != TCL_OK) {
+	BLT_SCROLL_MODE_HIERBOX) != TCL_OK) {
 	return TCL_ERROR;
     }
-    comboPtr->flags |= CM_SCROLL;
+    comboPtr->flags |= SCROLL_PENDING;
     EventuallyRedraw(comboPtr);
     return TCL_OK;
 }
@@ -5284,6 +5698,18 @@ DestroyComboMenu(DestroyData dataPtr)	/* Pointer to the widget record. */
 {
     ComboMenu *comboPtr = (ComboMenu *)dataPtr;
 
+    if (comboPtr->flags & REDRAW_PENDING) {
+	Tcl_CancelIdleCall(DisplayComboMenu, comboPtr);
+    }
+    if (comboPtr->flags & INSTALL_XSCROLLBAR) {
+	Tcl_CancelIdleCall(InstallXScrollbar, comboPtr);
+    }	    
+    if (comboPtr->flags & INSTALL_YSCROLLBAR) {
+	Tcl_CancelIdleCall(InstallYScrollbar, comboPtr);
+    }	    
+    if (comboPtr->flags & UPDATE_PENDING) {
+	Tcl_CancelIdleCall(ConfigureScrollbarsProc, comboPtr);
+    }
     DestroyItems(comboPtr);
     DestroyStyles(comboPtr);
     DestroyLabels(comboPtr);
@@ -5317,13 +5743,15 @@ NewComboMenu(Tcl_Interp *interp, Tk_Window tkwin)
     comboPtr->tkwin = tkwin;
     comboPtr->display = Tk_Display(tkwin);
     comboPtr->interp = interp;
-    comboPtr->flags |= (CM_LAYOUT | CM_SCROLL);
+    comboPtr->flags |= LAYOUT_PENDING | SCROLL_PENDING;
     comboPtr->relief = TK_RELIEF_SOLID;
     comboPtr->xScrollUnits = 2;
     comboPtr->yScrollUnits = 2;
     comboPtr->borderWidth = 1;
     comboPtr->chain = Blt_Chain_Create();
     comboPtr->painter = Blt_GetPainter(tkwin, 1.0);
+    Blt_ResetLimits(&comboPtr->reqWidth);
+    Blt_ResetLimits(&comboPtr->reqHeight);
     Blt_InitHashTable(&comboPtr->iconTable,  BLT_STRING_KEYS);
     Blt_InitHashTable(&comboPtr->labelTable, BLT_STRING_KEYS);
     Blt_InitHashTable(&comboPtr->styleTable, BLT_STRING_KEYS);
@@ -5355,8 +5783,10 @@ static Blt_OpSpec menuOps[] =
     {"add",         2, AddOp,         2, 0, "?option value?",},
     {"cget",        2, CgetOp,        3, 3, "option",},
     {"configure",   2, ConfigureOp,   2, 0, "?option value?...",},
-    {"delete",      1, DeleteOp,      2, 0, "items...",},
-    {"find",        1, FindOp,        4, 4, "next|previous|underline string",},
+    {"delete",      3, DeleteOp,      2, 0, "items...",},
+    {"deselect",    3, SelectOp,      3, 3, "item",},
+    {"exists",      3, ExistsOp,      3, 3, "item",},
+    {"find",        1, FindOp,        3, 0, "string ?switches?",},
     {"index",       3, IndexOp,       3, 3, "item",},
     {"insert",      3, InsertOp,      3, 0, 
 	"after|at|before index ?option value?",},
@@ -5366,11 +5796,12 @@ static Blt_OpSpec menuOps[] =
     {"names",       2, NamesOp,       2, 0, "?pattern...?",},
     {"nearest",     3, NearestOp,     4, 4, "x y",},
     {"next",        3, NextOp,        3, 3, "item",},
-    {"post",        4, PostOp,        2, 4, "?x y?",},
+    {"post",        4, PostOp,        4, 5, "x y ?align?",},
     {"postcascade", 5, PostCascadeOp, 3, 3, "item",},
     {"previous",    2, PreviousOp,    3, 3, "item",},
     {"scan",        2, ScanOp,        5, 5, "dragto|mark x y",},
-    {"see",         2, SeeOp,         3, 5, "item",},
+    {"see",         3, SeeOp,         3, 5, "item",},
+    {"select",      3, SelectOp,      3, 3, "item",},
     {"size",        2, SizeOp,        2, 2, "",},
     {"style",       2, StyleOp,       2, 0, "op ?args...?",},
     {"type",        1, TypeOp,        3, 3, "item",},
@@ -5390,10 +5821,11 @@ typedef int (ComboInstOp)(ComboMenu *comboPtr, Tcl_Interp *interp, int objc,
 
 static int
 ComboMenuInstCmdProc(
-    ClientData clientData,	/* Information about the widget. */
-    Tcl_Interp *interp,		/* Interpreter to report errors back to. */
-    int objc,			/* Number of arguments. */
-    Tcl_Obj *const *objv)	/* Argument vector. */
+    ClientData clientData,		/* Information about the widget. */
+    Tcl_Interp *interp,			/* Interpreter to report errors back
+					 * to. */
+    int objc,				/* # of arguments. */
+    Tcl_Obj *const *objv)		/* Argument vector. */
 {
     ComboInstOp *proc;
     ComboMenu *comboPtr = clientData;
@@ -5433,7 +5865,7 @@ ComboMenuInstCmdProc(
 static void
 ComboMenuInstCmdDeletedProc(ClientData clientData)
 {
-    ComboMenu *comboPtr = clientData; /* Pointer to widget record. */
+    ComboMenu *comboPtr = clientData;	/* Pointer to widget record. */
 
     if (comboPtr->tkwin != NULL) {
 	Tk_Window tkwin;
@@ -5464,10 +5896,11 @@ ComboMenuInstCmdDeletedProc(ClientData clientData)
 /* ARGSUSED */
 static int
 ComboMenuCmd(
-    ClientData clientData,	/* Main window associated with interpreter. */
-    Tcl_Interp *interp,		/* Current interpreter. */
-    int objc,			/* Number of arguments. */
-    Tcl_Obj *const *objv)	/* Argument strings. */
+    ClientData clientData,		/* Main window associated with
+					 * interpreter. */
+    Tcl_Interp *interp,			/* Current interpreter. */
+    int objc,				/* Number of arguments. */
+    Tcl_Obj *const *objv)		/* Argument strings. */
 {
     ComboMenu *comboPtr;
     Tcl_CmdInfo cmdInfo;
@@ -5490,9 +5923,8 @@ ComboMenuCmd(
      * could be set within a script.
      */
     if (!Tcl_GetCommandInfo(interp, "::blt::ComboMenu::PostMenu", &cmdInfo)) {
-	static char cmd[] = "source [file join $blt_library combomenu.tcl]";
-
-	if (Tcl_GlobalEval(interp, cmd) != TCL_OK) {
+	if (Tcl_GlobalEval(interp, 
+		"source [file join $blt_library combomenu.tcl]") != TCL_OK) {
 	    char info[200];
 	    sprintf_s(info, 200, "\n    (while loading bindings for %.50s)", 
 		    Tcl_GetString(objv[0]));
@@ -5528,12 +5960,88 @@ ComboMenuCmd(
     return TCL_OK;
 }
 
+/*
+ *---------------------------------------------------------------------------
+ *
+ * ComboViewCmd --
+ *
+ * 	This procedure is invoked to process the TCL command that corresponds
+ * 	to a widget managed by this module. See the user documentation for
+ * 	details on what it does.
+ *
+ * Results:
+ *	A standard TCL result.
+ *
+ * Side Effects:
+ *	See the user documentation.
+ *
+ *---------------------------------------------------------------------------
+ */
+/* ARGSUSED */
+static int
+ComboViewCmd(
+    ClientData clientData,		/* Main window associated with
+					 * interpreter. */
+    Tcl_Interp *interp,			/* Current interpreter. */
+    int objc,				/* # of arguments. */
+    Tcl_Obj *const *objv)		/* Argument strings. */
+{
+    ComboMenu *comboPtr;
+    Tcl_CmdInfo cmdInfo;
+    Tk_Window tkwin;
+    char *path;
+    unsigned int mask;
+
+    if (objc < 2) {
+	Tcl_AppendResult(interp, "wrong # args: should be \"", 
+		Tcl_GetString(objv[0]), " pathName ?option value?...\"", 
+		(char *)NULL);
+	return TCL_ERROR;
+    }
+    /*
+     * First time in this interpreter, invoke a procedure to initialize
+     * various bindings on the combomenu widget.  If the procedure doesn't
+     * already exist, source it from "$blt_library/combomenu.tcl".  We
+     * deferred sourcing the file until now so that the variable $blt_library
+     * could be set within a script.
+     */
+    if (!Tcl_GetCommandInfo(interp, "::blt::ComboMenu::PostMenu", &cmdInfo)) {
+	if (Tcl_GlobalEval(interp, 
+		"source [file join $blt_library combomenu.tcl]") != TCL_OK) {
+	    char info[200];
+	    sprintf_s(info, 200, "\n    (while loading bindings for %.50s)", 
+		    Tcl_GetString(objv[0]));
+	    Tcl_AddErrorInfo(interp, info);
+	    return TCL_ERROR;
+	}
+    }
+    path = Tcl_GetString(objv[1]);
+    tkwin = Tk_CreateWindowFromPath(interp, Tk_MainWindow(interp), path, NULL);
+    if (tkwin == NULL) {
+	return TCL_ERROR;
+    }
+    comboPtr = NewComboMenu(interp, tkwin);
+    if (ConfigureComboMenu(interp, comboPtr, objc - 2, objv + 2, 0) != TCL_OK) {
+	Tk_DestroyWindow(comboPtr->tkwin);
+	return TCL_ERROR;
+    }
+    mask = (ExposureMask | StructureNotifyMask | FocusChangeMask);
+    Tk_CreateEventHandler(tkwin, mask, ComboMenuEventProc, comboPtr);
+    comboPtr->cmdToken = Tcl_CreateObjCommand(interp, path, 
+	ComboMenuInstCmdProc, comboPtr, ComboMenuInstCmdDeletedProc);
+
+    Tcl_SetObjResult(interp, objv[1]);
+    return TCL_OK;
+}
+
 int
 Blt_ComboMenuInitProc(Tcl_Interp *interp)
 {
-    static Blt_InitCmdSpec cmdSpec = { "combomenu", ComboMenuCmd, };
-
-    return Blt_InitCmd(interp, "::blt", &cmdSpec);
+    static Blt_InitCmdSpec cmdSpec[2] = { 
+	{ "combomenu", ComboMenuCmd }, 
+	{ "comboview", ComboViewCmd }, 
+    };
+    return Blt_InitCmds(interp, "::blt", cmdSpec, 2);
 }
 
 
@@ -5551,7 +6059,7 @@ DrawItemBackground(Item *itemPtr, Drawable drawable, int x, int y)
     relief = itemPtr->relief;
     if ((itemPtr->flags & (ITEM_DISABLED|ITEM_SEPARATOR)) == ITEM_DISABLED) {
 	bg = stylePtr->disabledBg;
-    } else if (itemPtr->flags & ITEM_ACTIVE) {
+    } else if (comboPtr->activePtr == itemPtr) {
 	bg = stylePtr->activeBg;
 	relief = stylePtr->activeRelief;
     } else {
@@ -5587,168 +6095,112 @@ DrawSeparator(Item *itemPtr, Drawable drawable, int x, int y, int w, int h)
 {
     XPoint points[2];
     Tk_3DBorder border;
+    ComboMenu *comboPtr;    
+    Style *stylePtr;
 
+    comboPtr = itemPtr->comboPtr;
+    stylePtr = itemPtr->stylePtr;
+    border = Blt_BackgroundBorder(stylePtr->normalBg);
     points[0].x = x + ITEM_XPAD;
     points[0].y = y + h / 2;
     points[1].x = w - 2 * ITEM_XPAD;
     points[1].y = points[0].y;
-
-    border = Blt_BackgroundBorder(itemPtr->stylePtr->normalBg);
-    Tk_Draw3DPolygon(itemPtr->comboPtr->tkwin, drawable, border, points, 2, 1,
-	    TK_RELIEF_SUNKEN);
+    Tk_Draw3DPolygon(comboPtr->tkwin, drawable, border, points, 2, 1, 
+		     TK_RELIEF_SUNKEN);
 }
 
 static void
-DrawCheck(Item *itemPtr, Drawable drawable, int x, int y, int w, int h)
+DrawCheckButton(Item *itemPtr, Drawable drawable, int x, int y, int w, int h)
 {
     Style *stylePtr;
     Display *display;
     ComboMenu *comboPtr;
+    XColor *outlineColor, *fillColor, *checkColor;
 
     comboPtr = itemPtr->comboPtr;
-#ifdef notdef
-    stylePtr = itemPtr->stylePtr;
-    display = itemPtr->comboPtr->display;
-    if (itemPtr->flags & ITEM_DISABLED) {
-	XDrawRectangle(display, drawable, stylePtr->labelDisabledGC, x, y, w,h);
-    } else {
-	XFillRectangle(display, drawable, stylePtr->indBgGC, x, y, w, h);
-	XDrawRectangle(display, drawable, stylePtr->indFgGC, x, y, w, h);
-    }
-    /*
-     * Use the value of the variable to update the selected status of the
-     * item.
-     */
-    if (itemPtr->flags & ITEM_SELECTED) {
-	int ax, ay, bx, by, cx, cy;
-	int i;
-	GC gc;
-
-	ax = x + 2, ay = y + 2 + (h / 3);
-	bx = x + (w / 2) - 2, by = y + h - 4;
-	cx = x + w, cy = y;
-	
-	if (itemPtr->flags & ITEM_DISABLED) {
-	    gc = stylePtr->labelDisabledGC;
-	} else {
-	    gc = stylePtr->indFgGC;
-	}
-	for (i = 0; i < 3; i++) {
-	    XDrawLine(display, drawable, gc, ax, ay, bx, by);
-	    XDrawLine(display, drawable, gc, bx, by, cx, cy);
-	    ay++, by++, cy++;
-	}
-    }
-#else
-    Blt_Pixel fill, check, outline;
     Blt_Picture picture;
     int on;
     stylePtr = itemPtr->stylePtr;
     display = itemPtr->comboPtr->display;
-    
-    check = Blt_XColorToPixel(stylePtr->indFgColor);
     on = (itemPtr->flags & ITEM_SELECTED);
+    fillColor = (stylePtr->indFillColor) 
+	? stylePtr->indFillColor : comboPtr->checkButtonFillColor;
+    outlineColor = (stylePtr->indOutlineColor) 
+	? stylePtr->indOutlineColor : comboPtr->checkButtonOutlineColor;
+    checkColor = (stylePtr->indColor) 
+	? stylePtr->indColor : comboPtr->checkButtonColor;
     if (itemPtr->flags & ITEM_DISABLED) {
 	if (stylePtr->checkbutton[0] == NULL) {
-	    XColor *colorPtr;
-
-	    colorPtr = Blt_BackgroundBorderColor(stylePtr->disabledBg);
-	    outline = Blt_XColorToPixel(stylePtr->labelDisabledColor);
-	    fill = Blt_XColorToPixel(colorPtr);
+	    if (fillColor != NULL) {
+		fillColor = Blt_BackgroundBorderColor(stylePtr->disabledBg);
+	    }
+	    if (outlineColor != NULL) {
+		outlineColor = stylePtr->labelDisabledColor;
+	    }
 	    stylePtr->checkbutton[0] = 
-		Blt_PaintCheckbox(w, h, fill.u32, outline.u32, outline.u32, on);
+		Blt_PaintCheckbox(w, h, fillColor, outlineColor,
+			Blt_BackgroundBorderColor(stylePtr->disabledBg),
+			FALSE);
 	} 
 	picture = stylePtr->checkbutton[0];
-    } else if (itemPtr->flags & ITEM_SELECTED) {
-	if (stylePtr->checkbutton[1] == NULL) {
-	    fill = Blt_XColorToPixel(stylePtr->indBgColor);
-	    outline = Blt_XColorToPixel(stylePtr->indFgColor);
-	    check = Blt_XColorToPixel(stylePtr->selBgColor);
-	    stylePtr->checkbutton[1] = 
-		Blt_PaintCheckbox(w, h, 0xFFFFFFFF, 0xFF000000, check.u32, TRUE);
-	} 
-	picture = stylePtr->checkbutton[1];
     } else {
-	if (stylePtr->checkbutton[2] == NULL) {
-	    fill = Blt_XColorToPixel(stylePtr->indBgColor);
-	    outline = Blt_XColorToPixel(stylePtr->indFgColor);
-	    stylePtr->checkbutton[2] = 
-		Blt_PaintCheckbox(w, h, 0xFFFFFFFF, 0xFF000000, check.u32, 0);
-	} 
-	picture = stylePtr->checkbutton[2];
+	Blt_Picture *picturePtr;
+
+	picturePtr = (on) ? stylePtr->checkbutton + 1 :
+	    stylePtr->checkbutton + 2;
+	if (*picturePtr == NULL) {
+	    *picturePtr = Blt_PaintCheckbox(w, h, fillColor, outlineColor, 
+		checkColor, on);
+	}
+	picture = *picturePtr;
     }
     Blt_PaintPicture(comboPtr->painter, drawable, picture, 0, 0, w, h, x, y, 0);
-#endif
 }
 
 static void
-DrawRadio(Item *itemPtr, Drawable drawable, int x, int y, int w, int h)
+DrawRadioButton(Item *itemPtr, Drawable drawable, int x, int y, int w, int h)
 {
     Style *stylePtr;
     Display *display;
     ComboMenu *comboPtr;
-
-    comboPtr = itemPtr->comboPtr;
-#ifdef notdef
-    stylePtr = itemPtr->stylePtr;
-    display = itemPtr->comboPtr->display;
-    if (itemPtr->flags & ITEM_DISABLED) {
-	XDrawArc(display, drawable, stylePtr->labelDisabledGC, x, y, w, h, 0, 
-		 23040);
-	if (itemPtr->flags & ITEM_SELECTED) {
-	    XFillArc(display, drawable, stylePtr->labelDisabledGC, x + 3, 
-		y + 3, w - 6, h - 6, 0, 23040);
-	}
-    } else {
-	XFillArc(display, drawable, stylePtr->indBgGC, x, y, w, h, 0, 23040);
-	XDrawArc(display, drawable, stylePtr->indFgGC, x, y, w, h, 0, 23040);
-	if (itemPtr->flags & ITEM_SELECTED) {
-	    XFillArc(display, drawable, stylePtr->indFgGC, x + 3, y + 3, w - 6, 
-		 h - 6, 0, 23040);
-	}
-    }
-#else 
-    Blt_Pixel fill, check, outline;
     Blt_Picture picture;
     int on;
+
+    comboPtr = itemPtr->comboPtr;
     stylePtr = itemPtr->stylePtr;
     display = itemPtr->comboPtr->display;
 
     on = (itemPtr->flags & ITEM_SELECTED);
-    check = Blt_XColorToPixel(stylePtr->indFgColor);
     if (itemPtr->flags & ITEM_DISABLED) {
 	picture = stylePtr->radiobutton[0];
 	if (picture == NULL) {
-	    XColor *colorPtr;
-
-	    colorPtr = Blt_BackgroundBorderColor(stylePtr->disabledBg);
-	    outline = Blt_XColorToPixel(stylePtr->labelDisabledColor);
-	    fill = Blt_XColorToPixel(colorPtr);
-	    picture = Blt_PaintRadioButton(w, h, fill.u32, outline.u32, 
-					   outline.u32, FALSE);
+	    picture = Blt_PaintRadioButton(w, h, 
+		Blt_BackgroundBorderColor(stylePtr->disabledBg),
+		stylePtr->labelDisabledColor,
+		stylePtr->labelDisabledColor,
+		FALSE);
 	    stylePtr->radiobutton[0] = picture;
 	} 
-    } else if (itemPtr->flags & ITEM_SELECTED) {
-	picture = stylePtr->radiobutton[1];
-	if (picture == NULL) {
-	    fill = Blt_XColorToPixel(stylePtr->selBgColor);
-	    outline = Blt_XColorToPixel(stylePtr->selFgColor);
-	    picture = Blt_PaintRadioButton(w, h, fill.u32, outline.u32, 
-					   check.u32, TRUE);
-	    stylePtr->radiobutton[1] = picture;
-	} 
     } else {
-	picture = stylePtr->radiobutton[2];
-	if (picture == NULL) {
-	    fill = Blt_XColorToPixel(stylePtr->indBgColor);
-	    outline = Blt_XColorToPixel(stylePtr->indFgColor);
-	    picture = Blt_PaintRadioButton(w, h, fill.u32, outline.u32, 
-					   check.u32, FALSE);
-	    stylePtr->radiobutton[2] = picture;
-	} 
+	Blt_Picture *picturePtr;
+
+	picturePtr = (on) ? stylePtr->radiobutton + 1 :
+	    stylePtr->radiobutton + 2;
+	if (*picturePtr == NULL) {
+	    XColor *fillColor, *circleColor, *outlineColor;
+
+	    fillColor = (stylePtr->indFillColor) 
+		? stylePtr->indFillColor : comboPtr->radioButtonFillColor;
+	    outlineColor = (stylePtr->indOutlineColor) 
+		? stylePtr->indOutlineColor : comboPtr->radioButtonOutlineColor;
+	    circleColor = (stylePtr->indColor) 
+		? stylePtr->indColor : comboPtr->radioButtonColor;
+	    *picturePtr = Blt_PaintRadioButton(w, h, fillColor, outlineColor, 
+		circleColor, on);
+	}
+	picture = *picturePtr;
     }
     Blt_PaintPicture(comboPtr->painter, drawable, picture, 0, 0, w, h, x, y, 0);
-#endif
 }
 
 static void
@@ -5763,7 +6215,7 @@ DrawItem(Item *itemPtr, Drawable drawable, int x, int y)
     comboPtr = itemPtr->comboPtr;
     x0 = x;
     w = VPORTWIDTH(comboPtr) - 2 * stylePtr->borderWidth;
-    x += stylePtr->borderWidth;
+    x += stylePtr->borderWidth + comboPtr->borderWidth;
     h = itemPtr->height - 2 * stylePtr->borderWidth;
     y += stylePtr->borderWidth;
     if (itemPtr->flags & ITEM_SEPARATOR) {
@@ -5774,11 +6226,11 @@ DrawItem(Item *itemPtr, Drawable drawable, int x, int y)
 	/* Radiobutton or checkbutton. */
 	if (itemPtr->flags & (ITEM_RADIOBUTTON | ITEM_CHECKBUTTON)) {
 	    if (itemPtr->flags & ITEM_RADIOBUTTON) {
-		DrawRadio(itemPtr, drawable, x,
+		DrawRadioButton(itemPtr, drawable, x,
 			  y + (h - itemPtr->leftIndHeight) / 2,
 			  itemPtr->leftIndWidth, itemPtr->leftIndHeight);
 	    } else if (itemPtr->flags & ITEM_CHECKBUTTON) {
-		DrawCheck(itemPtr, drawable, x, 
+		DrawCheckButton(itemPtr, drawable, x, 
 			  y + (h - itemPtr->leftIndHeight) / 2,
 			  itemPtr->leftIndWidth, itemPtr->leftIndHeight);
 	    }		
@@ -5789,13 +6241,30 @@ DrawItem(Item *itemPtr, Drawable drawable, int x, int y)
 	}
 	/* Icon. */
 	if (itemPtr->icon != NULL) {
-	    Tk_RedrawImage(IconImage(itemPtr->icon), 0, 0, 
-		IconWidth(itemPtr->icon), IconHeight(itemPtr->icon), drawable, 
+	    if ((Blt_IsPicture(IconImage(itemPtr->icon))) && 
+		(itemPtr->flags & ITEM_DISABLED)) {
+		Blt_Picture picture;
+		Blt_Painter painter;
+		
+		painter = Blt_GetPainter(comboPtr->tkwin, 1.0);
+		picture = Blt_GetPictureFromPictureImage(comboPtr->interp,
+			IconImage(itemPtr->icon));
+		picture = Blt_GreyscalePicture(picture);
+		Blt_PaintPicture(painter, drawable, picture, 0, 0, 
+			IconWidth(itemPtr->icon), IconHeight(itemPtr->icon), 
+			x + (comboPtr->iconWidth - itemPtr->iconWidth) / 2, 
+			y + (h - IconHeight(itemPtr->icon)) / 2, 0);
+		Blt_FreePicture(picture);
+	    } else {
+		Tk_RedrawImage(IconImage(itemPtr->icon), 0, 0, 
+			IconWidth(itemPtr->icon), IconHeight(itemPtr->icon), 
+			drawable, 
 			x + (comboPtr->iconWidth - itemPtr->iconWidth) / 2, 
 			y + (h - IconHeight(itemPtr->icon)) / 2);
-	}
-	if (comboPtr->iconWidth > 0) {
-	    x += comboPtr->iconWidth + ITEM_IPAD;
+	    }
+	    if (comboPtr->iconWidth > 0) {
+		x += comboPtr->iconWidth + ITEM_IPAD;
+	    }
 	}
 	/* Image or label. */
 	if (itemPtr->image != NULL) {
@@ -5808,7 +6277,7 @@ DrawItem(Item *itemPtr, Drawable drawable, int x, int y)
 	    
 	    if (itemPtr->flags & ITEM_DISABLED) {
 		fg = stylePtr->labelDisabledColor;
-	    } else if (itemPtr->flags & ITEM_ACTIVE) {
+	    } else if (comboPtr->activePtr == itemPtr) {
 		fg = stylePtr->labelActiveColor;
 	    } else {
 		fg = stylePtr->labelNormalColor;
@@ -5822,20 +6291,20 @@ DrawItem(Item *itemPtr, Drawable drawable, int x, int y)
 	    Blt_DrawText(comboPtr->tkwin, drawable, (char *)itemPtr->label, &ts,
 		x, y + (h - itemPtr->labelHeight) / 2);
 	}
-	x = x0 + MAX(comboPtr->worldWidth, VPORTWIDTH(comboPtr)) - 2 * ITEM_IPAD;
+	x = x0 + MAX(comboPtr->worldWidth, VPORTWIDTH(comboPtr)) - 2*ITEM_IPAD;
 	/* Accelerator or submenu arrow. */
 	if (itemPtr->flags & ITEM_CASCADE) {
-	    GC gc;
+	    XColor *color;
 
 	    if (itemPtr->flags & ITEM_DISABLED) {
-		gc = stylePtr->labelDisabledGC;
-	    } else if (itemPtr->flags & ITEM_ACTIVE) {
-		gc = stylePtr->labelActiveGC;
+		color = stylePtr->labelDisabledColor;
+	    } else if (comboPtr->activePtr == itemPtr) {
+		color = stylePtr->labelActiveColor;
 	    } else {
-		gc = stylePtr->labelNormalGC;
+		color = stylePtr->labelNormalColor;
 	    }
 	    x -= ITEM_R_IND_WIDTH;
-	    Blt_DrawArrow(comboPtr->display, drawable, gc, x + ITEM_IPAD, y, 
+	    Blt_DrawArrow(comboPtr->display, drawable, color, x + ITEM_IPAD, y, 
 		ITEM_R_IND_WIDTH, h, 1, ARROW_RIGHT);
 	} else if (itemPtr->accel != NULL) {
 	    TextStyle ts;
@@ -5843,7 +6312,7 @@ DrawItem(Item *itemPtr, Drawable drawable, int x, int y)
 	    
 	    if (itemPtr->flags & ITEM_DISABLED) {
 		fg = stylePtr->accelDisabledColor;
-	    } else if (itemPtr->flags & ITEM_ACTIVE) {
+	    } else if (comboPtr->activePtr == itemPtr) {
 		fg = stylePtr->accelActiveColor;
 	    } else {
 		fg = stylePtr->accelNormalColor;
@@ -5864,7 +6333,6 @@ DrawItem(Item *itemPtr, Drawable drawable, int x, int y)
 static void
 DrawComboMenu(ComboMenu *comboPtr, Drawable drawable)
 {
-
     /* Draw each visible item. */
     if (comboPtr->firstPtr != NULL) {
 	Blt_ChainLink first, last, link;
@@ -5886,7 +6354,6 @@ DrawComboMenu(ComboMenu *comboPtr, Drawable drawable)
 	}
     }
     /* Manage the geometry of the scrollbars. */
-
     if (comboPtr->yScrollbarWidth > 0) {
 	int x, y;
 	int yScrollbarHeight;
@@ -6009,18 +6476,21 @@ DisplayComboMenu(ClientData clientData)
 {
     ComboMenu *comboPtr = clientData;
     Pixmap drawable;
-    int w, h;			/* Window width and height. */
+    int w, h;				/* Window width and height. */
+    int screenWidth, screenHeight;
 
-    comboPtr->flags &= ~CM_REDRAW;
+    comboPtr->flags &= ~REDRAW_PENDING;
     if (comboPtr->tkwin == NULL) {
-	return;			/* Window destroyed (should not get here) */
+	return;				/* Window destroyed (should not get
+					 * here) */
     }
 #ifdef notdef
-    fprintf(stderr, "Calling DisplayComboMenu(%s)\n", 
-	    Tk_PathName(comboPtr->tkwin));
+    fprintf(stderr, "Calling DisplayComboMenu(%s) w=%d h=%d\n", 
+	    Tk_PathName(comboPtr->tkwin), Tk_Width(comboPtr->tkwin),
+	    Tk_Height(comboPtr->tkwin));
 #endif
-    if (comboPtr->flags & CM_LAYOUT) {
-	ComputeMenuGeometry(comboPtr);
+    if (comboPtr->flags & LAYOUT_PENDING) {
+	ComputeComboGeometry(comboPtr);
     }
     if ((Tk_Width(comboPtr->tkwin) <= 1) || (Tk_Height(comboPtr->tkwin) <= 1)){
 	/* Don't bother computing the layout until the window size is
@@ -6033,29 +6503,26 @@ DisplayComboMenu(ClientData clientData)
 	 * coordinates of the combomenu's new layout.  */
 	return;
     }
-
-    if (comboPtr->flags & CM_SCROLL) {
-	int vw, vh;		/* Viewport width and height. */
+    if (comboPtr->flags & SCROLL_PENDING) {
+	int vw, vh;			/* Viewport width and height. */
 	/* 
-	 * The view port has changed. The visible items need to be
-	 * recomputed and the scrollbars updated.
+	 * The view port has changed. The visible items need to be recomputed
+	 * and the scrollbars updated.
 	 */
 	ComputeVisibleItems(comboPtr);
 	vw = VPORTWIDTH(comboPtr);
 	vh = VPORTHEIGHT(comboPtr);
 	if ((comboPtr->xScrollCmdObjPtr != NULL) &&
-	    (comboPtr->flags & CM_XSCROLL)) {
+	    (comboPtr->flags & SCROLLX)) {
 	    Blt_UpdateScrollbar(comboPtr->interp, comboPtr->xScrollCmdObjPtr,
-		(double)comboPtr->xOffset / comboPtr->worldWidth,
-		(double)(comboPtr->xOffset + vw) / comboPtr->worldWidth);
+		comboPtr->xOffset, comboPtr->xOffset + vw, comboPtr->worldWidth);
 	}
 	if ((comboPtr->yScrollCmdObjPtr != NULL) && 
-	    (comboPtr->flags & CM_YSCROLL)) {
+	    (comboPtr->flags & SCROLLY)) {
 	    Blt_UpdateScrollbar(comboPtr->interp, comboPtr->yScrollCmdObjPtr,
-		(double)comboPtr->yOffset / comboPtr->worldHeight,
-		(double)(comboPtr->yOffset + vh)/comboPtr->worldHeight);
+		comboPtr->yOffset, comboPtr->yOffset+vh, comboPtr->worldHeight);
 	}
-	comboPtr->flags &= ~CM_SCROLL;
+	comboPtr->flags &= ~SCROLL_PENDING;
     }
     /*
      * Create a pixmap the size of the window for double buffering.
@@ -6064,6 +6531,9 @@ DisplayComboMenu(ClientData clientData)
 	comboPtr->yScrollbarWidth;
     h = Tk_Height(comboPtr->tkwin) - 2 * comboPtr->borderWidth - 
 	comboPtr->xScrollbarHeight;
+    Blt_SizeOfScreen(comboPtr->tkwin, &screenWidth, &screenHeight);
+    w = CLAMP(w, 1, screenWidth);
+    h = CLAMP(h, 1, screenHeight);
     drawable = Tk_GetPixmap(comboPtr->display, Tk_WindowId(comboPtr->tkwin),
 	w, h, Tk_Depth(comboPtr->tkwin));
 #ifdef WIN32
@@ -6073,8 +6543,8 @@ DisplayComboMenu(ClientData clientData)
 	ActivateItem(comboPtr, comboPtr->firstPtr);
     }
     /* 
-     * Shadowed menu.  Request window size slightly bigger than menu.
-     * Get snapshot of background from root menu. 
+     * Shadowed menu.  Request window size slightly bigger than menu.  Get
+     * snapshot of background from root menu.
      */
     /* Background */
     Blt_FillBackgroundRectangle(comboPtr->tkwin, drawable, 
@@ -6096,5 +6566,3 @@ DisplayComboMenu(ClientData clientData)
 	comboPtr->defStyle.normalBg, 0, 0, Tk_Width(comboPtr->tkwin), 
 	Tk_Height(comboPtr->tkwin), comboPtr->borderWidth, comboPtr->relief);
 }
-
-

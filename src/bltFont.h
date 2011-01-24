@@ -30,6 +30,9 @@
 #ifndef _BLT_FONT_H
 #define _BLT_FONT_H
 
+#define FONT_ITALIC	(1<<0)
+#define FONT_BOLD	(1<<1)
+
 typedef struct {
     int ascent;			/* The amount in pixels that the tallest
 				 * letter sticks up above the baseline, plus
@@ -60,7 +63,8 @@ typedef const char *(Blt_NameOfFontProc)(Blt_Font font);
 typedef void (Blt_GetFontMetricsProc)(Blt_Font font, 
 	Blt_FontMetrics *metricsPtr);
 typedef Font (Blt_FontIdProc)(Blt_Font font);
-typedef int (Blt_TextWidthProc)(Blt_Font font, const char *string, int nBytes);
+typedef int (Blt_TextStringWidthProc)(Blt_Font font, const char *string, 
+	int nBytes);
 typedef void (Blt_FreeFontProc)(Blt_Font font);
 typedef int (Blt_MeasureCharsProc)(Blt_Font font, const char *text, int nBytes, 
 	int maxLength, int flags, int *lengthPtr);
@@ -71,8 +75,8 @@ typedef int (Blt_PostscriptFontNameProc)(Blt_Font font, Tcl_DString *resultPtr);
 typedef const char *(Blt_FamilyOfFontProc)(Blt_Font font);
 typedef int (Blt_CanRotateFontProc)(Blt_Font font, float angle);
 typedef void (Blt_UnderlineCharsProc)(Display *display, Drawable drawable, 
-	GC gc, Blt_Font font, const char *string, int x, int y, int first, 
-	int last);
+	GC gc, Blt_Font font, const char *text, int textLen, int x, int y, 
+	int first, int last, int xMax);
 
 struct Blt_FontClass {
     int type;			/* Indicates the type of font used. */
@@ -81,7 +85,7 @@ struct Blt_FontClass {
     Blt_FontIdProc *fontId;
     Blt_GetFontMetricsProc *getFontMetrics;
     Blt_MeasureCharsProc *measureChars;
-    Blt_TextWidthProc *textWidth;
+    Blt_TextStringWidthProc *textWidth;
     Blt_CanRotateFontProc *canRotateFont;
     Blt_DrawCharsProc *drawChars;
     Blt_PostscriptFontNameProc *postscriptFontName;
@@ -91,13 +95,13 @@ struct Blt_FontClass {
 
 struct _Blt_Font {
     void *clientData;
+    Tcl_Interp *interp;
+    Display *display;
     Blt_FontClass *classPtr;
 };
 
 #define Blt_NameOfFont(f) (*(f)->classPtr->nameOfFont)(f)
-#define Blt_GetFontMetrics(f,fm) (*(f)->classPtr->getFontMetrics)(f,fm)
 #define Blt_FontId(f) (*(f)->classPtr->fontId)(f)
-#define Blt_TextWidth(f,s,l) (*(f)->classPtr->textWidth)(f,s,l)
 #define Blt_MeasureChars(f,s,l,ml,fl,lp) \
 	(*(f)->classPtr->measureChars)(f,s,l,ml,fl,lp)
 #define Blt_DrawChars(d,w,gc,f,dp,a,t,l,x,y)		\
@@ -106,8 +110,8 @@ struct _Blt_Font {
 #define Blt_FamilyOfFont(f) (*(f)->classPtr->familyOfFont)(f)
 #define Blt_CanRotateFont(f,a) (*(f)->classPtr->canRotateFont)(f,a)
 #define Blt_FreeFont(f) (*(f)->classPtr->freeFont)(f)
-#define Blt_UnderlineChars(d,w,g,f,s,x,y,a,b) \
-	(*(f)->classPtr->underlineChars)(d,w,g,f,s,x,y,a,b)
+#define Blt_UnderlineChars(d,w,g,f,s,l,x,y,a,b,m)		\
+	(*(f)->classPtr->underlineChars)(d,w,g,f,s,l,x,y,a,b,m)
 
 BLT_EXTERN Blt_Font Blt_GetFont(Tcl_Interp *interp, Tk_Window tkwin, 
 	const char *string);
@@ -121,9 +125,15 @@ BLT_EXTERN void Blt_DrawCharsWithEllipsis(Tk_Window tkwin, Drawable drawable,
 BLT_EXTERN Blt_Font Blt_GetFontFromObj(Tcl_Interp *interp, Tk_Window tkwin,
 	Tcl_Obj *objPtr);
 
+BLT_EXTERN void Blt_GetFontMetrics(Blt_Font font, Blt_FontMetrics *fmPtr);
+BLT_EXTERN int Blt_TextWidth(Blt_Font font, const char *string, int length);
+BLT_EXTERN Tcl_Interp *Blt_GetFontInterp(Blt_Font font);
+
 #ifdef _XFT_H_
-BLT_EXTERN XftFont *Blt_OpenXftFontFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr);
-BLT_EXTERN XftFont *Blt_OpenXftFont(Tcl_Interp *interp, const char *fontName);
+BLT_EXTERN const char *Blt_GetFontFileFromObj(Tcl_Interp *interp, 
+	Tcl_Obj *objPtr, double *sizePtr);
+BLT_EXTERN const char *Blt_GetFontFile(Tcl_Interp *interp, const char *spec,
+	double *sizePtr);
 #endif /*_XFT_H_*/
 
 #endif /* _BLT_FONT_H */

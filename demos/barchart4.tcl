@@ -18,15 +18,6 @@ set graph .graph
 source scripts/stipples.tcl
 source scripts/patterns.tcl
 
-option add *Barchart.title		"A Simple Barchart"
-option add *Barchart.relief 		raised
-option add *Barchart.borderWidth 	2
-option add *Barchart.plotBackground 	white
-option add *Barchart.baseline   	57.299
-
-option add *Element.borderWidth		2
-option add *Element.Background		white
-option add *Element.Relief		raised
 
 option add *x.Title			"X Axis"
 option add *y.Title			"Y Axis"
@@ -78,7 +69,8 @@ set attributes {
 
 set count 0
 foreach { color stipple } $attributes {
-    $graph pen create pen$count -fill ${color}1 -outline ${color}4 -relief solid
+    $graph pen create pen$count \
+	-fill ${color}1 -outline ${color}4 -relief solid
     lappend styles [list pen$count $count $count]
     incr count
 }
